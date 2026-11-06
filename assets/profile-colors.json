@@ -1,0 +1,62 @@
+[
+    {
+        "index": 0,
+        "name": "Red",
+        "hex": "#d13438"
+    },
+    {
+        "index": 1,
+        "name": "Raspberry",
+        "hex": "#bf0077"
+    },
+    {
+        "index": 2,
+        "name": "Purple",
+        "hex": "#5c2e91"
+    },
+    {
+        "index": 3,
+        "name": "Lavender",
+        "hex": "#7160e8"
+    },
+    {
+        "index": 4,
+        "name": "Navy",
+        "hex": "#004e8c"
+    },
+    {
+        "index": 5,
+        "name": "Blue",
+        "hex": "#0078d4"
+    },
+    {
+        "index": 6,
+        "name": "Teal",
+        "hex": "#038387"
+    },
+    {
+        "index": 7,
+        "name": "Green",
+        "hex": "#107c10"
+    },
+    {
+        "index": 8,
+        "name": "Lime",
+        "hex": "#13a10e"
+    },
+    {
+        "index": 9,
+        "name": "Gold",
+        "hex": "#eaa300"
+    },
+    {
+        "index": 10,
+        "name": "Orange",
+        "hex": "#f7630c"
+    },
+    {
+        "index": 11,
+        "name": "Brown",
+        "hex": "#8e562e"
+    }
+]

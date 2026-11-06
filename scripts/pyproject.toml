@@ -1,0 +1,11 @@
+[project]
+name = "windowsmegaproxy-tools"
+version = "0.1.0"
+requires-python = ">=3.13,<3.15"
+dependencies = ["pillow==13.0.0"]
+
+[dependency-groups]
+ssh-test = ["paramiko==5.1.0"]
+
+[tool.uv]
+package = false

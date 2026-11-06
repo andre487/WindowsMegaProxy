@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Setup",
+      "type": "shell",
+      "command": ".\\setup.cmd",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": ".\\build.cmd",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Test",
+      "type": "shell",
+      "command": ".\\test.cmd",
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Test UI",
+      "type": "shell",
+      "command": ".\\ui-test.cmd",
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Test engine (HTTPS, no TUN)",
+      "type": "shell",
+      "command": ".\\engine-test.cmd",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test HTTP/3 (local, no TUN)",
+      "type": "shell",
+      "command": ".\\h3-test.cmd",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test SSH (local, no TUN)",
+      "type": "shell",
+      "command": ".\\ssh-test.cmd",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run TraceProbe",
+      "type": "shell",
+      "command": ".\\trace-probe.cmd",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run (administrator)",
+      "type": "shell",
+      "command": ".\\run.cmd",
+      "problemMatcher": []
+    }
+  ]
+}

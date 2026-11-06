@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="../../src/WindowsMegaProxy/UiText.cs" Link="UiText.cs" />
+        <Compile Include="../../src/MegaProxy.TraceProbe/ProbeRunner.cs" Link="ProbeRunner.cs" />
+        <Compile Include="../../src/WindowsMegaProxy/SshConfiguration.cs" Link="SshConfiguration.cs" />
+        <Compile Include="../../src/WindowsMegaProxy/Http3Fallback.cs" Link="Http3Fallback.cs" />
+        <Compile
+            Include="../../src/WindowsMegaProxy/ProxyAuthenticationProbe.cs"
+            Link="ProxyAuthenticationProbe.cs" />
+        <EmbeddedResource Include="../../assets/strings.json" LogicalName="WindowsMegaProxy.Strings.json" />
+        <Compile Include="../../src/WindowsMegaProxy/NetworkDiagnostics.cs" Link="NetworkDiagnostics.cs" />
+        <Compile Include="../../src/WindowsMegaProxy/ConnectionSnapshot.cs" Link="ConnectionSnapshot.cs" />
+        <Compile Include="../../src/WindowsMegaProxy/DiagnosticLog.cs" Link="DiagnosticLog.cs" />
+        <Compile Include="../../src/WindowsMegaProxy/Configuration.cs" Link="Configuration.cs" />
+        <Compile Include="../../src/WindowsMegaProxy/Profiles.cs" Link="Profiles.cs" />
+        <Compile Include="../../src/WindowsMegaProxy/ProfileAppearance.cs" Link="ProfileAppearance.cs" />
+        <EmbeddedResource
+            Include="../../assets/profile-colors.json"
+            LogicalName="WindowsMegaProxy.ProfileColors.json" />
+        <EmbeddedResource
+            Include="../../assets/flags/countries.json"
+            LogicalName="WindowsMegaProxy.Countries.json" />
+        <Compile
+            Include="../../src/WindowsMegaProxy/PortableConfiguration.cs"
+            Link="PortableConfiguration.cs" />
+    </ItemGroup>
+</Project>
