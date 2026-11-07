@@ -765,6 +765,20 @@ internal static class Program
             Wait(window, subscriptionForm.FlushAsync());
             Assert(savedSubscription?.Url == subscriptionUrl.Text, "Leaving a subscription form flushes edits before the debounce expires.");
             subscriptionWindow.Close();
+            var removing = new TaskCompletionSource();
+            bool subscriptionRemoved = false;
+            int restoredSubscriptions = 0;
+            var removalForm = new SubscriptionForm(new Settings(), async definition =>
+            {
+                if (definition is null) { await removing.Task; subscriptionRemoved = true; }
+                else restoredSubscriptions++;
+            }, () => Task.FromResult(new Settings()));
+            ((TextBox)typeof(SubscriptionForm).GetField("url", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(removalForm)!).Text = "https://feed.invalid/pending-removal";
+            ((StackPanel)removalForm.Content).Children.OfType<Button>().Single(button => Equals(button.Content, Ui.T("Remove subscription (keep profiles)"))).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var removalFlush = removalForm.FlushAsync();
+            Assert(!removalFlush.IsCompleted, "Leaving settings waits for an in-flight subscription removal.");
+            removing.SetResult(); Wait(window, removalFlush);
+            Assert(subscriptionRemoved && restoredSubscriptions == 0, "Pending edits cannot re-add a subscription while leaving its form.");
             var protectedData = SettingsStore.Protect("synthetic-profile-password-and-other-platform-secret");
             Assert(!protectedData.Contains("synthetic") && SettingsStore.Unprotect(protectedData) == "synthetic-profile-password-and-other-platform-secret", "DPAPI protects imported data.");
             Assert(SendMessage(new WindowInteropHelper(window).Handle, 0x8487, IntPtr.Zero, IntPtr.Zero).ToInt64() == 0x487,

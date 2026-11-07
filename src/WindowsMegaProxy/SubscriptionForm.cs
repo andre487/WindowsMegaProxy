@@ -60,8 +60,11 @@ public sealed class SubscriptionForm : UserControl
         {
             debounce.Stop();
             while (saving) await Task.Delay(20);
-            try { await save(null); removed = true; Removed?.Invoke(); }
+            saving = true;
+            try { await save(null); removed = true; }
             catch (Exception) { status.Text = Ui.T("Could not save subscription settings."); }
+            finally { saving = false; debounce.Stop(); }
+            if (removed) Removed?.Invoke();
         };
     }
 
@@ -76,6 +79,7 @@ public sealed class SubscriptionForm : UserControl
     private void Changed() { revision++; debounce.Stop(); debounce.Start(); }
     private async Task<bool> SaveAsync()
     {
+        if (removed) return true;
         if (saving) { debounce.Start(); return false; }
         saving = true;
         int expected = revision;

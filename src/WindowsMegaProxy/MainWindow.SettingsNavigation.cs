@@ -56,7 +56,10 @@ public partial class MainWindow
                 case "subscription":
                     title = "Configuration subscription"; selected = DynamicSettingsCard;
                     var subscription = CreateSubscriptionForm();
-                    subscription.Removed += async () => await NavigateSettingsAsync(null);
+                    subscription.Removed += async () =>
+                    {
+                        if (ReferenceEquals(SettingsDetailHost.Content, subscription)) await NavigateSettingsAsync(null);
+                    };
                     SettingsDetailHost.Content = subscription;
                     break;
                 case "failover":
