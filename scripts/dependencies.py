@@ -22,11 +22,17 @@ def asset(component, extension):
     return next(file for file in component["files"] if file["rid"] == "win-x64" and file["url"].endswith(extension))
 
 
-def install_core(destination, cache, *, http3=False):
+def core_package(*, http3=False):
     version, checksum = (H3_CORE_VERSION, H3_CORE_HASH) if http3 else (CORE_VERSION, CORE_HASH)
     name = f"sing-box-{version}-windows-amd64"
-    archive = download(f"https://github.com/SagerNet/sing-box/releases/download/v{version}/{name}.zip",
-                       Path(cache) / f"{name}.zip", checksum)
+    return {"version": version, "name": name, "sha256": checksum,
+            "url": f"https://github.com/SagerNet/sing-box/releases/download/v{version}/{name}.zip"}
+
+
+def install_core(destination, cache, *, http3=False):
+    package = core_package(http3=http3)
+    name = package["name"]
+    archive = download(package["url"], Path(cache) / f"{name}.zip", package["sha256"])
     expanded = Path(cache) / name
     extract(archive, expanded)
     destination = Path(destination)

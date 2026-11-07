@@ -13,7 +13,8 @@ Stable source: https://github.com/SagerNet/sing-box/tree/v1.14.4
 HTTP/3 source: https://github.com/SagerNet/sing-box/tree/v1.15.0-alpha.13
 Releases: https://github.com/SagerNet/sing-box/releases
 Build metadata and upstream dependencies: run sing-box.exe version -m.
-Cronet (libcronet.dll) is included unmodified from those official packages.
+The installer downloads the pinned official packages and verifies their SHA-256.
+Cronet (libcronet.dll) is installed unmodified from those packages.
 Cronet-Go source: https://github.com/SagerNet/cronet-go/tree/0d28acc44093
 Cronet-Go license: licenses/Cronet-Go-LICENSE.txt.
 Chromium license and third-party notices: https://www.chromium.org/chromium-os/licenses/

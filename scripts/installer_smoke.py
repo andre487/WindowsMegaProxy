@@ -1,6 +1,7 @@
 """Install/repair/uninstall only on an empty disposable GitHub-hosted runner."""
 import csv
 import ctypes as ct
+import json
 import os
 import subprocess as sp
 import time
@@ -8,10 +9,18 @@ import winreg
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from common import ROOT, cli, dotnet
+from common import ROOT, cli, digest, dotnet
 from install import known_folder
 from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state
+
+
+def check_downloaded_cores(version_directory):
+    manifest = json.loads((ROOT / "artifacts/release-preview/update-manifest.json").read_text(encoding="utf-8"))
+    for name in ("sing-box", "sing-box-h3"):
+        for entry in manifest["components"][name]["files"]:
+            path = version_directory / entry["path"]
+            assert path.is_file() and digest(path, "sha256") == entry["sha256"], "Downloaded core differs from the verified official package."
 
 
 def main():
@@ -42,6 +51,7 @@ def main():
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             current = winreg.QueryValueEx(key, "HelperPath")[0]
+        check_downloaded_cores(Path(current).parent)
         assert service_state("WindowsMegaProxy") == (4 if mode == "service" else None), "Only service mode may register a service."
         if mode == "service":
             assert service_path().strip('"') == current
@@ -105,6 +115,7 @@ def check_user_install(setup, logs, global_data):
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             helper = winreg.QueryValueEx(key, "HelperPath")[0]
+        check_downloaded_cores(Path(helper).parent)
         assert str(protected / "versions").casefold() in helper.casefold()
         assert (destination / "WindowsMegaProxy.Launcher.exe").is_file()
         assert not (destination / "WindowsMegaProxy.exe").exists(), "Only the unprivileged launcher belongs in the user-writable install directory."

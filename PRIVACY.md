@@ -2,7 +2,7 @@
 
 Last updated: November 7, 2026
 
-This policy describes the WindowsMegaProxy Windows application, its bundled
+This policy describes the WindowsMegaProxy Windows application, its installed
 network components and its release tooling. WindowsMegaProxy is an open-source
 proxy client maintained at
 [github.com/andre487/WindowsMegaProxy](https://github.com/andre487/WindowsMegaProxy).
@@ -47,7 +47,7 @@ to provide the features below:
 | Application updates | Automatic checks and downloads contact the GitHub Releases API and GitHub download infrastructure. Automatic checks are enabled by default and can be disabled during installation or in settings; manual checks remain available. |
 | Connection diagnostics | Entering the Diagnostics section starts a connection check. Checks can contact example.com, Cloudflare and, when needed, IP/country lookup services at ifconfig.me, api.ipify.org, icanhazip.com, ifconfig.co, ipapi.co and api.country.is. Supported HTTP/3 checks can also contact quic.browserleaks.com. Results can include the tested route's public IP address and country. |
 | Speed tests | Starting a speed test transfers generated test data to and from Cloudflare speed-test endpoints. Tests can exercise both system and proxy routes. The separate TraceProbe development utility also performs network and speed checks when run. |
-| Installation prerequisites | The installer may download required components from official Microsoft sources, including the .NET runtime and Windows OpenSSH components. |
+| Installation prerequisites | Installation and application updates download pinned sing-box packages from SagerNet's official GitHub releases, verifying their hashes. The installer may also download required components from official Microsoft sources, including the .NET runtime and Windows OpenSSH components. |
 
 These recipients can see the source IP address of the route used, request timing
 and ordinary protocol metadata. The address may be your direct connection's IP
