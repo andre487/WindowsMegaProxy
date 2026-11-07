@@ -15,11 +15,12 @@ using System.Windows.Interop;
 using System.Windows.Input;
 using WindowsMegaProxy;
 
-internal static class Program
+internal static partial class Program
 {
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--documentation-screenshots")) { CaptureDocumentation(); return; }
         InstallationChecks.Run();
         if (args.Length == 2 && args[0] == "--user-settings-check")
         {
