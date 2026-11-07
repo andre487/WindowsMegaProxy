@@ -22,14 +22,14 @@ REPORTS = {"VIRUSTOTAL.md", "VIRUSTOTAL.json"}
 
 
 def gh(*args):
-    result = sp.run(["gh", *args], capture_output=True, text=True)
+    result = sp.run(["gh", *args], capture_output=True, text=True, encoding="utf-8")
     if result.returncode:
         raise RuntimeError("GitHub command failed: " + " ".join(args[:2]))
     return result.stdout
 
 
 def release_state(repo, tag):
-    result = sp.run(["gh", "api", f"repos/{repo}/releases/tags/{tag}"], capture_output=True, text=True)
+    result = sp.run(["gh", "api", f"repos/{repo}/releases/tags/{tag}"], capture_output=True, text=True, encoding="utf-8")
     if result.returncode:
         if "(HTTP 404)" in result.stderr:
             return None
