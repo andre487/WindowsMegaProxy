@@ -7,7 +7,7 @@ import argparse
 from common import ROOT, cli, dotnet, app_name, artifact_root
 
 
-def main(dev=False):
+def main(dev=False, app_only=False):
     kernel = ct.WinDLL("kernel32", use_last_error=True)
     kernel.CreateMutexW.argtypes = [ct.c_void_p, wt.BOOL, wt.LPCWSTR]
     kernel.CreateMutexW.restype = wt.HANDLE
@@ -19,6 +19,8 @@ def main(dev=False):
         if ct.get_last_error() == 183:
             raise RuntimeError("MegaProxy is running. Use run.cmd to stop it gracefully and rebuild.")
         for project, output in (("WindowsMegaProxy", "app"), ("WindowsMegaProxy.Service", "service"), ("MegaProxy.TraceProbe", "trace-probe")):
+            if app_only and output != "app":
+                continue
             destination = (artifact_root(dev) / output).resolve()
             if not destination.is_relative_to((ROOT / "artifacts").resolve()):
                 raise RuntimeError("Publish destination escapes artifacts.")

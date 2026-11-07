@@ -21,6 +21,21 @@ internal static class Program
     private static void Main(string[] args)
     {
         InstallationChecks.Run();
+        if (args.Length == 2 && args[0] == "--installed-settings-check")
+        {
+            if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new Exception("Installed settings fixtures require a disposable CI runner.");
+            var store = new MachineSettingsStore();
+            if (args[1] == "seed")
+            {
+                var profile = ProxyProfile.Create("Installer preservation check");
+                profile.Proxy["password"] = "synthetic-secret";
+                store.Save(new Settings { Profiles = [profile], AutoConnect = false });
+            }
+            var installedSettings = store.Load();
+            if (installedSettings.Profiles.Count != 1 || installedSettings.Profiles[0].Name != "Installer preservation check" || installedSettings.Profiles[0].Proxy["password"]?.ToString() != "synthetic-secret")
+                throw new Exception("Settings were not preserved across operating mode changes.");
+            return;
+        }
         if (CoreProcessChecks.RunFixture(args)) return;
         if (RecoveryChecks.RunFixture(args)) return;
         if (args.Contains("--ui-recovery-check"))

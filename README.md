@@ -11,7 +11,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 - **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests.
 - **Security options:** certificate verification, SSH accept-new with confirmation of changed server keys, password or private-key SSH authentication, TCP TLS and SSH fingerprint presets, and knock-host checks for masked HTTPS proxies.
 - **Portable configuration:** import and export `MegaProxy.json`, preserving other clients' settings. Passwords and private keys are excluded from exports by default. See the [example configuration](examples/MegaProxy.json).
-- **Windows integration:** system tray, startup at sign-in, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
+- **Windows integration:** manual launch, elevated startup at sign-in, or a shared Windows service; system tray, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
 - **Shared service:** one protected configuration for the machine; administrator accounts can edit without repeated UAC prompts, other users have a read-only interface.
 - **Appearance:** English and Russian, automatic/light/dark themes and Windows display scaling.
 - **Logs:** local rotating logs, configurable size and export. Log entries are always in English.
@@ -30,9 +30,9 @@ install.cmd
 
 Installation requires administrator approval and downloads .NET and network cores from official sources. The interface runs without elevation. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
 
-The service keeps the shared connection running when the interface closes. Run `install.cmd` again after updating service code.
+Choose an operating mode in the native installer or application settings. Manual and sign-in modes require administrator privileges and stop interception when you exit the application. Service mode keeps the shared connection running when the interface closes. Changing mode restarts the application and preserves its configuration.
 
-For development, run `stop-prod.cmd`, then `run.cmd`. DEV has separate processes, icons, settings and a manually started service. `run.cmd` refuses to start while production is running, builds DEV and updates its service with administrator approval. Production builds use `build.cmd` and `install.cmd`; `build.cmd --dev` only builds DEV.
+For development, run `stop-prod.cmd`, then `run.cmd` from an administrator terminal (or approve UAC). DEV runs directly from `artifacts/dev/app`, with separate processes, icons and settings, and installs no service. Re-running `run.cmd` closes DEV gracefully, rebuilds only the interface and restarts it. It refuses to start while production is running. `uninstall-dev.cmd` removes an older installed DEV service and binaries while preserving settings. `build.cmd --dev` only builds DEV.
 
 SSH key verification requires the Windows OpenSSH Client optional feature.
 

@@ -40,6 +40,16 @@ english.InstallSSH=Install SSH support (Windows OpenSSH Client), if missing
 russian.InstallSSH=Установить поддержку SSH (клиент OpenSSH Windows), если она отсутствует
 english.Prerequisites=Preparing required Windows components…
 russian.Prerequisites=Подготовка необходимых компонентов Windows…
+english.OperatingMode=Operating mode
+russian.OperatingMode=Режим работы
+english.ModeDescription=Choose when MegaProxy runs. Manual and sign-in modes require administrator privileges and stop intercepting traffic when the application exits.
+russian.ModeDescription=Выберите способ запуска. Ручной запуск и запуск при входе требуют прав администратора; при выходе из приложения перехват трафика прекращается.
+english.ManualMode=Manual launch (no autostart or Windows service)
+russian.ManualMode=Ручной запуск (без автозапуска и службы Windows)
+english.LoginMode=At Windows sign-in (administrator)
+russian.LoginMode=При входе в Windows (администратор)
+english.ServiceMode=Windows service (continues after closing the interface)
+russian.ServiceMode=Служба Windows (работает после закрытия интерфейса)
 
 [Dirs]
 Name: "{app}"; Permissions: admins-full system-full users-readexec
@@ -54,12 +64,44 @@ Name: "{autodesktop}\MegaProxy"; Filename: "{code:VersionPath}\WindowsMegaProxy.
 
 [Registry]
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueName: "WindowsMegaProxy"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "SOFTWARE\WindowsMegaProxy"; Flags: uninsdeletekey
 
 [Run]
 Filename: "{code:VersionPath}\WindowsMegaProxy.exe"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]
 var TargetVersion: String;
+    ModePage: TInputOptionWizardPage;
+
+function SelectedMode: String;
+begin
+  Result := ExpandConstant('{param:MODE|}');
+  if Result = '' then begin
+    case ModePage.SelectedValueIndex of
+      0: Result := 'manual';
+      1: Result := 'login';
+      2: Result := 'service';
+    end;
+  end;
+  if (Result <> 'manual') and (Result <> 'login') and (Result <> 'service') then
+    RaiseException('Unknown operating mode. Expected manual, login or service.');
+end;
+
+procedure InitializeWizard;
+var Mode: String;
+begin
+  ModePage := CreateInputOptionPage(wpSelectTasks, CustomMessage('OperatingMode'),
+    CustomMessage('OperatingMode'), CustomMessage('ModeDescription'), True, False);
+  ModePage.Add(CustomMessage('ManualMode'));
+  ModePage.Add(CustomMessage('LoginMode'));
+  ModePage.Add(CustomMessage('ServiceMode'));
+  ModePage.SelectedValueIndex := 0;
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\WindowsMegaProxy', 'Mode', Mode) then begin
+    if Mode = 'login' then ModePage.SelectedValueIndex := 1;
+    if Mode = 'service' then ModePage.SelectedValueIndex := 2;
+  end else if RegKeyExists(HKLM64, 'SYSTEM\CurrentControlSet\Services\WindowsMegaProxy') then
+    ModePage.SelectedValueIndex := 2;
+end;
 
 function VersionPath(Param: String): String;
 begin
@@ -116,6 +158,7 @@ var Code: Integer; Download: TDownloadWizardPage;
 begin
   Result := '';
   try
+    SelectedMode;
     if not RuntimeInstalled then begin
       Download := CreateDownloadPage(CustomMessage('Prerequisites'), '.NET Desktop Runtime', nil);
       try
@@ -151,7 +194,7 @@ procedure CurStepChanged(Step: TSetupStep);
 var Code: Integer;
 begin
   if Step = ssPostInstall then
-    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--install-service', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
+    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--configure-mode ' + SelectedMode, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
       RaiseException('Could not configure the MegaProxy service. Close MegaProxy in all Windows sessions and retry. See the setup log.');
 end;
 
@@ -159,7 +202,9 @@ function InitializeUninstall: Boolean;
 var Manager, Service: THandle; Status: TServiceStatus; Attempt, Code: Integer; ImagePath, Executable: String;
 begin
   Result := False;
-  if RegQueryStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Services\WindowsMegaProxy', 'ImagePath', ImagePath) then begin
+  if not RegQueryStringValue(HKLM64, 'SOFTWARE\WindowsMegaProxy', 'HelperPath', ImagePath) then
+    RegQueryStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Services\WindowsMegaProxy', 'ImagePath', ImagePath);
+  if ImagePath <> '' then begin
     Executable := RemoveQuotes(ImagePath);
     if not ExecAndLogOutput(Executable, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
       MsgBox('Close MegaProxy in all Windows sessions and retry. The .NET Desktop Runtime must remain installed until MegaProxy is removed.', mbError, MB_OK);

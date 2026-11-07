@@ -15,9 +15,27 @@ from install import secure_directory
 from service_control import require_production_stopped, stop_service
 import run as dev_runner
 import stop_prod
+import uninstall_dev
 
 
 class ToolsChecks(unittest.TestCase):
+    def test_dev_removal_rejects_redirected_program_files_target(self):
+        with patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
+             patch("uninstall_dev.known_folder", return_value=Path("C:/elsewhere/../Program Files")), \
+             patch("uninstall_dev.stop_workspace_app") as close, patch("uninstall_dev.stop_service") as stop:
+            with self.assertRaisesRegex(RuntimeError, "Unsafe DEV"):
+                uninstall_dev.main()
+        close.assert_not_called()
+        stop.assert_not_called()
+
+    def test_dev_run_builds_only_ui_and_never_installs_service(self):
+        with patch("run.require_production_stopped"), patch("run.stop_workspace_app"), patch("run.stop_service") as stop, \
+             patch("run.build.main") as build, patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
+            dev_runner.restart()
+        stop.assert_called_once_with("WindowsMegaProxy.Dev")
+        build.assert_called_once_with(dev=True, app_only=True)
+        install.assert_not_called()
+        self.assertIn("artifacts", launch.call_args.args[0][0])
     def test_stop_service_waits_for_an_existing_stop(self):
         with patch("service_control.service_state", side_effect=[3, 1]), patch("service_control.sp.run") as control, \
              patch("service_control.time.sleep"):

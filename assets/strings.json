@@ -369,5 +369,10 @@
     "The connection changed. Refresh and try again.": "Подключение изменилось. Дождитесь обновления состояния и повторите попытку.",
     "The connection test changed. Refresh and try again.": "Состояние проверки изменилось. Дождитесь обновления состояния и повторите попытку.",
     "The MegaProxy service is unavailable. Run install.cmd to install or repair it.": "Служба MegaProxy недоступна. Запустите install.cmd для её установки или восстановления.",
-    "Global settings changed in another window. Review the latest settings and try again.": "Глобальные настройки изменились в другом окне. Проверьте актуальные настройки и повторите попытку."
+    "Global settings changed in another window. Review the latest settings and try again.": "Глобальные настройки изменились в другом окне. Проверьте актуальные настройки и повторите попытку.",
+    "Operating mode": "Режим работы",
+    "Manual launch (administrator)": "Ручной запуск (администратор)",
+    "At Windows sign-in (administrator)": "При входе в Windows (администратор)",
+    "Windows service": "Служба Windows",
+    "Changing the operating mode restarts MegaProxy and may require administrator approval.": "Изменение режима перезапускает MegaProxy и может потребовать подтверждения прав администратора."
 }

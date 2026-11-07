@@ -638,7 +638,23 @@
                             Margin="0,0,0,16" />
                         <CheckBox
                             x:Name="AutostartBox"
+                            Visibility="Collapsed"
                             Content="{DynamicResource &quot;Start in the system tray when signing in to Windows&quot;}"
+                            Margin="0,0,0,16" />
+                        <TextBlock Text="{DynamicResource &quot;Operating mode&quot;}" Margin="0,0,0,4" />
+                        <ComboBox
+                            x:Name="OperatingModeBox"
+                            SelectedValuePath="Tag"
+                            Margin="0,0,0,8"
+                            AutomationProperties.Name="{DynamicResource &quot;Operating mode&quot;}">
+                            <ComboBoxItem Content="{DynamicResource &quot;Manual launch (administrator)&quot;}" Tag="manual" />
+                            <ComboBoxItem Content="{DynamicResource &quot;At Windows sign-in (administrator)&quot;}" Tag="login" />
+                            <ComboBoxItem Content="{DynamicResource &quot;Windows service&quot;}" Tag="service" />
+                        </ComboBox>
+                        <TextBlock
+                            Text="{DynamicResource &quot;Changing the operating mode restarts MegaProxy and may require administrator approval.&quot;}"
+                            TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Margin="0,0,0,16" />
                         <CheckBox
                             x:Name="AutoConnectBox"

@@ -15,11 +15,28 @@ Windows OpenSSH Client capability and is selected by default; users can opt out.
 Python, uv and the .NET SDK are build
 tools only. Prerequisites are prepared before changing an existing service.
 
+The installer defaults to manual launch on a new installation and offers three
+operating modes: manual, elevated sign-in startup, or a Windows service. It
+preserves the chosen mode on upgrade. Silent installations can select
+`/MODE=manual`, `/MODE=login` or `/MODE=service`. Manual and login modes register
+no Windows service; login mode uses a highest-privilege interactive logon task
+for the administrator who selected it, without storing a password. The settings
+page can change the mode with administrator approval and restarts the interface.
+Exiting a standalone host stops its core; service-mode clients can close while
+the shared core continues running.
+
 Each installation uses a separate version directory. Existing clients close
 gracefully; the service switches to the new directory. If startup fails, its
 previous executable is restored. Global configuration, personal configuration
 and the shared Wintun driver survive uninstall. DEV is untouched.
 Old version directories are retained for rollback.
+
+Global settings use machine-scope DPAPI and a directory restricted to SYSTEM
+and administrators so either elevated desktop hosts or the service can use
+them. Legacy service-identity DPAPI settings are migrated through authenticated
+IPC before stopping/removing the old service. DEV uses independent user-scope
+DPAPI settings. `uninstall-dev.cmd` migrates settings from a running legacy DEV
+service and removes its registered service and installed binaries only.
 
 ## Release
 

@@ -6,9 +6,11 @@ from ctypes import wintypes as wt
 from pathlib import Path
 import subprocess as sp
 import sys
+import shutil
 
 from common import ROOT, cli, artifact_root, app_name
-from service_control import require_production_stopped
+from service_control import require_production_stopped, stop_service
+from install import elevate, elevated_cli
 import build
 
 user32 = ct.WinDLL("user32", use_last_error=True)
@@ -72,19 +74,29 @@ def stop_workspace_app(dev=True, workspace_only=True):
 def restart():
     require_production_stopped()
     stop_workspace_app(workspace_only=False)
-    build.main(dev=True)
-    sp.run([sys.executable, str(Path(__file__).parent / "install.py"), "--dev"], check=True)
+    stop_service(app_name(True))
+    build.main(dev=True, app_only=True)
     require_production_stopped()
     env = os.environ.copy()
     env["DOTNET_ROOT"] = str(ROOT / ".tools/dotnet")
-    env["WINDOWSMEGAPROXY_CORE"] = str(ROOT / ".tools/sing-box/sing-box.exe")
-    env["WINDOWSMEGAPROXY_H3_CORE"] = str(ROOT / ".tools/sing-box-h3/sing-box.exe")
+    for directory, variable in (("sing-box", "WINDOWSMEGAPROXY_CORE"), ("sing-box-h3", "WINDOWSMEGAPROXY_H3_CORE")):
+        destination = ROOT / ".tools/dev-cores" / directory
+        destination.mkdir(parents=True, exist_ok=True)
+        for source in (ROOT / ".tools" / directory).iterdir():
+            if source.is_file():
+                target = destination / ("sing-box-dev.exe" if source.name == "sing-box.exe" else source.name)
+                if not target.exists() or (target.stat().st_size, target.stat().st_mtime_ns) != (source.stat().st_size, source.stat().st_mtime_ns):
+                    shutil.copy2(source, target)
+        env[variable] = str(destination / "sing-box-dev.exe")
     sp.Popen([str(artifact_root(True) / "app/WindowsMegaProxy.Dev.exe")], cwd=ROOT, env=env)
 
 
 def main():
+    if not ct.windll.shell32.IsUserAnAdmin():
+        elevate(Path(__file__))
+        return
     restart()
 
 
 if __name__ == "__main__":
-    cli(main)
+    elevated_cli(main)

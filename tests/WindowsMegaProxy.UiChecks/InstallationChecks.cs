@@ -6,6 +6,22 @@ internal static class InstallationChecks
 {
     public static void Run()
     {
+        foreach (string mode in new[] { "manual", "login", "service" })
+            if (StartupConfiguration.Validate(mode) != mode) throw new Exception("Operating mode validation changed its value.");
+        foreach (string invalid in new[] { "", "auto", "SERVICE", "service --bad" })
+        {
+            try { StartupConfiguration.Validate(invalid); }
+            catch (ArgumentException) { continue; }
+            throw new Exception("Invalid operating mode was accepted.");
+        }
+        string leaseName = Path.Combine(Path.GetTempPath(), "MegaProxy.Host.Check." + Guid.NewGuid().ToString("N"));
+        using (StartupConfiguration.ClaimRuntime(leaseName))
+        {
+            try { using var duplicate = StartupConfiguration.ClaimRuntime(leaseName); throw new Exception("Two runtime hosts acquired the same lease."); }
+            catch (IOException) { }
+        }
+        using (StartupConfiguration.ClaimRuntime(leaseName)) { }
+        File.Delete(leaseName);
         const string programFiles = @"C:\Program Files";
         string root = Path.Combine(programFiles, AppIdentity.Name);
         string valid = Path.Combine(root, "versions", "0.0.1-test");

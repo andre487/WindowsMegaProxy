@@ -11,17 +11,22 @@ internal sealed class Program : ServiceBase
 {
     private readonly CancellationTokenSource stopping = new();
     private Task run = Task.CompletedTask;
+    private IDisposable? runtime;
 
     private Program() { ServiceName = ServiceProtocol.Name; CanShutdown = true; }
     private static int Main(string[] args)
     {
         Ui.SetLanguage("en");
-        if (args.Length != 0) return Installation.Run(args[0]);
+        if (args.Length != 0) return Installation.Run(args);
         Run(new Program());
         return 0;
     }
 
-    protected override void OnStart(string[] args) => run = Task.Run(RunAsync);
+    protected override void OnStart(string[] args)
+    {
+        runtime = StartupConfiguration.ClaimRuntime();
+        run = Task.Run(RunAsync);
+    }
     protected override void OnStop()
     {
         RequestAdditionalTime(20000);
@@ -32,6 +37,7 @@ internal sealed class Program : ServiceBase
         stopping.Cancel();
         try { run.GetAwaiter().GetResult(); }
         catch (OperationCanceledException) { }
+        finally { runtime?.Dispose(); runtime = null; }
     }
     protected override void OnShutdown() => StopCore();
 
@@ -68,9 +74,7 @@ internal sealed class Program : ServiceBase
 
     private static Task SetAutostartAsync(bool enabled)
     {
-        using var key = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-        if (enabled && !AppIdentity.IsDev) key.SetValue(ServiceProtocol.Name, $"\"{Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)}\" --tray", RegistryValueKind.String);
-        else key.DeleteValue(ServiceProtocol.Name, false);
+        // Startup mode is an explicit elevated operation; imported legacy flags cannot install autorun.
         return Task.CompletedTask;
     }
 }

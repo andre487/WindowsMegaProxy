@@ -90,19 +90,19 @@ public partial class MainWindow : Window
 
     public MainWindow(bool startInTray, Action<Settings>? persistSettings = null, DiagnosticLog? diagnosticLog = null,
         Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null,
-        ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null)
+        ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null, bool standalone = false)
     {
-        service = serviceClient ?? (persistSettings is null ? new ServiceClient() : null);
-        this.loadLegacy = loadLegacy ?? (() => Task.Run(SettingsStore.Load));
+        service = serviceClient ?? (persistSettings is null && !standalone ? new ServiceClient() : null);
+        this.loadLegacy = loadLegacy ?? (() => Task.Run<Settings>(standalone ? StartupConfiguration.LoadLocal : SettingsStore.Load));
         canEdit = service is null;
         connection = connectionController ?? new ConnectionController(CreateEngine);
-        settingsWriter = new SettingsWriter(persistSettings ?? (value =>
+        settingsWriter = new SettingsWriter(persistSettings ?? (standalone ? StartupConfiguration.SaveLocal : value =>
         {
             var reply = service!.CallAsync(new("save", Settings: value, Revision: Interlocked.Read(ref serviceRevision))).GetAwaiter().GetResult();
             Interlocked.Exchange(ref serviceRevision, reply.Revision);
         }));
         this.setAutostart = setAutostart ?? (_ => Task.CompletedTask);
-        this.getAutostart = getAutostart ?? (async () => (await service!.CallAsync(new("status"))).AutoStart);
+        this.getAutostart = getAutostart ?? (service is null ? () => Task.FromResult(StartupConfiguration.Mode == "login") : async () => (await service.CallAsync(new("status"))).AutoStart);
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
         // Preserve existing log history until the saved limit has been loaded.
         log = diagnosticLog ?? new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
@@ -160,6 +160,8 @@ public partial class MainWindow : Window
         BypassLanBox.Click += SettingsChanged;
         AutoConnectBox.Click += SettingsChanged;
         AutostartBox.Click += AutostartChanged;
+        OperatingModeBox.SelectedValue = StartupConfiguration.Mode;
+        OperatingModeBox.SelectionChanged += OperatingModeChanged;
         LogSizeBox.SelectionChanged += (_, _) => Dispatcher.BeginInvoke(() => SaveLogSize());
         LanguageBox.SelectionChanged += PreferencesChanged;
         ThemeBox.SelectionChanged += PreferencesChanged;
@@ -233,7 +235,7 @@ public partial class MainWindow : Window
         try
         {
             Settings loaded;
-            if (service is null) loaded = await TrackFileAsync(Task.Run(SettingsStore.Load));
+            if (service is null) loaded = await TrackFileAsync(this.loadLegacy());
             else
             {
                 var reply = await service.InitializeAsync(this.loadLegacy);
@@ -535,7 +537,7 @@ public partial class MainWindow : Window
     {
         if (service is not null)
             return new RemoteEngine(service, async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true));
-        var result = new Engine
+        var result = new Engine(AppIdentity.IsDev ? null : Path.Combine(MachineSettingsStore.DefaultDirectory, "runtime"), allowEnvironmentOverrides: AppIdentity.IsDev)
         {
             ConfirmSshHostKeyChange = async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true),
             SaveSshHostKey = SaveSshHostKey
@@ -726,6 +728,7 @@ public partial class MainWindow : Window
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
         foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
+        OperatingModeBox.IsEnabled = editable && !busy && !AppIdentity.IsDev && File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable));
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
         ExportLogButton.IsEnabled = service is null || canEdit;
