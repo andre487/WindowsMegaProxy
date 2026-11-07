@@ -54,4 +54,6 @@ Early preview. HTTP/3 is experimental. SSH Jump and passphrase-protected SSH key
 
 ## License
 
+See the [Privacy Policy](PRIVACY.md) for local storage, network requests and third-party services.
+
 Application code is licensed under [MIT](LICENSE). Third-party components and [artwork](assets/branding/README.md) retain their respective licenses.
