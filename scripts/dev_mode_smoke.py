@@ -2,14 +2,14 @@
 import ctypes as ct
 import os
 import subprocess as sp
-import winreg
 import time
+import winreg
 
 from common import ROOT, cli, dotnet
 from install import known_folder
+from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state, system_executable
 from uninstall_dev import NAME, RUN_KEY, startup_records
-from run import stop_workspace_app, workspace_windows
 
 
 def main():

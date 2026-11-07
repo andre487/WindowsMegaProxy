@@ -1,6 +1,6 @@
+import argparse
 import re
 import shutil
-import argparse
 
 from PIL import Image
 

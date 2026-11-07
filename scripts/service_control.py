@@ -1,10 +1,10 @@
 """Query service state without parsing localized sc.exe output."""
-import ctypes as ct
-from ctypes import wintypes as wt
-from pathlib import Path
 import csv
+import ctypes as ct
 import subprocess as sp
 import time
+from ctypes import wintypes as wt
+from pathlib import Path
 
 
 def system_executable(name):

@@ -1,10 +1,10 @@
+import argparse
 import ctypes as ct
-from ctypes import wintypes as wt
 import shutil
 import tempfile
-import argparse
+from ctypes import wintypes as wt
 
-from common import ROOT, cli, dotnet, app_name, artifact_root
+from common import ROOT, app_name, artifact_root, cli, dotnet
 
 
 def main(dev=False, app_only=False):

@@ -1,13 +1,13 @@
 """Remove DEV services, startup registrations and installed files; preserve data."""
+import csv
 import ctypes as ct
-from pathlib import Path
+import json
+import re
 import shutil
 import subprocess as sp
 import time
-import csv
-import json
-import re
 import winreg
+from pathlib import Path
 
 from common import ROOT, dotnet
 from install import elevate, elevated_cli, known_folder, secure_directory

@@ -1,17 +1,17 @@
 """Developer installation using the same protected mode helper as native setup."""
 import argparse
 import ctypes as ct
-from contextlib import redirect_stdout, redirect_stderr
-from pathlib import Path
+import re
 import subprocess as sp
 import sys
 import tempfile
 import time
-import re
+from contextlib import redirect_stderr, redirect_stdout
 from ctypes import wintypes as wt
+from pathlib import Path
 
-from common import ROOT, cli, app_name, artifact_root
-from dependencies import install_core, runtime_installer, release
+from common import ROOT, app_name, artifact_root, cli
+from dependencies import install_core, release, runtime_installer
 from package import merge
 
 
@@ -132,9 +132,9 @@ def install_main():
         elevate()
         return
     if options.dev:
-        from service_control import require_production_stopped
-        from run import stop_workspace_app
         import build
+        from run import stop_workspace_app
+        from service_control import require_production_stopped
         require_production_stopped()
         stop_workspace_app(dev=True, workspace_only=False)
         build.main(dev=True)

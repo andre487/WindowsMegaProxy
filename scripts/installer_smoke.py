@@ -1,17 +1,17 @@
 """Install/repair/uninstall only on an empty disposable GitHub-hosted runner."""
-import ctypes as ct
 import csv
+import ctypes as ct
 import os
-from pathlib import Path
 import subprocess as sp
 import time
 import winreg
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from common import ROOT, cli, dotnet
 from install import known_folder
+from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state
-from run import workspace_windows, stop_workspace_app
 
 
 def main():

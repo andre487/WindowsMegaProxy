@@ -1,6 +1,6 @@
 import os
-from pathlib import Path
 import subprocess as sp
+from pathlib import Path
 
 from common import ROOT
 

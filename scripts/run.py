@@ -1,19 +1,19 @@
 """Rebuild and restart DEV while preserving its selected operating mode."""
 
-import os
 import ctypes as ct
-from ctypes import wintypes as wt
-from pathlib import Path
+import os
+import shutil
 import subprocess as sp
 import sys
-import shutil
-import winreg
 import time
+import winreg
+from ctypes import wintypes as wt
+from pathlib import Path
 
-from common import ROOT, cli, artifact_root, app_name
-from service_control import require_production_stopped, stop_service, service_state
-from install import elevate, elevated_cli
 import build
+from common import ROOT, app_name, artifact_root, cli
+from install import elevate, elevated_cli
+from service_control import require_production_stopped, service_state, stop_service
 
 user32 = ct.WinDLL("user32", use_last_error=True)
 kernel32 = ct.WinDLL("kernel32", use_last_error=True)

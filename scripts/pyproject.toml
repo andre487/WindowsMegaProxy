@@ -9,3 +9,7 @@ ssh-test = ["paramiko==5.1.0"]
 
 [tool.uv]
 package = false
+
+[tool.isort]
+profile = "black"
+src_paths = ["."]

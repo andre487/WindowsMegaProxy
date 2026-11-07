@@ -55,8 +55,22 @@ Preparation does not merge, tag or publish automatically.
 2. Merge after CI succeeds. Tag that main commit `vX.Y.Z` and push the tag.
 3. The Release action builds and publishes the installer, application archive,
    separate stable/H3 core archives, application source, signed update manifest
-   and SHA256SUMS. A manual dispatch with an existing tag retries an unpublished
-   release. Published assets are never replaced.
+   and SHA256SUMS, plus VirusTotal reports for the installer and application ZIP.
+   A manual dispatch with an existing tag resumes the release. Published assets
+   are never replaced; repeated publication verifies the original files and
+   refreshes the VirusTotal section without duplicating it.
+
+Configure `VIRUSTOTAL_API_KEY` as described in [local development secrets](LOCAL-SECRETS.md).
+Incomplete scans and malicious/suspicious verdicts block publication. Markdown
+and JSON reports are preserved as Actions artifacts even if scanning fails.
+Original packages are checkpointed for 14 days so rerunning the same workflow
+can finish a partial scan without rebuilding files or changing their hashes.
+Complete draft/published releases can also restore their original packages;
+an incomplete draft may replace its unpublished files. Reports for identical
+SHA-256 hashes are reused if clean; detected files are rescanned on retry.
+When recovering a previously published release that
+has no report assets, reports stay in Actions and their links are added to the
+release notes, since immutable assets cannot be added after publication.
 
 Configure the repository secret `UPDATE_SIGNING_KEY` before releasing: base64
 of a 32-byte Ed25519 private key. Generate it with a trusted tool, store it in a

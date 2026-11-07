@@ -3,19 +3,26 @@ import argparse
 import base64
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess as sp
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
+from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import build
 from common import ROOT, cli, digest, download, extract
-from dependencies import CORE_VERSION, H3_CORE_VERSION, asset, install_core, release, runtime_installer
+from dependencies import (
+    CORE_VERSION,
+    H3_CORE_VERSION,
+    asset,
+    install_core,
+    release,
+    runtime_installer,
+)
 
 INNO_VERSION = "6.7.4"
 INNO_HASH = "a549929319f9120716677c685535ca4671e4b937b5fdc87e2585f32d8eb30e8c"

@@ -1,8 +1,8 @@
 """Download prerequisites from official sources; never install the development SDK."""
 import argparse
-from pathlib import Path
 import subprocess as sp
 import tempfile
+from pathlib import Path
 
 from common import cli
 from dependencies import install_core, runtime_installer

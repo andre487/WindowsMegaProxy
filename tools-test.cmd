@@ -1,5 +1,3 @@
 @echo off
-call "%~dp0scripts\tools.cmd" "%~dp0scripts\test_tools.py"
-if errorlevel 1 exit /b %errorlevel%
-call "%~dp0scripts\tools.cmd" "%~dp0scripts\test_package.py"
+call "%~dp0scripts\tools.cmd" -m unittest discover -s "%~dp0scripts" -p "test_*.py"
 exit /b %errorlevel%

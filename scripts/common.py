@@ -2,12 +2,12 @@
 
 import hashlib
 import os
-from pathlib import Path
 import shutil
 import subprocess as sp
 import sys
 import urllib.request
 import zipfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SDK_VERSION = "10.0.403"

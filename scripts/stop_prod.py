@@ -3,7 +3,7 @@ import ctypes as ct
 
 from install import elevate, elevated_cli
 from run import stop_workspace_app
-from service_control import stop_service, require_production_stopped
+from service_control import require_production_stopped, stop_service
 
 
 def main():

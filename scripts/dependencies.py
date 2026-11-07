@@ -1,8 +1,8 @@
 """Official checksum-verified downloads shared by development and installation."""
 import json
-from pathlib import Path
 import shutil
 import urllib.request
+from pathlib import Path
 
 from common import SDK_VERSION, download, extract
 

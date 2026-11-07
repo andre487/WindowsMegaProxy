@@ -22,7 +22,7 @@ concurrency:
 jobs:
   package:
     runs-on: windows-2025
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       UV_PYTHON: '3.13'
@@ -33,6 +33,13 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref_name }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out current release automation for recovery of older tags
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .tools/release-automation
           persist-credentials: false
 
       - name: Validate release tag and committed notes
@@ -68,11 +75,20 @@ jobs:
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
+      - name: Restore original packages on a release retry
+        id: restore
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/publish_release.py restore
+
       - name: Download build dependencies
+        if: steps.restore.outputs.reused != 'true'
         shell: cmd
         run: setup.cmd
 
       - name: Build signed update packages and native installer
+        if: steps.restore.outputs.reused != 'true'
         shell: cmd
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
@@ -81,42 +97,71 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-packages
+          path: |
+            artifacts/release/*
+            !artifacts/release/VIRUSTOTAL.*
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+      - name: Scan the installer and application archive with VirusTotal
+        timeout-minutes: 35
+        shell: cmd
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/virus_total.py
+
+      - name: Preserve VirusTotal reports, including incomplete scans
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: virustotal-${{ env.RELEASE_TAG }}
+          path: artifacts/release/VIRUSTOTAL.*
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Preserve packages and completed reports for publication
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-ready
           path: artifacts/release/*
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
 
   publish:
     needs: package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      UV_PYTHON: '3.13'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ inputs.tag || github.ref_name }}
           persist-credentials: false
 
+      - name: Check out current release automation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .tools/release-automation
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: release-packages
+          name: release-ready
           path: artifacts/release
 
-      - name: Publish immutable release assets
+      - name: Publish or resume the release without replacing published assets
         shell: bash
         run: |
           set -euo pipefail
-          cd artifacts/release
-          sha256sum --check SHA256SUMS
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft >release-state.json 2>/dev/null; then
-            if ! jq -e '.isDraft == true' release-state.json >/dev/null; then
-              echo 'Release already exists; refusing to replace published update assets.' >&2
-              exit 1
-            fi
-            gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes
-          fi
-          rm -f release-state.json
-          gh release create "$RELEASE_TAG" ./* --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "$RELEASE_TAG" --notes-file "../../release-notes/$RELEASE_TAG.md"
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/publish_release.py publish

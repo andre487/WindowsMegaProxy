@@ -1,24 +1,24 @@
-import hashlib
 import ctypes as ct
-from pathlib import Path
+import hashlib
+import io
 import tempfile
 import unittest
-from unittest.mock import patch
 import zipfile
-import io
 from contextlib import redirect_stdout
+from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
-from artwork import preferred_color
-from common import ROOT, download, extract, app_name, artifact_root
-from dependencies import asset
-from install import secure_directory
-from service_control import require_production_stopped, stop_service
+import install as installer
 import run as dev_runner
 import stop_prod
 import uninstall_dev
-import install as installer
+from artwork import preferred_color
+from common import ROOT, app_name, artifact_root, download, extract
+from dependencies import asset
+from install import secure_directory
+from service_control import require_production_stopped, stop_service
 
 
 class ToolsChecks(unittest.TestCase):
