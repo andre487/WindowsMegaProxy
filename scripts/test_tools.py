@@ -23,7 +23,7 @@ class ToolsChecks(unittest.TestCase):
     def test_console_installer_uses_mode_helper_in_version_directory(self):
         for mode in ("manual", "login", "service"):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
+                root = Path(temporary).resolve()
                 for directory, executable in (("app", "WindowsMegaProxy.exe"), ("service", "WindowsMegaProxy.Service.exe")):
                     (root / directory).mkdir()
                     (root / directory / executable).write_bytes(b"fixture")
