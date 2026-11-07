@@ -28,6 +28,7 @@ internal static class Program
             if (args[1] == "seed")
             {
                 var profile = ProxyProfile.Create("Installer preservation check");
+                profile.Proxy["host"] = "proxy.invalid";
                 profile.Proxy["password"] = "synthetic-secret";
                 store.Save(new Settings { Profiles = [profile], AutoConnect = false });
             }
