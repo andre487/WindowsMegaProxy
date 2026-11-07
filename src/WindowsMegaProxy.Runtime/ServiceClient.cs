@@ -23,7 +23,7 @@ public sealed class ServiceClient(string pipeName = ServiceProtocol.PipeName, st
     {
         request = request with { InstanceId = request.InstanceId ?? InstanceId };
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(120));
+        deadline.CancelAfter(TimeSpan.FromSeconds(request.Operation == "refreshSubscription" ? 400 : 120));
         using var pipe = await ConnectAsync(deadline.Token).ConfigureAwait(false);
         await ServiceProtocol.WriteAsync(pipe, request, deadline.Token).ConfigureAwait(false);
         var reply = await ServiceProtocol.ReadAsync<ServiceReply>(pipe, deadline.Token).ConfigureAwait(false);

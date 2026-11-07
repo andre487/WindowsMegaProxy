@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Automation;
 using System.Windows.Media;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Win32;
 
 namespace WindowsMegaProxy;
@@ -12,6 +14,8 @@ public sealed class RuleWindow : Window
     private readonly ComboBox source = new() { ItemsSource = new[] { Ui.T("All applications"), Ui.T("EXE file"), Ui.T("Folder (including subfolders)") }, SelectedIndex = 0 };
     private readonly TextBox path = new() { IsEnabled = false };
     private readonly TextBox destination = new();
+    private readonly ComboBox destinationType = new() { ItemsSource = new[] { Ui.T("Domain, IP or subnet"), "Podkop" }, SelectedIndex = 0 };
+    private readonly Dictionary<string, CheckBox> podkop = [];
     private readonly TextBox name = new() { MaxLength = 80 };
     private readonly CheckBox enabled = new() { Content = Ui.T("Enabled"), IsChecked = true, Margin = new Thickness(0, 8, 0, 8) };
     private readonly ComboBox action = new() { ItemsSource = new[] { Ui.T("Active profile"), Ui.T("System mode"), Ui.T("Block") }, SelectedIndex = 0 };
@@ -50,7 +54,21 @@ public sealed class RuleWindow : Window
         AutomationProperties.SetName(path, Ui.T("Application path"));
         panel.Children.Add(path);
         panel.Children.Add(browse);
+        AddField(panel, Ui.T("Destination"), destinationType);
         AddField(panel, Ui.T("Destination: domain, *.domain, IP or CIDR; empty means any"), destination);
+        var lists = new StackPanel();
+        foreach (var list in PodkopCatalog.Lists)
+        {
+            var box = new CheckBox { Content = list.Name, Margin = new Thickness(0, 3, 0, 3) };
+            podkop.Add(list.Id, box); lists.Children.Add(box);
+        }
+        var listScroll = new ScrollViewer { Content = lists, Height = 180, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Visibility = Visibility.Collapsed };
+        panel.Children.Add(listScroll);
+        destinationType.SelectionChanged += (_, _) =>
+        {
+            destination.IsEnabled = destinationType.SelectedIndex == 0;
+            listScroll.Visibility = destinationType.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+        };
         AddField(panel, Ui.T("Action"), action);
         if (existingRule is not null)
         {
@@ -59,6 +77,11 @@ public sealed class RuleWindow : Window
             source.SelectedIndex = existingRule.Source switch { "exe" => 1, "folder" => 2, _ => 0 };
             path.Text = existingRule.Path;
             destination.Text = existingRule.Destination;
+            if (existingRule.Destination.StartsWith("podkop:", StringComparison.Ordinal))
+            {
+                destinationType.SelectedIndex = 1; destination.Clear();
+                foreach (string id in PodkopCatalog.Parse(existingRule.Destination)) podkop[id].IsChecked = true;
+            }
             action.SelectedIndex = existingRule.Action switch { "system" or "direct" => 1, "block" => 2, _ => 0 };
         }
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 24, 0, 0) };
@@ -66,7 +89,7 @@ public sealed class RuleWindow : Window
         save.Click += (_, _) =>
         {
             var rule = new RoutingRule { Name = name.Text.Trim(), Enabled = enabled.IsChecked == true, Source = new[] { "all", "exe", "folder" }[source.SelectedIndex], Path = path.Text.Trim().Trim('"'),
-                Destination = destination.Text.Trim(), Action = new[] { "proxy", "system", "block" }[action.SelectedIndex] };
+                Destination = destinationType.SelectedIndex == 1 ? "podkop:" + string.Join(',', podkop.Where(item => item.Value.IsChecked == true).Select(item => item.Key)) : destination.Text.Trim(), Action = new[] { "proxy", "system", "block" }[action.SelectedIndex] };
             try { Configuration.BuildRule(rule); Rule = rule; DialogResult = true; }
             catch (ArgumentException error) { MessageBox.Show(this, error.Message, Ui.T("Rule")); }
         };

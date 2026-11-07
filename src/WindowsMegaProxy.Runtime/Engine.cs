@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace WindowsMegaProxy;
 
-public sealed class Engine : IEngine
+public sealed partial class Engine : IEngine
 {
     private Process? process;
     private HttpClient client = new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
@@ -36,6 +36,8 @@ public sealed class Engine : IEngine
     private int probePort;
     private string probeSecret = "";
     private Task drain = Task.CompletedTask;
+    private CancellationTokenSource? listStopping;
+    private Task listUpdates = Task.CompletedTask;
     public string SelectedOutbound
     {
         get
@@ -53,7 +55,7 @@ public sealed class Engine : IEngine
         this.http3ProbeUri = http3ProbeUri ?? new Uri("https://example.com/");
     }
 
-    public async Task StartAsync(Settings settings, bool testOnly = false, CancellationToken cancellationToken = default)
+    private async Task StartSelectedAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
     {
         if (Running) return;
         if (AppIdentity.IsDev && !testOnly)
@@ -110,6 +112,11 @@ public sealed class Engine : IEngine
             savedSsh.Proxy["trustedHostKey"] = appliedSsh.Proxy["trustedHostKey"]?.DeepClone();
         }
         AppliedSignature = Configuration.Signature(AppliedSettings);
+        if (!testOnly && PodkopCatalog.Used(runtime).Length > 0)
+        {
+            listStopping = new CancellationTokenSource();
+            listUpdates = UpdatePodkopAsync(runtime, listStopping.Token);
+        }
     }
 
     private string CoreExecutable(bool http3) => (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(http3 ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
@@ -126,6 +133,9 @@ public sealed class Engine : IEngine
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         var secret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var config = Configuration.Build(settings, port, secret);
+        var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
+        foreach (var ruleSet in config["route"]!["rule_set"]!.AsArray())
+            ruleSet!["path"] = await cache.GetAsync(ruleSet["tag"]!.ToString()[7..], cancellationToken).ConfigureAwait(false);
         AppliedSettings = PortableConfiguration.Copy(settings);
         AppliedSignature = Configuration.Signature(settings);
         outboundTags = config["outbounds"]!.AsArray().Select(item => item!["tag"]!.ToString()).Where(tag => tag != "direct").ToArray();
@@ -167,7 +177,7 @@ public sealed class Engine : IEngine
             process = Process.Start(StartInfo(executable, "run")) ?? throw new InvalidOperationException("The core did not start.");
             job.Assign(process);
             process.EnableRaisingEvents = true;
-            process.Exited += (_, _) => Exited?.Invoke();
+            process.Exited += (_, _) => { if (!changingProfile) Exited?.Invoke(); };
             drain = Task.WhenAll(DrainAsync(process.StandardOutput), DrainAsync(process.StandardError));
             for (int attempt = 0; attempt < 40; attempt++)
             {
@@ -183,7 +193,7 @@ public sealed class Engine : IEngine
             }
             throw new TimeoutException("The core did not become ready.");
         }
-        catch { await StopAsync(); throw; }
+        catch { await StopSelectedAsync(); throw; }
     }
 
     public async Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)
@@ -267,8 +277,11 @@ public sealed class Engine : IEngine
         finally { File.Delete(path); }
     }
 
-    public async Task StopAsync()
+    private async Task StopSelectedAsync()
     {
+        listStopping?.Cancel();
+        try { await listUpdates.ConfigureAwait(false); } catch (OperationCanceledException) { }
+        listStopping?.Dispose(); listStopping = null; listUpdates = Task.CompletedTask;
         if (Running)
         {
             CoreConsole.Stop();
@@ -285,6 +298,16 @@ public sealed class Engine : IEngine
         Log?.Invoke("Network core stopped.");
     }
 
+    private async Task UpdatePodkopAsync(Settings settings, CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+        var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
+        while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+            foreach (string id in PodkopCatalog.Used(settings))
+                try { await cache.GetAsync(id, token).ConfigureAwait(false); }
+                catch (IOException) { Log?.Invoke("Podkop cache refresh failed; active rules were retained."); }
+    }
+
     private ProcessStartInfo StartInfo(string executable, string command)
     {
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
@@ -295,13 +318,15 @@ public sealed class Engine : IEngine
 
     private async Task DrainAsync(StreamReader reader)
     {
-        try { while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line) Log?.Invoke(line); }
+        try { while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line) { Log?.Invoke(line); ObserveProxyFailure(line); } }
         catch (ObjectDisposedException) { }
         catch (IOException) { }
     }
 
     public void Dispose()
     {
+        failoverStopping?.Cancel();
+        listStopping?.Cancel();
         job?.Dispose(); job = null;
         consoleLease?.Dispose(); consoleLease = null;
         process?.Dispose();

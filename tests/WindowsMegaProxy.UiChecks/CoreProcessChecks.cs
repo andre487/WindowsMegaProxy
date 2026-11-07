@@ -55,7 +55,7 @@ internal static class CoreProcessChecks
 
     public static async Task RunAsync()
     {
-        string directory = Path.GetFullPath("artifacts/process-checks");
+        string directory = Path.GetFullPath(Path.Combine("artifacts/process-checks", Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(directory);
         string marker = Path.Combine(directory, Guid.NewGuid().ToString("N"));
         using (var cancellation = new CancellationTokenSource())

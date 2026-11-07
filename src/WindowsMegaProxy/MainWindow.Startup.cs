@@ -16,21 +16,19 @@ public partial class MainWindow
             OperatingModeBox.IsEnabled = false;
             await SaveSettingsAsync();
             await FlushSettingsAsync();
-            bool deployDev = AppIdentity.IsDev && installScript is not null;
-            var start = new ProcessStartInfo(deployDev ? installScript! : Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable))
-            { UseShellExecute = true, Verb = "runas" };
-            if (deployDev)
-            {
-                start.Arguments = "--dev --launch --mode " + StartupConfiguration.Validate(mode);
-                start.WorkingDirectory = Path.GetDirectoryName(installScript)!;
-            }
-            else
-            {
-                start.ArgumentList.Add("--set-mode");
-                start.ArgumentList.Add(StartupConfiguration.Validate(mode));
-            }
+            var start = StartupConfiguration.ModeCommand(AppContext.BaseDirectory, installScript, mode);
+            if (!File.Exists(start.FileName)) throw new IOException("The mode configuration helper is missing. Repair the installation or run setup.cmd for DEV.");
             using var helper = Process.Start(start) ?? throw new IOException("Could not start the mode configuration helper.");
-            await QuitAsync();
+            // The helper closes this window through the graceful restart command after it starts.
+            await helper.WaitForExitAsync();
+            if (!quitting)
+            {
+                if (helper.ExitCode != 0) throw new IOException("Could not change the operating mode. See .tools/install.log.");
+                updatingUi = true;
+                OperatingModeBox.SelectedValue = StartupConfiguration.Mode;
+                updatingUi = false;
+                SetBusy(busy);
+            }
         }
         catch (Exception error)
         {

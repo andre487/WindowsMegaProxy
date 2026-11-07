@@ -14,6 +14,7 @@ static void Reject(Action action)
 }
 
 Assert(ProfileAppearance.Colors.Count == 12 && ProfileAppearance.Countries.Count >= 250, "Bundle the palette and country catalog.");
+TransferChecks.Run();
 Assert(ProfileAppearance.CountryName("DE", "fallback", System.Globalization.CultureInfo.GetCultureInfo("ru-RU")) == "Германия", "Country names follow the app language.");
 Assert(ProfileAppearance.CountryName("DE", "fallback", System.Globalization.CultureInfo.GetCultureInfo("en-US")) == "Germany", "Country localization uses the requested language.");
 Assert(ProfileAppearance.Country("DE").FlagUri!.EndsWith("/DE.png"), "Country codes resolve to embedded flags.");

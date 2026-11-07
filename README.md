@@ -5,12 +5,14 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 ## Features
 
 - **Proxy profiles:** HTTPS, SOCKS5, SSH, HTTPS Jump and experimental MASQUE (HTTP/3). Create, edit, duplicate and switch profiles, with colors and country flags.
-- **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses and subnets. Use the active profile, system mode or blocking; system mode is the default.
+- **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses, subnets and Podkop community lists. Use the active profile, system mode or blocking; system mode is the default.
 - **HTTP/3:** optional preference for HTTPS and HTTPS Jump, with TCP fallback when available. HTTP/3 checks appear only for supported transports.
 - **Connection monitoring:** grouped connections, traffic rates, sortable columns and copyable application paths.
 - **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests.
 - **Security options:** certificate verification, SSH accept-new with confirmation of changed server keys, password or private-key SSH authentication, TCP TLS and SSH fingerprint presets, and knock-host checks for masked HTTPS proxies.
-- **Portable configuration:** import and export `MegaProxy.json`, preserving other clients' settings. Passwords and private keys are excluded from exports by default. See the [example configuration](examples/MegaProxy.json).
+- **Configuration transfer:** import MegaProxy JSON v1–8, FoxyProxy JSON, ProxyList and SuperProxy. Export MegaProxy JSON or ProxyList; review changed settings and optionally remove missing profiles. Passwords and private keys are excluded by default. Other clients' settings are preserved.
+- **Subscriptions:** HTTPS sources with backups, optional Basic authentication, automatic/manual updates and subscription definitions imported from JSON. Updates preserve local profiles and require reconnecting to apply network changes.
+- **Failover:** optional selected/all-profile backups in profile order, triggered by proxy transport failures; retains certificate and SSH key checks.
 - **Windows integration:** manual launch, elevated startup at sign-in, or a shared Windows service; system tray, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
 - **Shared service:** one protected configuration for the machine; administrator accounts can edit without repeated UAC prompts, other users have a read-only interface.
 - **Appearance:** English and Russian, automatic/light/dark themes and Windows display scaling.
@@ -36,7 +38,7 @@ the interface in service mode can run without elevation.
 
 Choose an operating mode in the native installer or application settings. Manual and sign-in modes require administrator privileges and stop interception when you exit the application. Service mode keeps the shared connection running when the interface closes. Changing mode restarts the application and preserves its configuration.
 
-For development, run `stop-prod.cmd`, then `run.cmd` from an administrator terminal (or approve UAC). DEV runs directly from `artifacts/dev/app`, with separate processes, icons and settings. Re-running `run.cmd` removes DEV startup registrations, closes DEV gracefully, rebuilds the interface and starts in manual mode. It refuses to start while production is running. All three operating modes are available in DEV settings; explicit login/service mode installs an isolated protected DEV copy. `cleanup-dev.cmd` (also `uninstall-dev.cmd`) removes DEV services, startup entries and installed binaries while preserving settings. `build.cmd --dev` only builds DEV.
+For development, run `stop-prod.cmd`, then `run.cmd` from an administrator terminal (or approve UAC). DEV has separate processes, icons and settings. In manual mode, `run.cmd` rebuilds and starts directly from `artifacts/dev/app`; login/service modes rebuild the isolated protected DEV installation and restart it. The selected mode is preserved. It refuses to start while production is running. `cleanup-dev.cmd` (also `uninstall-dev.cmd`) explicitly removes DEV services, startup entries and installed binaries while preserving settings. `build.cmd --dev` only builds DEV.
 
 SSH key verification requires the Windows OpenSSH Client optional feature.
 
@@ -44,7 +46,7 @@ SSH key verification requires the Windows OpenSSH Client optional feature.
 
 ## Status
 
-Early preview. HTTP/3 is experimental. SSH Jump, passphrase-protected SSH keys, subscription updates and Podkop lists are not yet supported.
+Early preview. HTTP/3 is experimental. SSH Jump and passphrase-protected SSH keys are not yet supported. Automatic failover to SSH requires a previously verified server key.
 
 ## License
 

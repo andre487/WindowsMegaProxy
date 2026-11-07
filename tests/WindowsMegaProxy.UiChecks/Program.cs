@@ -37,6 +37,13 @@ internal static class Program
                 throw new Exception("Settings were not preserved across operating mode changes.");
             return;
         }
+        if (FailoverChecks.RunFixture(args)) return;
+        if (args.Contains("--failover-check"))
+        {
+            try { FailoverChecks.RunAsync().GetAwaiter().GetResult(); }
+            catch (Exception error) { Directory.CreateDirectory("artifacts/failover-checks"); File.WriteAllText("artifacts/failover-checks/failure.txt", error.ToString()); throw; }
+            return;
+        }
         if (CoreProcessChecks.RunFixture(args)) return;
         if (RecoveryChecks.RunFixture(args)) return;
         if (args.Contains("--ui-recovery-check"))
@@ -60,6 +67,8 @@ internal static class Program
         }
         if (args.Contains("--engine-check")) { CheckEngineAsync().GetAwaiter().GetResult(); return; }
         ControllerChecks.RunAsync().GetAwaiter().GetResult();
+        ConfigurationRefreshChecks.RunAsync().GetAwaiter().GetResult();
+        FailoverChecks.RunIsolatedAsync().GetAwaiter().GetResult();
         CoreProcessChecks.RunAsync().GetAwaiter().GetResult();
         PerformanceChecks.RunAsync().GetAwaiter().GetResult();
         ServiceChecks.RunAsync().GetAwaiter().GetResult();
@@ -364,6 +373,7 @@ internal static class Program
             Assert(ProfileAppearance.Country("DE").Name == "Germany", "Country labels follow the selected application language.");
             Assert(((Button)window.FindName("ConnectButton")).Content as string == "Connect", "Runtime button labels switch to English.");
             var fingerprints = (ComboBox)window.FindName("TlsFingerprintBox");
+            Assert(((ComboBoxItem)fingerprints.Items[0]).Content as string == "Default (Chrome)", "Default fingerprint uses its display name without inner padding spaces.");
             fingerprints.SelectedIndex = 1;
             Layout(window);
             Assert(saved[^1].TlsFingerprint == "chrome", "TCP fingerprint autosaves.");
@@ -639,6 +649,11 @@ internal static class Program
             Assert(Descendants(dialog).OfType<Button>().Any(button => button.IsCancel), "Rule dialog supports Escape/cancel.");
             Capture((Visual)dialog.Content, Path.Combine(output, "rule-dialog.png"));
             dialog.Close();
+            var podkopDialog = new RuleWindow(new RoutingRule { Destination = "podkop:youtube,discord" });
+            Assert(RuleField<ComboBox>(podkopDialog, "destinationType").SelectedIndex == 1 &&
+                RuleField<System.Collections.Generic.Dictionary<string, CheckBox>>(podkopDialog, "podkop").Values.Count(box => box.IsChecked == true) == 2,
+                "Rule editor restores multiple Podkop list choices.");
+            podkopDialog.Close();
             Assert(testConnection.Engine is null, "UI check must never start TUN.");
             var editorProfile = profile.Copy();
             editorProfile.Data["browser"] = new System.Text.Json.Nodes.JsonObject { ["futureField"] = "retain" };
@@ -687,10 +702,29 @@ internal static class Program
             }
             var exportDialog = new ExportWindow { Owner = window, WindowStartupLocation = WindowStartupLocation.Manual, Left = -10000, Top = -10000, ShowInTaskbar = false };
             Assert(!exportDialog.IncludePasswords && !exportDialog.IncludePrivateKeys, "Credentials must be opt-in for export.");
+            ((ComboBox)exportDialog.FindName("FormatBox")).SelectedIndex = 1;
+            Assert(exportDialog.ProxyList && !((CheckBox)exportDialog.FindName("PrivateKeysBox")).IsEnabled, "ProxyList export exposes its supported subset and disables private-key export.");
+            ((ComboBox)exportDialog.FindName("FormatBox")).SelectedIndex = 0;
             exportDialog.Show();
             Layout(exportDialog);
             Capture((Visual)exportDialog.Content, Path.Combine(output, "export-dialog.png"));
             exportDialog.Close();
+            var transferSettings = new Settings { Profiles = [profile.Copy()], ActiveProfileId = profile.Id };
+            var importReview = new ImportReview(ProfileTransfer.Parse(PortableConfiguration.Export(transferSettings).ToJsonString()), transferSettings);
+            var importWindow = new ImportWindow(importReview) { Owner = window, Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
+            importWindow.Show(); Layout(importWindow);
+            Assert(importWindow.Selected.Count == 0 && importWindow.RemoveIds.Count == 0 && !importWindow.ApplyGlobals, "Import review defaults to keeping existing options and profiles.");
+            Capture((Visual)importWindow.Content, Path.Combine(output, "import-options.png"));
+            importWindow.Close();
+            SubscriptionDefinition? savedSubscription = null;
+            var subscriptionWindow = new SubscriptionWindow(new Settings(), definition => { savedSubscription = definition; return Task.CompletedTask; }, () => Task.FromResult(new Settings()))
+            { Owner = window, Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
+            subscriptionWindow.Show(); Layout(subscriptionWindow);
+            ((TextBox)typeof(SubscriptionWindow).GetField("url", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(subscriptionWindow)!).Text = "https://feed.invalid/config";
+            Wait(window, Task.Delay(800));
+            Assert(savedSubscription?.Url == "https://feed.invalid/config", "Subscription settings autosave without a Save button.");
+            Capture((Visual)subscriptionWindow.Content, Path.Combine(output, "subscription-settings.png"));
+            subscriptionWindow.Close();
             var protectedData = SettingsStore.Protect("synthetic-profile-password-and-other-platform-secret");
             Assert(!protectedData.Contains("synthetic") && SettingsStore.Unprotect(protectedData) == "synthetic-profile-password-and-other-platform-secret", "DPAPI protects imported data.");
             Assert(SendMessage(new WindowInteropHelper(window).Handle, 0x8487, IntPtr.Zero, IntPtr.Zero).ToInt64() == 0x487,

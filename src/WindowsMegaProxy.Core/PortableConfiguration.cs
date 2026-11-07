@@ -54,19 +54,22 @@ public static class PortableConfiguration
                 {
                     var existing = candidate.Profiles[index];
                     var merged = Merge(existing.Data, profile.Data);
-                    MergeProxySecrets(merged["proxy"]!.AsObject(), profile.Proxy, existing.Proxy);
+                    bool sameAccount = MergeProxySecrets(merged["proxy"]!.AsObject(), profile.Proxy, existing.Proxy);
+                    if (!sameAccount && merged["browser"] is JsonObject browser && (profile.Data["browser"] as JsonObject)?.ContainsKey("knockHost") != true) browser.Remove("knockHost");
                     candidate.Profiles[index] = new ProxyProfile(merged);
                 }
                 else candidate.Profiles.Add(profile.Copy());
             }
             var shared = (JsonObject)root.DeepClone();
             shared.Remove("profiles"); shared.Remove("windows"); shared.Remove("activeProfileId");
-            if (shared["subscription"] is JsonObject incomingSubscription && candidate.SharedOptions["subscription"] is JsonObject existingSubscription)
+            if (shared["subscription"] is JsonObject incomingSubscription)
             {
-                if (!incomingSubscription.ContainsKey("password") && existingSubscription["password"] is not null && String(incomingSubscription, "url") == String(existingSubscription, "url") && String(incomingSubscription, "username") == String(existingSubscription, "username"))
-                    incomingSubscription["password"] = existingSubscription["password"]?.DeepClone();
+                var definition = SubscriptionDefinition.Parse(incomingSubscription);
+                var previous = ConfigurationSubscription.Get(candidate);
+                if (definition.Password is null && previous?.Password is not null && definition.SameAccount(previous)) incomingSubscription["password"] = previous.Password;
             }
             candidate.SharedOptions = Merge(candidate.SharedOptions, shared);
+            if (shared.ContainsKey("subscription")) candidate.SharedOptions["subscription"] = shared["subscription"]?.DeepClone();
             // Subscription credentials belong to their URL/account, never to a replacement endpoint.
             if (shared["subscription"] is JsonObject subscription && !subscription.ContainsKey("password"))
                 candidate.SharedOptions["subscription"]!.AsObject().Remove("password");
@@ -75,6 +78,7 @@ public static class PortableConfiguration
             if (root.ContainsKey("windows") && root["windows"] is not JsonObject) throw Invalid(Ui.T("Windows settings must be an object."));
             if (root["windows"] is JsonObject windows)
             {
+                windows.Remove(ConfigurationSubscription.StateKey);
                 candidate.WindowsOptions = Merge(candidate.WindowsOptions, windows);
                 if (!windows.ContainsKey("version") || windows["version"]?.GetValue<int>() == 1)
                 {
@@ -90,6 +94,14 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("rules")) candidate.Rules = windows["rules"]!.Deserialize<List<RoutingRule>>(PortableOptions) ?? throw Invalid(Ui.T("Invalid Windows rules."));
                 }
             }
+            var platform = root["windows"] as JsonObject;
+            if (platform?.ContainsKey("tlsFingerprint") != true && root["tls"]?["fingerprint"] is { } fingerprint)
+            {
+                string value = fingerprint.GetValue<string>().ToLowerInvariant();
+                if (Configuration.TlsFingerprints.Contains(value)) candidate.TlsFingerprint = value;
+            }
+            if (platform?.ContainsKey("logSizeMb") != true && root["diagnosticLogLimitMb"] is { } logSize) candidate.LogSizeMb = Math.Clamp(logSize.GetValue<int>(), 1, 100);
+            if (platform?.ContainsKey("bypassLocalNetworks") != true && root["routing"]?["bypassLocalNetworks"] is { } bypass) candidate.BypassLan = bypass.GetValue<bool>();
             var requestedId = root["activeProfileId"]?.GetValue<string>();
             if (requestedId is not null && !candidate.Profiles.Any(profile => profile.Id == requestedId)) throw Invalid(Ui.T("The active profile is missing from the configuration."));
             candidate.ActiveProfileId = requestedId ?? candidate.ActiveProfileId;
@@ -113,7 +125,14 @@ public static class PortableConfiguration
         result["version"] = 8;
         result["activeProfileId"] = settings.ActiveProfileId;
         result["profiles"] = new JsonArray(settings.Profiles.Select(profile => (JsonNode)profile.Data.DeepClone()).ToArray());
+        foreach (var node in result["profiles"]!.AsArray())
+        {
+            var profile = new ProxyProfile(node!.AsObject());
+            if (profile.Type == "HTTPS" && !profile.Proxy.ContainsKey("knockHost") && ProxyAuthenticationProbe.Host(profile).Length > 0)
+                profile.Proxy["knockHost"] = ProxyAuthenticationProbe.Host(profile);
+        }
         var windows = (JsonObject)settings.WindowsOptions.DeepClone();
+        windows.Remove(ConfigurationSubscription.StateKey);
         if (!windows.ContainsKey("version") || windows["version"]?.GetValue<int>() == 1)
         {
             windows["version"] = 1;
@@ -145,6 +164,8 @@ public static class PortableConfiguration
         if (settings.LogSizeMb is < 1 or > 100) throw Invalid(Ui.T("Log size must be between 1 and 100 MiB."));
         if (settings.Language is not ("en" or "ru") || settings.Theme is not ("auto" or "light" or "dark")) throw Invalid("Invalid language or theme.");
         if (!Configuration.TlsFingerprints.Contains(settings.TlsFingerprint)) throw Invalid("Unsupported TLS fingerprint.");
+        _ = ConfigurationSubscription.Get(settings);
+        FailoverPolicy.Validate(settings);
         var ids = new HashSet<string>(System.StringComparer.Ordinal);
         foreach (var profile in settings.Profiles)
         {
@@ -183,6 +204,8 @@ public static class PortableConfiguration
         if (proxy.ContainsKey("preferHttp3") && (proxy["preferHttp3"] is not JsonValue preference || !preference.TryGetValue<bool>(out _)))
             throw Invalid("preferHttp3 must be a boolean.");
         if (proxy.ContainsKey("authProbeHost")) ProxyAuthenticationProbe.ValidateHost(String(proxy, "authProbeHost"));
+        if (proxy.ContainsKey("knockHost") && proxy["knockHost"] is null) throw Invalid("Use an empty knockHost to clear it.");
+        ProxyAuthenticationProbe.ValidateHost(ProxyAuthenticationProbe.Host(profile));
         if (type is "HTTPS_JUMP" or "SSH_JUMP") ValidateEndpoint(proxy["jump"]?.AsObject() ?? throw Invalid(Ui.T("The jump server is not configured.")));
         CheckSecrets(proxy);
         if (type != "SOCKS5" && String(proxy, "username").Contains(':')) throw Invalid(Ui.T("The username must not contain a colon."));
@@ -227,7 +250,7 @@ public static class PortableConfiguration
         System.String.Equals(String(first, "host").Trim('[', ']').TrimEnd('.'), String(second, "host").Trim('[', ']').TrimEnd('.'), StringComparison.OrdinalIgnoreCase)
         && first["port"]?.GetValue<int>() == second["port"]?.GetValue<int>() && String(first, "username") == String(second, "username");
 
-    private static void MergeProxySecrets(JsonObject result, JsonObject incoming, JsonObject previous)
+    private static bool MergeProxySecrets(JsonObject result, JsonObject incoming, JsonObject previous)
     {
         bool sameProtocol = String(incoming, "type") == String(previous, "type");
         bool sharedJump = String(incoming, "type") is "HTTPS_JUMP" or "SSH_JUMP" && (incoming["jump"]?["sameAuthentication"]?.GetValue<bool>() ?? true);
@@ -243,6 +266,7 @@ public static class PortableConfiguration
             MergeEndpointSecrets(resultJump, newJump, oldJump, sameJump);
             if (!newJump.ContainsKey("username")) resultJump.Remove("username");
         }
+        return sameMain;
     }
 
     private static void MergeEndpointSecrets(JsonObject result, JsonObject incoming, JsonObject previous, bool keepOmitted)
@@ -253,7 +277,7 @@ public static class PortableConfiguration
             if (incoming.ContainsKey(key)) result[key] = incoming[key]?.DeepClone();
             else if (keepOmitted && previous.ContainsKey(key)) result[key] = previous[key]?.DeepClone();
         }
-        foreach (var key in new[] { "allowInvalidProxyCertificate", "acceptAnyHostKey", "trustedHostKey" })
+        foreach (var key in new[] { "allowInvalidProxyCertificate", "acceptAnyHostKey", "trustedHostKey", "knockHost", "authProbeHost" })
             if (!keepOmitted && !incoming.ContainsKey(key)) result.Remove(key);
     }
 
@@ -270,7 +294,7 @@ public static class PortableConfiguration
         else if (node is JsonArray array) foreach (var child in array) if (child is not null) RemoveSecrets(child, passwords, keys);
     }
 
-    private static void CheckDuplicateKeys(JsonElement element)
+    internal static void CheckDuplicateKeys(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {

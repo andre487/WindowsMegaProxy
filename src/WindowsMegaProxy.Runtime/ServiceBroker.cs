@@ -13,6 +13,7 @@ public sealed class ServiceBroker : IAsyncDisposable
     private readonly MachineSettingsStore store;
     private readonly Func<IEngine> createEngine;
     private readonly SemaphoreSlim configuration = new(1), network = new(1);
+    private readonly SemaphoreSlim subscription = new(1);
     private readonly Func<bool, Task> setAutostart;
     private readonly BackgroundLog log;
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
@@ -27,6 +28,7 @@ public sealed class ServiceBroker : IAsyncDisposable
     private DateTimeOffset leaseDeadline;
     private ServiceStatus status = new(false, null, null, false, false, "direct", false);
     private SshHostKeyUpdate? pendingKey;
+    private volatile bool engineChanged;
 
     public ServiceBroker(MachineSettingsStore store, Func<bool, Task> setAutostart, Func<IEngine>? createEngine = null)
     {
@@ -56,6 +58,9 @@ public sealed class ServiceBroker : IAsyncDisposable
         if (request.InstanceId != InstanceId) throw new ServiceStateChangedException("The service restarted. Refresh and try again.");
         switch (request.Operation)
         {
+            case "refreshSubscription":
+                await RefreshSubscriptionAsync(true, token).ConfigureAwait(false);
+                return Reply(peer, true);
             case "save":
                 if (request.Settings is null) throw new IOException("Missing settings.");
                 await configuration.WaitAsync(token).ConfigureAwait(false);
@@ -104,6 +109,7 @@ public sealed class ServiceBroker : IAsyncDisposable
                         engine.Log += message => log.Write(message);
                         if (engine is Engine native)
                         {
+                            native.RuntimeChanged += () => engineChanged = true;
                             native.SaveSshHostKey = update => SaveKeyAsync(update, token);
                             native.ConfirmSshHostKeyChange = update =>
                             {
@@ -219,21 +225,65 @@ public sealed class ServiceBroker : IAsyncDisposable
 
     private Task ExpireLeaseAsync() => lease is not null && (DateTimeOffset.UtcNow >= leaseDeadline || leaseOwnerAlive?.Invoke() == false) ? StopAsync() : Task.CompletedTask;
 
+    private async Task RefreshSubscriptionAsync(bool manual, CancellationToken token)
+    {
+        if (!await subscription.WaitAsync(0, token).ConfigureAwait(false)) return;
+        try
+        {
+            Settings snapshot;
+            long expected;
+            await configuration.WaitAsync(token).ConfigureAwait(false);
+            try
+            {
+                if (!manual && !ConfigurationSubscription.Due(settings, DateTimeOffset.UtcNow)) return;
+                snapshot = settings.Copy(); expected = revision;
+            }
+            finally { configuration.Release(); }
+            var updated = await SubscriptionRefresh.RunAsync(snapshot, manual, token).ConfigureAwait(false);
+            if (updated is null) return;
+            await configuration.WaitAsync(token).ConfigureAwait(false);
+            try
+            {
+                if (expected != revision) return;
+                store.Save(updated);
+                settings = updated;
+                Interlocked.Increment(ref revision);
+                log.Write("Configuration subscription: " + ConfigurationSubscription.Status(updated) + ".");
+                await log.SetLimitAsync(updated.LogSizeMb).ConfigureAwait(false);
+            }
+            finally { configuration.Release(); }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
+        { log.Write("Configuration subscription update could not be saved."); }
+        finally { subscription.Release(); }
+    }
+
     public async Task MaintainAsync(CancellationToken token)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-        while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+        Task refresh = Task.CompletedTask;
+        try
         {
-            if (!await network.WaitAsync(0, token).ConfigureAwait(false)) continue;
-            try { await ExpireLeaseAsync().ConfigureAwait(false); }
-            finally { network.Release(); }
+            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+            {
+                if (refresh.IsCompleted) refresh = Task.Run(() => RefreshSubscriptionAsync(false, token), token);
+                if (!await network.WaitAsync(0, token).ConfigureAwait(false)) continue;
+                try
+                {
+                    await ExpireLeaseAsync().ConfigureAwait(false);
+                    if (engineChanged) { engineChanged = false; UpdateStatus(); probe = (engine as Engine)?.ProbeAccess; }
+                }
+                finally { network.Release(); }
+            }
         }
+        finally { try { await refresh.ConfigureAwait(false); } catch (OperationCanceledException) when (token.IsCancellationRequested) { } }
     }
 
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
         await log.DisposeAsync().ConfigureAwait(false);
-        configuration.Dispose(); network.Dispose();
+        configuration.Dispose(); network.Dispose(); subscription.Dispose();
     }
 }

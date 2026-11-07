@@ -3,11 +3,13 @@ import ctypes as ct
 import os
 import subprocess as sp
 import winreg
+import time
 
 from common import ROOT, cli, dotnet
 from install import known_folder
 from service_control import running_images, service_state, system_executable
 from uninstall_dev import NAME, RUN_KEY, startup_records
+from run import stop_workspace_app
 
 
 def main():
@@ -31,6 +33,18 @@ def main():
             assert bool(tasks) == (mode == "login")
             dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "-p:MegaProxyDev=true", "--no-build", "--", "--installed-settings-check", "seed" if mode == "manual" else "verify")
             assert "sing-box-dev.exe" not in running_images(), "Unconfigured DEV must never start TUN."
+            if mode == "login":
+                sp.run([str(ROOT / "scripts/.venv/Scripts/python.exe"), str(ROOT / "scripts/run.py"), "--elevated"], check=True, timeout=600)
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + NAME) as key:
+                    assert winreg.QueryValueEx(key, "Mode")[0] == "login", "run.cmd must preserve the selected DEV mode."
+                for _ in range(40):
+                    if "windowsmegaproxy.dev.exe" in running_images():
+                        break
+                    time.sleep(0.25)
+                else:
+                    raise RuntimeError("DEV did not reopen after configuring sign-in mode.")
+                assert "sing-box-dev.exe" not in running_images(), "Restarting the seeded UI must not start TUN."
+                stop_workspace_app(dev=True, workspace_only=False)
         sp.run([system_executable("schtasks.exe"), "/Create", "/TN", NAME + "-S-1-5-18", "/SC", "ONSTART", "/RU", "SYSTEM", "/TR", "cmd.exe /c exit 0", "/F"], check=True)
         for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
             for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):

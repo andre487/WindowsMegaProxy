@@ -1,13 +1,23 @@
 using System;
 using System.IO;
 using WindowsMegaProxy;
+using System.Linq;
+using System.Diagnostics;
 
 internal static class InstallationChecks
 {
     public static void Run()
     {
         foreach (string mode in new[] { "manual", "login", "service" })
+        {
             if (StartupConfiguration.Validate(mode) != mode) throw new Exception("Operating mode validation changed its value.");
+            var command = StartupConfiguration.ModeCommand(@"C:\Program Files\MegaProxy test", @"C:\Development space\install.cmd", mode);
+            if (!command.UseShellExecute || command.Verb != "runas" || command.WindowStyle != ProcessWindowStyle.Hidden || !command.ArgumentList.Contains(mode))
+                throw new Exception("Operating mode changes require an elevated, hidden helper with explicit arguments.");
+            if (AppIdentity.IsDev && (!command.FileName.EndsWith(@"scripts\.venv\Scripts\python.exe") || !command.ArgumentList.Contains("--launch") || !command.ArgumentList.Contains("--elevated")))
+                throw new Exception("Source DEV switches modes directly through Python, bypasses CMD and requests restart/logging.");
+            if (!AppIdentity.IsDev && !command.ArgumentList.Contains("--set-mode")) throw new Exception("Installed modes use their native restart helper.");
+        }
         foreach (string invalid in new[] { "", "auto", "SERVICE", "service --bad" })
         {
             try { StartupConfiguration.Validate(invalid); }

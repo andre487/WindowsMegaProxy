@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:WindowsMegaProxy"
     x:Class="WindowsMegaProxy.ExportWindow"
-    Title="{DynamicResource &quot;Export MegaProxy.json&quot;}"
+    Title="{DynamicResource &quot;Export configuration&quot;}"
     Width="480"
     SizeToContent="Height"
     ResizeMode="NoResize"
@@ -21,6 +21,11 @@
             x:Name="PasswordsBox"
             Content="{DynamicResource &quot;Include passwords&quot;}"
             Margin="0,0,0,16" />
+        <TextBlock Text="{DynamicResource &quot;Format&quot;}" Margin="0,0,0,4" />
+        <ComboBox x:Name="FormatBox" SelectedIndex="0" Margin="0,0,0,16">
+            <ComboBoxItem Content="MegaProxy JSON" />
+            <ComboBoxItem Content="ProxyList (HTTPS, MASQUE, SOCKS5)" />
+        </ComboBox>
         <CheckBox
             x:Name="PrivateKeysBox"
             Content="{DynamicResource &quot;Include private SSH keys&quot;}"

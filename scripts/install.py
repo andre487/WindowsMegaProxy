@@ -102,7 +102,7 @@ def secure_directory(path, public=False):
         kernel.LocalFree(descriptor)
 
 
-def install():
+def install_main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("manual", "login", "service"), default="manual")
     parser.add_argument("--elevated", action="store_true")
@@ -152,8 +152,31 @@ def install():
             (target / "dependencies" / directory / "sing-box.exe").rename(target / "dependencies" / directory / "sing-box-dev.exe")
     run(str(target / (name + ".Service.exe")), "--configure-mode", options.mode)
     if options.launch:
-        sp.Popen([str(target / (name + ".exe"))], cwd=target)
+        started = sp.Popen([str(target / (name + ".exe"))], cwd=target)
+        try:
+            code = started.wait(timeout=2)
+            if code:
+                raise RuntimeError(f"The application exited during restart ({code}).")
+        except sp.TimeoutExpired:
+            pass
     print(f"Installed: {target / (name + '.exe')}")
+
+
+def install():
+    try:
+        install_main()
+    except (OSError, RuntimeError, sp.SubprocessError, ValueError):
+        if "--launch" in sys.argv and "--dev" in sys.argv:
+            from run import workspace_windows
+            if not workspace_windows():
+                import os
+                environment = os.environ.copy()
+                environment["DOTNET_ROOT"] = str(ROOT / ".tools/dotnet")
+                original = artifact_root(True) / "app" / (app_name(True) + ".exe")
+                if original.is_file():
+                    sp.Popen([str(original)], cwd=ROOT, env=environment)
+            ct.windll.user32.MessageBoxW(None, "Could not finish changing the operating mode. The interface has been reopened when possible. See .tools/install.log.", "MegaProxy DEV", 0x10)
+        raise
 
 
 def elevated_cli(main):

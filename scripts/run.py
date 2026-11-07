@@ -1,4 +1,4 @@
-"""Stop this workspace's UI gracefully, build, and start it without elevation."""
+"""Rebuild and restart DEV while preserving its selected operating mode."""
 
 import os
 import ctypes as ct
@@ -7,9 +7,10 @@ from pathlib import Path
 import subprocess as sp
 import sys
 import shutil
+import winreg
 
 from common import ROOT, cli, artifact_root, app_name
-from service_control import require_production_stopped, stop_service
+from service_control import require_production_stopped, stop_service, service_state
 from install import elevate, elevated_cli
 import build
 
@@ -71,11 +72,25 @@ def stop_workspace_app(dev=True, workspace_only=True):
             kernel32.CloseHandle(process)
 
 
+def configured_mode():
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy.Dev") as key:
+            mode = winreg.QueryValueEx(key, "Mode")[0]
+    except FileNotFoundError:
+        return "service" if service_state(app_name(True)) is not None else "manual"
+    if mode not in ("manual", "login", "service"):
+        raise RuntimeError("Invalid DEV operating mode. Use cleanup-dev.cmd to reset it.")
+    return mode
+
+
 def restart():
     require_production_stopped()
+    mode = configured_mode()
+    if mode != "manual":
+        sp.run([sys.executable, str(ROOT / "scripts/install.py"), "--dev", "--launch", "--mode", mode, "--elevated"], check=True)
+        return
     stop_workspace_app(workspace_only=False)
-    from uninstall_dev import cleanup
-    cleanup(close_clients=False, remove_files=False)
+    stop_service(app_name(True))
     build.main(dev=True, app_only=True)
     require_production_stopped()
     env = os.environ.copy()

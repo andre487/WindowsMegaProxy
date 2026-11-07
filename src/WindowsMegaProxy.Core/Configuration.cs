@@ -96,6 +96,7 @@ public static class Configuration
     {
         var snapshot = new JsonObject
         {
+            ["failover"] = FailoverPolicy.Signature(settings),
             ["configuration"] = Configuration.Build(settings, 1, "snapshot", allowUnresolvedSsh: true),
             ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? ResolveTlsFingerprint(settings.TlsFingerprint) : null,
             ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,
@@ -161,6 +162,7 @@ public static class Configuration
             ["route"] = new JsonObject
             {
                 ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = "bootstrap", ["rules"] = rules,
+                ["rule_set"] = new JsonArray(PodkopCatalog.Used(settings).Select(id => (JsonNode)PodkopCatalog.Definition(id)).ToArray()),
                 ["final"] = proxyDefault ? "proxy" : "direct"
             },
             ["experimental"] = new JsonObject { ["clash_api"] = new JsonObject { ["external_controller"] = $"127.0.0.1:{apiPort}", ["secret"] = apiSecret } }
@@ -253,7 +255,9 @@ public static class Configuration
         var destination = rule.Destination.Trim();
         if (destination.Length > 0)
         {
-            if (IPAddress.TryParse(destination, out var ip))
+            if (destination.StartsWith("podkop:", StringComparison.Ordinal))
+                result["rule_set"] = new JsonArray(PodkopCatalog.Parse(destination).Select(id => (JsonNode)JsonValue.Create("podkop:" + id)!).ToArray());
+            else if (IPAddress.TryParse(destination, out var ip))
                 result["ip_cidr"] = new JsonArray(ip + (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? "/32" : "/128"));
             else if (destination.Contains('/'))
             {

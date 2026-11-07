@@ -77,7 +77,7 @@ public sealed class ServicePipeServer(ServiceBroker broker, string pipeName = Se
                     peer = authenticate is null ? ClientAccess.Capture(pipe) : authenticate(pipe);
                     return peer.CanEdit ? ServiceProtocol.MaximumFrameBytes : 64 * 1024;
                 }).ConfigureAwait(false);
-                deadline.CancelAfter(TimeSpan.FromSeconds(110));
+                deadline.CancelAfter(TimeSpan.FromSeconds(request.Operation == "refreshSubscription" ? 390 : 110));
                 if (request.Operation == "start" && request.TestOnly && peer!.CanEdit)
                     peer = peer with { Watch = () => ClientLifetime.Open(pipe) };
                 if (request.Operation == "exportLog")

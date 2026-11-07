@@ -98,7 +98,12 @@ public static class Installation
         {
             string message = DiagnosticLog.Redact(error.Message);
             Console.Error.WriteLine(message);
-            if (args[0] == "--set-mode") MessageBox(IntPtr.Zero, message, "MegaProxy", 0x10);
+            if (args[0] == "--set-mode")
+            {
+                if (Process.GetProcessesByName(AppIdentity.Name).Length == 0)
+                    Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
+                MessageBox(IntPtr.Zero, message, "MegaProxy", 0x10);
+            }
             return 1;
         }
     }

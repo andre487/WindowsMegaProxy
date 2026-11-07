@@ -156,6 +156,7 @@ public partial class MainWindow : Window
             await RefreshServiceAsync();
             await RefreshConnectionsAsync();
             await RefreshLogAsync();
+            await RefreshSubscriptionAsync();
         };
         timer.Start();
         DefaultActionBox.SelectionChanged += SettingsChanged;
@@ -477,6 +478,8 @@ public partial class MainWindow : Window
             if (appearanceChanged) UiTheme.Apply(updated.Language, updated.Theme, this);
             SelectTag(LanguageBox, updated.Language);
             SelectTag(ThemeBox, updated.Theme);
+            DefaultFingerprintItem.Content = Ui.F("Default ({0})", TlsFingerprintBox.Items.Cast<ComboBoxItem>()
+                .First(item => (string)item.Tag == Configuration.DefaultTlsFingerprint).Content.ToString()!.Trim());
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
             ShowAllConnectionsBox.IsChecked = updated.ShowAllConnections;
             if (profilesChanged)
@@ -545,6 +548,7 @@ public partial class MainWindow : Window
             SaveSshHostKey = SaveSshHostKey
         };
         result.Log += WriteLog;
+        result.RuntimeChanged += () => Dispatcher.BeginInvoke(() => { if (!quitting) { UpdateProfileSummary(); SetBusy(busy); } });
         return result;
     }
 
@@ -641,21 +645,24 @@ public partial class MainWindow : Window
     {
         if (!canEdit) return;
         if (busy || quitting) return;
-        var dialog = new OpenFileDialog { Filter = "MegaProxy JSON|*.json", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Filter = "Supported configurations|*.json;*.txt|All files|*.*", CheckFileExists = true };
         if (dialog.ShowDialog(this) != true) return;
         try
         {
             string text = await TrackFileAsync(Task.Run(() => PortableConfiguration.ReadFile(dialog.FileName)));
             if (quitting) return;
-            Settings updated;
-            while (true)
-            {
-                long revision = settingsRevision;
-                var current = CaptureSettings();
-                updated = await TrackFileAsync(Task.Run(() => PortableConfiguration.Import(text, current)));
-                if (quitting) return;
-                if (revision == settingsRevision) break;
-            }
+            long revision = settingsRevision;
+            var current = CaptureSettings();
+            var review = await TrackFileAsync(Task.Run(() => new ImportReview(ProfileTransfer.Parse(text), current)));
+            if (quitting) return;
+            var options = new ImportWindow(review) { Owner = this };
+            if (options.ShowDialog() != true) return;
+            var selected = options.Selected;
+            var remove = options.RemoveIds;
+            bool applyGlobals = options.ApplyGlobals;
+            var updated = await TrackFileAsync(Task.Run(() => review.Apply(selected, applyGlobals, remove)));
+            if (quitting) return;
+            if (revision != settingsRevision) throw new IOException(Ui.T("Settings changed during import. Review the file again."));
             await CommitSettingsAsync(updated);
             int unsupported = settings.Profiles.Count(profile => !profile.Supported);
             MessageText.Text = Ui.F("Imported {0} profiles; unsupported connection types: {1}. Windows startup was not changed.", settings.Profiles.Count, unsupported);
@@ -672,12 +679,15 @@ public partial class MainWindow : Window
             var options = new ExportWindow { Owner = this };
             if (options.ShowDialog() != true) return;
             var snapshot = CaptureSettings();
-            var document = await TrackFileAsync(Task.Run(() => PortableConfiguration.Export(snapshot, options.IncludePasswords, options.IncludePrivateKeys)));
+            bool proxyList = options.ProxyList;
+            bool passwords = options.IncludePasswords, privateKeys = options.IncludePrivateKeys;
+            string document = await TrackFileAsync(Task.Run(() => proxyList ? ProfileTransfer.ExportProxyList(snapshot, passwords)
+                : PortableConfiguration.Export(snapshot, passwords, privateKeys).ToJsonString(Configuration.JsonOptions)));
             if (quitting) return;
-            var dialog = new SaveFileDialog { FileName = "MegaProxy.json", DefaultExt = ".json", Filter = "MegaProxy JSON|*.json", AddExtension = true };
+            var dialog = new SaveFileDialog { FileName = proxyList ? "ProxyList.txt" : "MegaProxy.json", DefaultExt = proxyList ? ".txt" : ".json", Filter = proxyList ? "ProxyList|*.txt" : "MegaProxy JSON|*.json", AddExtension = true };
             if (dialog.ShowDialog(this) != true) return;
-            await TrackFileAsync(Task.Run(() => SettingsStore.WriteAtomic(dialog.FileName, document.ToJsonString(Configuration.JsonOptions))));
-            MessageText.Text = Ui.T("MegaProxy.json exported.");
+            await TrackFileAsync(Task.Run(() => SettingsStore.WriteAtomic(dialog.FileName, document)));
+            MessageText.Text = Ui.T("Configuration exported.");
         }
         catch (Exception error) { ShowError(error); }
     }
@@ -735,6 +745,8 @@ public partial class MainWindow : Window
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
         ExportLogButton.IsEnabled = service is null || canEdit;
+        SubscriptionButton.IsEnabled = canEdit && !busy;
+        FailoverButton.IsEnabled = canEdit && !busy;
         ProfilePicker.IsEnabled = editable;
         TestConnectionButton.IsEnabled = canEdit && !value && !testing && (engine?.Running == true || CanConnect());
         SpeedOptionsPanel.IsEnabled = !testing;
@@ -1274,6 +1286,7 @@ public partial class MainWindow : Window
     {
         if (quitting) return;
         quitting = true; timer.Stop(); SetBusy(true);
+        subscriptionStopping.Cancel();
         connection.Cancel();
         try
         {

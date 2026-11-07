@@ -52,7 +52,7 @@ public partial class ProfileWindow : Window
         string sshProfile = profile.Proxy["sshProfile"]?.GetValue<string>() ?? "DEFAULT";
         if (!SshConfiguration.Profiles.Contains(sshProfile)) SshProfileBox.Items.Add(new ComboBoxItem { Content = sshProfile, Tag = sshProfile });
         SshProfileBox.SelectedItem = SshProfileBox.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == sshProfile);
-        AuthProbeHostBox.Text = profile.Proxy["authProbeHost"]?.GetValue<string>() ?? "";
+        AuthProbeHostBox.Text = ProxyAuthenticationProbe.Host(profile);
         AuthProbeHostPanel.Visibility = profile.Type == "HTTPS" ? Visibility.Visible : Visibility.Collapsed;
         TypeChanged(this, null!);
         ConnectionFields.IsEnabled = profile.Supported;
@@ -145,7 +145,7 @@ public partial class ProfileWindow : Window
                     else if (candidate.Data["windows"] is System.Text.Json.Nodes.JsonObject windows) windows.Remove("sshHostKey");
                     SshConfiguration.Build(candidate, "validation", allowUnresolvedHostKey: true);
                 }
-                if (type == "HTTPS") candidate.Proxy["authProbeHost"] = AuthProbeHostBox.Text.Trim();
+                if (type == "HTTPS") { candidate.Proxy["knockHost"] = AuthProbeHostBox.Text.Trim(); candidate.Proxy.Remove("authProbeHost"); }
                 if (type is "HTTPS" or "HTTPS_JUMP") candidate.Proxy["preferHttp3"] = PreferHttp3Box.IsChecked == true;
                 if (type == "HTTPS_JUMP")
                 {

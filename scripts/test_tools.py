@@ -73,13 +73,39 @@ class ToolsChecks(unittest.TestCase):
         stop.assert_not_called()
 
     def test_dev_run_builds_only_ui_and_never_installs_service(self):
-        with patch("run.require_production_stopped"), patch("run.stop_workspace_app"), patch("uninstall_dev.cleanup") as clean, \
+        with patch("run.require_production_stopped"), patch("run.configured_mode", return_value="manual"), patch("run.stop_workspace_app"), patch("run.stop_service") as stop, \
              patch("run.build.main") as build, patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
             dev_runner.restart()
-        clean.assert_called_once_with(close_clients=False, remove_files=False)
+        stop.assert_called_once_with("WindowsMegaProxy.Dev")
         build.assert_called_once_with(dev=True, app_only=True)
         install.assert_not_called()
         self.assertIn("artifacts", launch.call_args.args[0][0])
+
+    def test_dev_run_preserves_login_and_service_modes(self):
+        for mode in ("login", "service"):
+            with self.subTest(mode=mode), patch("run.require_production_stopped"), patch("run.configured_mode", return_value=mode), \
+                 patch("run.sp.run") as deploy, patch("run.build.main") as build, patch("uninstall_dev.cleanup") as cleanup:
+                dev_runner.restart()
+            arguments = deploy.call_args.args[0]
+            self.assertEqual(arguments[arguments.index("--mode") + 1], mode)
+            self.assertIn("--launch", arguments)
+            build.assert_not_called()
+            cleanup.assert_not_called()
+
+    def test_failed_mode_switch_reopens_the_ui_and_reports_the_log(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "app").mkdir()
+            (root / "app/WindowsMegaProxy.Dev.exe").write_bytes(b"fixture")
+            with patch("sys.argv", ["install.py", "--dev", "--launch", "--mode", "login"]), \
+                 patch("install.install_main", side_effect=RuntimeError("synthetic deployment failure")), \
+                 patch("install.artifact_root", return_value=root), patch("run.workspace_windows", return_value=[]), \
+                 patch("install.sp.Popen") as restart, patch("ctypes.windll.user32.MessageBoxW") as report:
+                with self.assertRaisesRegex(RuntimeError, "synthetic"):
+                    installer.install()
+            self.assertEqual(Path(restart.call_args.args[0][0]).name, "WindowsMegaProxy.Dev.exe")
+            self.assertIn(".tools/install.log", report.call_args.args[1])
+
     def test_stop_service_waits_for_an_existing_stop(self):
         with patch("service_control.service_state", side_effect=[3, 1]), patch("service_control.sp.run") as control, \
              patch("service_control.time.sleep"):

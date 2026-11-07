@@ -10,6 +10,8 @@ namespace WindowsMegaProxy;
 
 public static class ProxyAuthenticationProbe
 {
+    public static string Host(ProxyProfile profile) => profile.Proxy["knockHost"]?.GetValue<string>()
+        ?? profile.Data["browser"]?["knockHost"]?.GetValue<string>() ?? profile.Proxy["authProbeHost"]?.GetValue<string>() ?? "";
     public static void ValidateHost(string host)
     {
         if (host.Length == 0) return;
@@ -22,7 +24,7 @@ public static class ProxyAuthenticationProbe
     public static async Task CheckAsync(ProxyProfile? profile, Action<string> log, CancellationToken token)
     {
         if (profile?.Type != "HTTPS") return;
-        string host = profile.Proxy["authProbeHost"]?.GetValue<string>() ?? "";
+        string host = Host(profile);
         ValidateHost(host);
         if (host.Length == 0) return;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);

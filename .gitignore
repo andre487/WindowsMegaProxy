@@ -20,6 +20,7 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+*_wpftmp.csproj
 [Ll]og/
 [Ll]ogs/
 

@@ -602,6 +602,22 @@
                             Visibility="Collapsed"
                             Click="InstallServiceClick" />
                         <TextBlock
+                            Text="{DynamicResource &quot;Configuration&quot;}"
+                            Style="{DynamicResource SubtitleTextBlockStyle}"
+                            Margin="0,0,0,16" />
+                        <Button
+                            x:Name="SubscriptionButton"
+                            Content="{DynamicResource &quot;Configuration subscription&quot;}"
+                            Click="SubscriptionClick"
+                            HorizontalAlignment="Left"
+                            Margin="0,0,0,16" />
+                        <Button
+                            x:Name="FailoverButton"
+                            Content="{DynamicResource &quot;Failover&quot;}"
+                            Click="FailoverClick"
+                            HorizontalAlignment="Left"
+                            Margin="0,0,0,16" />
+                        <TextBlock
                             Text="{DynamicResource &quot;Appearance&quot;}"
                             Style="{DynamicResource SubtitleTextBlockStyle}"
                             Margin="0,0,0,16" />
@@ -642,14 +658,7 @@
                             HorizontalAlignment="Left"
                             Width="220"
                             Margin="0,0,0,12">
-                            <ComboBoxItem Tag="default">
-                                <TextBlock>
-                                    <Run Text="{DynamicResource &quot;Default&quot;}" />
-                                    <Run Text=" (" />
-                                    <Run Text="{x:Static core:Configuration.DefaultTlsFingerprint}" />
-                                    <Run Text=")" />
-                                </TextBlock>
-                            </ComboBoxItem>
+                            <ComboBoxItem x:Name="DefaultFingerprintItem" Tag="default" />
                             <ComboBoxItem Content="Chrome" Tag="chrome" />
                             <ComboBoxItem Content="Firefox" Tag="firefox" />
                             <ComboBoxItem Content="Edge" Tag="edge" />
