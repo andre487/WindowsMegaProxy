@@ -58,6 +58,7 @@ internal static class SshChecks
                 {
                     if (mode == "save-failure") throw new IOException("Synthetic key persistence failure.");
                     saves++; savedKey = update;
+                    return Task.CompletedTask;
                 };
                 try
                 {

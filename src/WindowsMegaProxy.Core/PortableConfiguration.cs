@@ -18,7 +18,7 @@ public static class PortableConfiguration
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
-    public static Settings Copy(Settings settings) => JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;
+    public static Settings Copy(Settings settings) => settings.Copy();
 
     public static string ReadFile(string path)
     {

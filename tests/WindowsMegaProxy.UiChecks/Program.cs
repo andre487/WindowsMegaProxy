@@ -34,19 +34,30 @@ internal static class Program
         if (args.Contains("--engine-check")) { CheckEngineAsync().GetAwaiter().GetResult(); return; }
         ControllerChecks.RunAsync().GetAwaiter().GetResult();
         CoreProcessChecks.RunAsync().GetAwaiter().GetResult();
+        PerformanceChecks.RunAsync().GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(app.Dispatcher));
         app.Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml")
         });
         var saved = new System.Collections.Generic.List<Settings>();
         bool rejectSave = false;
+        bool slowSave = false;
+        using var releaseSave = new System.Threading.ManualResetEventSlim();
+        var saveStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int diagnosticEntries = 0;
         bool autostartEnabled = false, rejectAutostart = false;
         var fixtureEngine = new TestEngine();
         var testConnection = new ConnectionController(() => fixtureEngine);
         var window = new MainWindow(false, value =>
         {
+            if (slowSave)
+            {
+                slowSave = false;
+                saveStarted.TrySetResult();
+                if (!releaseSave.Wait(TimeSpan.FromSeconds(10))) throw new IOException("UI did not release the synthetic disk write.");
+            }
             if (rejectSave) throw new IOException("Synthetic save failure.");
             saved.Add(PortableConfiguration.Copy(value));
         }, new DiagnosticLog(Path.GetFullPath("artifacts/ui-checks/logs")), enabled =>
@@ -58,6 +69,8 @@ internal static class Program
         // Exercise layout without executing startup tasks, autoconnect or any network operations.
         window.Loaded -= typeof(MainWindow).GetMethod("WindowLoaded", BindingFlags.NonPublic | BindingFlags.Instance)!
             .CreateDelegate<RoutedEventHandler>(window);
+        Assert(!((TabControl)window.FindName("Sections")).IsEnabled && !((Button)window.FindName("ConnectButton")).IsEnabled,
+            "Startup cannot edit or overwrite settings before the saved configuration has loaded.");
         try
         {
             var fixture = new Settings { DefaultAction = "proxy", Language = "ru" };
@@ -88,10 +101,11 @@ internal static class Program
             timer.Stop();
             {
                 var fakeEngine = fixtureEngine;
-                testConnection.ConnectAsync(runningSettings).GetAwaiter().GetResult();
+                Wait(window, testConnection.ConnectAsync(runningSettings));
                 try
                 {
                     applySettings.Invoke(window, [pendingSettings]);
+                    Layout(window);
                     string summary = ((TextBlock)window.FindName("ProfileSummary")).Text;
                     Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && summary.Contains("HTTP/3") && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
                     Assert(((Button)window.FindName("ConnectButton")).IsEnabled && ((Button)window.FindName("ReconnectButton")).IsEnabled, "Accept-new enables SSH reconnect without a manually pasted server key.");
@@ -99,10 +113,11 @@ internal static class Program
                     fakeEngine.Http3Selected = false;
                     updateSummary.Invoke(window, null);
                     Assert(((TextBlock)window.FindName("ProfileSummary")).Text.Contains("SSH KZ") && !((TextBlock)window.FindName("ProfileSummary")).Text.Contains("HTTP/3"), "After reconnect the summary switches to the applied SSH profile and drops H3.");
-                    testConnection.DisconnectAsync().GetAwaiter().GetResult();
+                    Wait(window, testConnection.DisconnectAsync());
                     string key = "ssh-ed25519 " + Convert.ToBase64String(Convert.FromHexString("0000000B7373682D6564323535313900000020" + new string('0', 64)));
                     var update = new SshHostKeyUpdate(pendingSsh.Id, pendingSsh.Name, pendingSsh.Host, pendingSsh.Port, "", SshConfiguration.Fingerprint(key), key);
-                    typeof(MainWindow).GetMethod("SaveSshHostKey", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [update]);
+                    Wait(window, (Task)typeof(MainWindow).GetMethod("SaveSshHostKey", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [update])!);
+                    Layout(window);
                     Assert(saved[^1].ActiveProfile!.Proxy["trustedHostKey"]!.ToString() == update.Fingerprint, "Accept-new persists the first SSH fingerprint through the normal settings store.");
                     var keyDialog = new SshHostKeyWindow(update);
                     keyDialog.Show();
@@ -112,28 +127,72 @@ internal static class Program
                     Assert(Descendants(keyDialog).OfType<TextBox>().Count(box => box.IsReadOnly) == 2, "Both fingerprints can be selected and copied.");
                     keyDialog.Close();
                 }
-                finally { testConnection.DisconnectAsync().GetAwaiter().GetResult(); applySettings.Invoke(window, [originalSettings]); timer.Start(); }
+                finally { Wait(window, testConnection.DisconnectAsync()); applySettings.Invoke(window, [originalSettings]); timer.Start(); }
             }
             ((CheckBox)window.FindName("AutoConnectBox")).IsChecked = false;
             var rules = (ObservableCollection<RoutingRule>)typeof(MainWindow).GetField("rules", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
             rules.Clear();
             rules.Add(new RoutingRule { Source = "folder", Path = @"C:\Apps\Browser", Destination = "*.example.com" });
             window.Show();
+            Layout(window);
+            var commit = typeof(MainWindow).GetMethod("CommitSettingsAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var beforeSlowSave = ((Settings)settingsField.GetValue(window)!).Copy();
+            object profileSource = ((ComboBox)window.FindName("ProfilePicker")).ItemsSource;
+            object ruleSource = ((DataGrid)window.FindName("RulesList")).ItemsSource;
+            slowSave = true;
+            var slowSnapshot = beforeSlowSave.Copy(); slowSnapshot.AutoConnect = !slowSnapshot.AutoConnect;
+            var slowCommit = (Task)commit.Invoke(window, [slowSnapshot])!;
+            Wait(window, saveStarted.Task);
+            bool pulse = false;
+            Wait(window, window.Dispatcher.InvokeAsync(() => pulse = true, DispatcherPriority.Input).Task);
+            Assert(pulse && !slowCommit.IsCompleted, "Dispatcher processes input while persistence is blocked on disk.");
+            var nextSnapshot = slowSnapshot.Copy(); nextSnapshot.ShowAllConnections = true;
+            var nextCommit = (Task)commit.Invoke(window, [nextSnapshot])!;
+            var lastSnapshot = nextSnapshot.Copy(); lastSnapshot.AutoConnect = false;
+            var lastCommit = (Task)commit.Invoke(window, [lastSnapshot])!;
+            releaseSave.Set();
+            Wait(window, Task.WhenAll(slowCommit, nextCommit, lastCommit)); Layout(window);
+            Assert(saved[^1].ShowAllConnections && !saved[^1].AutoConnect, "Rapid UI changes save their latest combined state.");
+            Assert(ReferenceEquals(profileSource, ((ComboBox)window.FindName("ProfilePicker")).ItemsSource) && ReferenceEquals(ruleSource, ((DataGrid)window.FindName("RulesList")).ItemsSource), "Preference changes preserve profile and rule views.");
+            Wait(window, (Task)commit.Invoke(window, [beforeSlowSave])!); Layout(window);
+
+            timer.Stop();
+            Wait(window, testConnection.ConnectAsync((Settings)settingsField.GetValue(window)!));
+            var refresh = typeof(MainWindow).GetMethod("RefreshConnectionsAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            Wait(window, (Task)refresh.Invoke(window, null)!);
+            int polls = fixtureEngine.Polls;
+            Assert(polls > 0 && fixtureEngine.PollThread != Environment.CurrentManagedThreadId, "Connection decoding runs outside Dispatcher.");
+            ((TabControl)window.FindName("Sections")).SelectedIndex = 3;
+            Wait(window, (Task)refresh.Invoke(window, null)!);
+            Assert(fixtureEngine.Polls == polls, "An inactive connections page does not poll the core.");
+            ((TabControl)window.FindName("Sections")).SelectedIndex = 0;
+            window.Hide();
+            Wait(window, (Task)refresh.Invoke(window, null)!);
+            Assert(fixtureEngine.Polls == polls, "A hidden tray window does not poll the core.");
+            window.Show();
+            Wait(window, testConnection.DisconnectAsync()); timer.Start();
             saved.Clear();
             var autoConnect = (CheckBox)window.FindName("AutoConnectBox");
             autoConnect.IsChecked = true;
             autoConnect.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            Layout(window);
             Assert(saved.Count == 1 && saved[^1].AutoConnect, "A setting change is saved immediately.");
             ((ComboBox)window.FindName("DefaultActionBox")).SelectedIndex = 1;
+            Layout(window);
             Assert(saved.Count == 2 && saved[^1].DefaultAction == "system", "A selection change is saved immediately.");
             rules.Add(new RoutingRule { Destination = "example.net", Action = "block" });
+            Layout(window);
             Assert(saved[^1].Rules.Count == 2, "Adding a rule saves without a Save button.");
             rules.Move(1, 0);
+            Layout(window);
             Assert(saved[^1].Rules[0].Destination == "example.net", "Reordering rules saves immediately.");
             rules.RemoveAt(0);
+            Layout(window);
             Assert(saved[^1].Rules.Count == 1, "Deleting a rule saves immediately.");
+            Layout(window);
             int previousSaves = saved.Count;
             typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [saved[^1]]);
+            Layout(window);
             Assert(saved.Count == previousSaves, "Loading settings must not write them back.");
             rejectSave = true;
             autoConnect.IsChecked = false;
@@ -225,29 +284,36 @@ internal static class Program
             profileList.ItemsSource = previousSource;
             var autostart = (CheckBox)window.FindName("AutostartBox");
             autostart.IsChecked = true; autostart.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            Layout(window);
             Assert(autostartEnabled && saved[^1].LaunchAtSignIn == true, "Autostart applies immediately through the OS adapter.");
             autostart.IsChecked = false; autostart.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            Layout(window);
             rejectAutostart = true;
             autostart.IsChecked = true; autostart.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            Layout(window);
             Assert(!autostartEnabled && autostart.IsChecked == false && saved[^1].LaunchAtSignIn == false, "Failed autostart reverts both UI and stored preference.");
             rejectAutostart = false;
             ((ComboBox)window.FindName("LogSizeBox")).Text = "25";
             typeof(MainWindow).GetMethod("SaveLogSize", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null);
+            Layout(window);
             Assert(saved[^1].LogSizeMb == 25, "Log size autosaves.");
             Assert(((CheckBox)window.FindName("ShowAllConnectionsBox")).IsChecked == false, "Default-mode connections are hidden initially.");
             var showAll = (CheckBox)window.FindName("ShowAllConnectionsBox");
             showAll.IsChecked = true;
             showAll.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            Layout(window);
             Assert(saved[^1].ShowAllConnections, "Show all connections saves immediately.");
             typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [PortableConfiguration.Copy(saved[^1])]);
             Assert(showAll.IsChecked == true, "Show all connections restores from saved settings.");
             var language = (ComboBox)window.FindName("LanguageBox");
             language.SelectedIndex = 0; Layout(window);
+            Layout(window);
             Assert(saved[^1].Language == "en" && ((TabItem)sections.Items[3]).Header as string == "Settings", "English resources update in an open window and persist.");
             Assert(ProfileAppearance.Country("DE").Name == "Germany", "Country labels follow the selected application language.");
             Assert(((Button)window.FindName("ConnectButton")).Content as string == "Connect", "Runtime button labels switch to English.");
             var fingerprints = (ComboBox)window.FindName("TlsFingerprintBox");
             fingerprints.SelectedIndex = 1;
+            Layout(window);
             Assert(saved[^1].TlsFingerprint == "chrome", "TCP fingerprint autosaves.");
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
             {
@@ -263,6 +329,7 @@ internal static class Program
             var preferenceThemeBox = (ComboBox)window.FindName("ThemeBox");
             preferenceThemeBox.SelectedIndex = 2; Layout(window);
 #pragma warning disable WPF0001
+            Layout(window);
             Assert(saved[^1].Theme == "dark" && window.ThemeMode == ThemeMode.Dark, "Theme changes apply and save immediately.");
 #pragma warning restore WPF0001
             window.Hide();
@@ -278,6 +345,7 @@ internal static class Program
             trayMenu.IsOpen = false;
             preferenceThemeBox.SelectedIndex = 0;
             language.SelectedIndex = 1; Layout(window);
+            Layout(window);
             Assert(saved[^1].Language == "ru" && ProfileAppearance.Country("DE").Name == "Германия", "Russian remains an explicit saved translation.");
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
                 Assert(((DataGrid)window.FindName(gridName)).Columns[0].Header as string == (gridName == "SpeedResultsGrid" ? "Параметр" : "Приложение"), "Table headers switch back to Russian.");
@@ -355,6 +423,7 @@ internal static class Program
             Assert(diagnosticEntries == entries + 1, "Remaining on the selected tab does not restart diagnostics.");
             Assert(((TextBox)window.FindName("TestLogText")).Text.Contains("Synthetic diagnostic step"), "Diagnostic steps are selectable and retained across navigation.");
             typeof(MainWindow).GetMethod("AppendDiagnosticEntry", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, ["Test stopped."]);
+            Layout(window);
             Assert(((TextBox)window.FindName("TestLogText")).Text.Contains("Test stopped."), "Diagnostic log entries stay English under the Russian UI.");
             Capture((Visual)window.Content, Path.Combine(output, "diagnostics-log.png"));
             typeof(MainWindow).GetMethod("CompleteDiagnostics", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
@@ -433,7 +502,9 @@ internal static class Program
             rules.Insert(1, editableRule);
             rules.Add(new RoutingRule { Destination = "tail.example", Action = "block" });
             var ruleGrid = (DataGrid)window.FindName("RulesList");
+            Layout(window);
             ruleGrid.SelectedIndex = 1;
+            Layout(window);
             int countBeforeEdit = rules.Count, savesBeforeEdit = saved.Count;
             var editRuleButton = Descendants((DependencyObject)((TabItem)sections.Items[2]).Content).OfType<Button>().Single(button => button.Content as string == "Изменить");
             window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
@@ -448,9 +519,11 @@ internal static class Program
                 Descendants(edit).OfType<Button>().Single(button => button.Content as string == "Сохранить").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }));
             editRuleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout(window);
             Assert(saved.Count == savesBeforeEdit + 1 && rules.Count == countBeforeEdit && rules[1].Destination == "*.after.example" && rules[1].ProfileId is null,
                 "Saving replaces the same rule in place and persists immediately.");
             Assert(ruleGrid.SelectedIndex == 1 && rules[^1].Destination == "tail.example", "Editing preserves rule priority and selection.");
+            Layout(window);
             int savedAfterEdit = saved.Count;
             window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
             {
@@ -459,6 +532,7 @@ internal static class Program
                 edit.Close();
             }));
             editRuleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout(window);
             Assert(saved.Count == savedAfterEdit && rules[1].Destination == "*.after.example", "Cancel leaves the existing rule and storage unchanged.");
             rejectSave = true;
             window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
@@ -468,6 +542,7 @@ internal static class Program
                 Descendants(edit).OfType<Button>().Single(button => button.Content as string == "Сохранить").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }));
             editRuleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Layout(window);
+            Layout(window);
             Assert(saved.Count == savedAfterEdit && rules[1].Destination == "*.after.example", "A failed edit save restores the persisted rule.");
             rejectSave = false;
             foreach (var input in new[]
@@ -549,12 +624,32 @@ internal static class Program
         finally
         {
             var quit = (Task)typeof(MainWindow).GetMethod("QuitAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null)!;
-            quit.GetAwaiter().GetResult();
+            Wait(window, quit);
         }
+    }
+
+    private static void Wait(Window window, Task task, bool propagate = true)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (!task.IsCompleted && watch.Elapsed < TimeSpan.FromSeconds(15))
+        {
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            System.Threading.Thread.Sleep(1);
+        }
+        Assert(task.IsCompleted, "Background UI work must finish without blocking Dispatcher.");
+        if (propagate) task.GetAwaiter().GetResult();
+        window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
     }
 
     private static void Layout(Window window)
     {
+        if (window is MainWindow)
+        {
+            var flush = (Task)typeof(MainWindow).GetMethod("FlushSettingsAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null)!;
+            Wait(window, flush, propagate: false);
+            var diagnostics = (Task)typeof(MainWindow).GetField("diagnosticTextUpdate", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            Wait(window, diagnostics);
+        }
         window.UpdateLayout();
         window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         window.UpdateLayout();
@@ -691,6 +786,13 @@ internal static class Program
         Assert(LogAutoScroll.IsFollowing(box) && box.VerticalOffset >= box.ExtentHeight - box.ViewportHeight - 1, "Resumed logs continue to follow new entries.");
         LogAutoScroll.Replace(box, box.Text.Replace("entry", "other")); Layout(window);
         Assert(LogAutoScroll.IsFollowing(box) && box.VerticalOffset >= box.ExtentHeight - box.ViewportHeight - 1, "Replacing a bounded log tail without changing its height preserves follow mode.");
+        foreach (var (previous, next) in new[] { ("", "new"), ("abcabc", "abc"), ("aaaa", "aaab"), ("old\nretained\n", "retained\nnew\n"), ("x", ""), ("🇯🇵\n", "🇯🇵\nnext") })
+        {
+            box.Text = previous;
+            LogAutoScroll.Replace(box, next);
+            Assert(box.Text == next, "Incremental log replacement handles rolling tails, repeated prefixes, empty text and Unicode.");
+        }
+        Layout(window);
     }
 
     private static T RuleField<T>(RuleWindow window, string name) =>

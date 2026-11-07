@@ -24,13 +24,16 @@ public sealed class ConnectionRow(string process, string destination, string net
     public void Update(ConnectionRow row)
     {
         if (Id != row.Id) throw new ArgumentException("Connection identifiers differ.");
-        if (Process == row.Process && Destination == row.Destination && Network == row.Network && Route == row.Route &&
-            Upload == row.Upload && Download == row.Download && RouteGroup == row.RouteGroup &&
-            UploadedBytes == row.UploadedBytes && DownloadedBytes == row.DownloadedBytes) return;
-        Process = row.Process; Destination = row.Destination; Network = row.Network; Route = row.Route;
-        Upload = row.Upload; Download = row.Download; RouteGroup = row.RouteGroup;
-        UploadedBytes = row.UploadedBytes; DownloadedBytes = row.DownloadedBytes;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+        if (Process != row.Process) { Process = row.Process; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Process))); }
+        if (Destination != row.Destination) { Destination = row.Destination; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Destination))); }
+        if (Network != row.Network) { Network = row.Network; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Network))); }
+        if (Route != row.Route) { Route = row.Route; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Route))); }
+        if (Upload != row.Upload) { Upload = row.Upload; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Upload))); }
+        if (Download != row.Download) { Download = row.Download; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Download))); }
+        if (RouteGroup != row.RouteGroup) { RouteGroup = row.RouteGroup; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RouteGroup))); }
+        if (UploadedBytes != row.UploadedBytes) { UploadedBytes = row.UploadedBytes; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UploadedBytes))); }
+        if (DownloadedBytes != row.DownloadedBytes) { DownloadedBytes = row.DownloadedBytes; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DownloadedBytes))); }
+
     }
 }
 public sealed record ConnectionSnapshot(IReadOnlyList<ConnectionRow> Rows, int Total, long Upload, long Download)
@@ -39,6 +42,14 @@ public sealed record ConnectionSnapshot(IReadOnlyList<ConnectionRow> Rows, int T
     {
         var connections = root["connections"]?.AsArray() ?? new JsonArray();
         var rows = new List<ConnectionRow>();
+        string activeName = settings.ActiveProfile?.Name ?? Ui.T("Proxy");
+        var profiles = settings.Profiles.ToDictionary(profile => profile.Id, profile => profile.Name);
+        string Name(string tag) => tag switch
+        {
+            "direct" => Ui.T("System"), "proxy" => activeName,
+            _ when tag.StartsWith("profile:", StringComparison.Ordinal) => profiles.GetValueOrDefault(tag[8..]) ?? Ui.T("Profile"),
+            _ => tag
+        };
         foreach (var item in connections)
         {
             // The API explicitly marks fallback routes as final; equal outbounds can still match different rules.
@@ -51,7 +62,7 @@ public sealed record ConnectionSnapshot(IReadOnlyList<ConnectionRow> Rows, int T
             string rule = item?["rule"]?.ToString() ?? "";
             bool blocked = tags.Any(tag => tag is "block" or "reject") || rule == "reject" || rule.Contains("=> reject", StringComparison.OrdinalIgnoreCase);
             int group = blocked ? 1 : tags.Any(tag => tag == "proxy" || tag.StartsWith("profile:", StringComparison.Ordinal)) ? 0 : 2;
-            string route = blocked ? Ui.T("Blocked") : string.Join(" → ", tags.Select(tag => RouteName(tag, settings)));
+            string route = blocked ? Ui.T("Blocked") : string.Join(" → ", tags.Select(Name));
             rows.Add(new ConnectionRow(metadata?["processPath"]?.ToString() ?? "—", $"{host}:{metadata?["destinationPort"]}",
                 metadata?["network"]?.ToString()?.ToUpperInvariant() ?? "—", route,
                 Bytes(item?["upload"]?.GetValue<long>() ?? 0), Bytes(item?["download"]?.GetValue<long>() ?? 0), group,
@@ -72,9 +83,8 @@ public sealed record ConnectionSnapshot(IReadOnlyList<ConnectionRow> Rows, int T
 
     public static string Bytes(double value)
     {
-        var units = new[] { Ui.T("B"), Ui.T("KiB"), Ui.T("MiB"), Ui.T("GiB") };
         int unit = 0;
-        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
-        return $"{value:0.#} {units[unit]}";
+        while (value >= 1024 && unit < 3) { value /= 1024; unit++; }
+        return $"{value:0.#} {Ui.T(unit switch { 0 => "B", 1 => "KiB", 2 => "MiB", _ => "GiB" })}";
     }
 }

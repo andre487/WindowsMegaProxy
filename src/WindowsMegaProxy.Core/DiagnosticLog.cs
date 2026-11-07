@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -12,7 +13,12 @@ public sealed class DiagnosticLog
     private readonly string directory;
     private long limit = 5 * 1024 * 1024;
     public event Action? Changed;
-    public DiagnosticLog(string directory) => this.directory = directory;
+    public DiagnosticLog(string directory, int initialLimit = 5)
+    {
+        if (initialLimit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(initialLimit));
+        this.directory = directory;
+        limit = initialLimit * 1024L * 1024;
+    }
 
     public void SetLimit(int megabytes)
     {
@@ -35,9 +41,12 @@ public sealed class DiagnosticLog
         return text.Length > 4096 ? text[..4096] : text;
     }
 
-    public void Write(string message)
+    public void Write(string message) => WriteBatch([message]);
+
+    internal void WriteBatch(IEnumerable<string> messages)
     {
-        var line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {Redact(message)}{Environment.NewLine}";
+        var line = string.Concat(messages.Select(message => $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {Redact(message)}{Environment.NewLine}"));
+        if (line.Length == 0) return;
         lock (gate)
         {
             Directory.CreateDirectory(directory);
@@ -73,6 +82,46 @@ public sealed class DiagnosticLog
                 return reader.ReadToEnd();
             }));
             return tailOnly && text.Length > 64000 ? text[^64000..] : text;
+        }
+    }
+
+    public void Export(string destination)
+    {
+        var inputs = new List<(FileStream Stream, long Length)>();
+        string temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            lock (gate)
+            {
+                foreach (string name in new[] { "previous.log", "current.log" })
+                {
+                    string path = Path.Combine(directory, name);
+                    if (!File.Exists(path)) continue;
+                    var input = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    inputs.Add((input, input.Length));
+                }
+            }
+            using (var output = File.Create(temporary))
+            {
+                var buffer = new byte[81920];
+                foreach (var input in inputs)
+                {
+                    long remaining = input.Length;
+                    while (remaining > 0)
+                    {
+                        int count = input.Stream.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining));
+                        if (count == 0) throw new EndOfStreamException("The log snapshot was truncated during export.");
+                        output.Write(buffer, 0, count);
+                        remaining -= count;
+                    }
+                }
+            }
+            File.Move(temporary, destination, true);
+        }
+        finally
+        {
+            foreach (var input in inputs) input.Stream.Dispose();
+            if (File.Exists(temporary)) File.Delete(temporary);
         }
     }
 }

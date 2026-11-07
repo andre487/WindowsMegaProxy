@@ -53,16 +53,16 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
     {
         try
         {
-            if (Engine is not null) { await Engine.StopAsync(); Engine.Dispose(); Engine = null; }
+            if (Engine is not null) { await Task.Run(Engine.StopAsync); Engine.Dispose(); Engine = null; }
             var current = Engine = createEngine();
             current.Exited += () => { if (Engine == current && State == ConnectionState.Connected && !closing) UnexpectedExit?.Invoke(); };
-            await current.StartAsync(settings, cancellationToken: token);
+            await Task.Run(() => current.StartAsync(settings, cancellationToken: token), token);
             token.ThrowIfCancellationRequested();
             State = ConnectionState.Connected;
         }
         catch
         {
-            try { if (Engine is not null) await Engine.StopAsync(); }
+            try { if (Engine is not null) await Task.Run(Engine.StopAsync); }
             finally { Engine?.Dispose(); Engine = null; if (State != ConnectionState.Disconnecting) State = ConnectionState.Disconnected; }
             throw;
         }
@@ -86,7 +86,7 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
         try
         {
             try { await diagnosticTask; } catch (Exception) { /* The diagnostic caller reports the failure. */ }
-            if (Engine is not null) await Engine.StopAsync();
+            if (Engine is not null) await Task.Run(Engine.StopAsync);
         }
         finally { Engine?.Dispose(); Engine = null; State = ConnectionState.Disconnected; Changed?.Invoke(); }
     }
@@ -112,14 +112,14 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
             if (target?.Running != true)
             {
                 target = temporary = createEngine();
-                await target.StartAsync(settings, testOnly: true, cancellationToken: token);
+                await Task.Run(() => target.StartAsync(settings, testOnly: true, cancellationToken: token), token);
             }
             await action(target, token);
             return true;
         }
         finally
         {
-            try { if (temporary is not null) await temporary.StopAsync(); }
+            try { if (temporary is not null) await Task.Run(temporary.StopAsync); }
             finally { temporary?.Dispose(); diagnostic?.Dispose(); diagnostic = null; IsTesting = false; Changed?.Invoke(); }
         }
     }

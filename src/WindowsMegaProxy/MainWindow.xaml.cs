@@ -37,11 +37,22 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ConnectionRow> connectionRows = new();
     private readonly ListCollectionView connectionView;
     private readonly bool startInTray;
-    private readonly Action<Settings> persistSettings;
+    private readonly SettingsWriter settingsWriter;
+    private readonly BackgroundLog logWriter;
+    private SettingsAnalysis? analysis, durable;
+    private Task settingsUpdate = Task.CompletedTask, analysisTask = Task.CompletedTask;
+    private long settingsRevision, durableRevision, analysisRevision, logVersion, displayedLogVersion;
+    private bool settingsReady, settingsLoading, readingLog;
+    private readonly object diagnosticGate = new();
+    private readonly System.Collections.Generic.Queue<string> diagnosticEntries = new();
+    private int diagnosticLength;
+    private bool diagnosticWriting;
+    private Task diagnosticTextUpdate = Task.CompletedTask;
+    private readonly System.Collections.Generic.HashSet<Task> fileOperations = [];
     private readonly DiagnosticLog log;
     private readonly Func<bool, Task> setAutostart;
     private readonly Func<Task<bool>> getAutostart;
-    private bool applyingAutostart, logDirty;
+    private bool applyingAutostart;
     private bool speedRunning, diagnosticSucceeded;
     private readonly Func<Task> diagnosticsOnEnter;
     private Settings? checkedSettings;
@@ -74,12 +85,15 @@ public partial class MainWindow : Window
         Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null)
     {
         connection = connectionController ?? new ConnectionController(CreateEngine);
-        this.persistSettings = persistSettings ?? SettingsStore.Save;
+        settingsWriter = new SettingsWriter(persistSettings ?? SettingsStore.Save);
         this.setAutostart = setAutostart ?? Autostart.SetAsync;
         this.getAutostart = getAutostart ?? Autostart.IsEnabledAsync;
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
-        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"));
-        settings = SettingsStore.Load();
+        // Preserve existing log history until the saved limit has been loaded.
+        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
+        logWriter = new BackgroundLog(log);
+        logWriter.Failed += _ => Dispatcher.BeginInvoke(() => { if (!quitting) MessageText.Text = Ui.T("Could not write the log to disk."); });
+        settings = new Settings();
         UiTheme.Apply(settings.Language, settings.Theme, this);
         InitializeComponent();
         connectionView = new ListCollectionView(connectionRows) { IsLiveSorting = true, IsLiveGrouping = true };
@@ -88,11 +102,11 @@ public partial class MainWindow : Window
         connectionView.GroupDescriptions.Add(grouping);
         ConnectionsGrid.ItemsSource = connectionView;
         this.startInTray = startInTray;
-        log.SetLimit(settings.LogSizeMb);
         log.Changed += LogChanged;
         WriteLog("Application started.");
         rules = new ObservableCollection<RoutingRule>();
-        ApplySettings(settings);
+        settingsLoading = true;
+        ApplySettingsView(settings);
         RulesList.ItemsSource = rules;
         trayIcon = LoadIcon("tray.ico");
         lightTrayIcon = LoadIcon("tray-light.ico");
@@ -120,7 +134,7 @@ public partial class MainWindow : Window
         timer.Tick += async (_, _) =>
         {
             await RefreshConnectionsAsync();
-            RefreshLog();
+            await RefreshLogAsync();
         };
         timer.Start();
         DefaultActionBox.SelectionChanged += SettingsChanged;
@@ -138,6 +152,9 @@ public partial class MainWindow : Window
             if (Dispatcher.CheckAccess()) SetBusy(busy);
             else Dispatcher.BeginInvoke(() => SetBusy(busy));
         };
+        settingsLoading = true;
+        Sections.IsEnabled = false;
+        SetBusy(busy);
         connection.UnexpectedExit += () => Dispatcher.BeginInvoke(async () =>
         {
             if (quitting) return;
@@ -154,6 +171,11 @@ public partial class MainWindow : Window
         if (startInTray) Hide();
         try
         {
+            var loaded = await TrackFileAsync(Task.Run(SettingsStore.Load));
+            if (quitting) return;
+            ApplySettings(loaded);
+            await analysisTask;
+            ObserveLogTask(logWriter.SetLimitAsync(settings.LogSizeMb));
             bool enabled = await getAutostart();
             AutostartBox.IsChecked = enabled;
             if (settings.AutoConnect) await ToggleAsync();
@@ -173,9 +195,20 @@ public partial class MainWindow : Window
         return (Icon)icon.Clone();
     }
 
-    private void SaveSettings()
+    private Task SaveSettingsAsync() => CommitSettingsAsync(CaptureSettings());
+
+    private async Task<T> TrackFileAsync<T>(Task<T> operation)
     {
-        CommitSettings(CaptureSettings());
+        fileOperations.Add(operation);
+        try { return await operation; }
+        finally { fileOperations.Remove(operation); }
+    }
+
+    private async Task TrackFileAsync(Task operation)
+    {
+        fileOperations.Add(operation);
+        try { await operation; }
+        finally { fileOperations.Remove(operation); }
     }
 
     private Settings CaptureSettings()
@@ -189,46 +222,114 @@ public partial class MainWindow : Window
         updated.Theme = (string)((ComboBoxItem)ThemeBox.SelectedItem).Tag;
         updated.TlsFingerprint = (string)((ComboBoxItem)TlsFingerprintBox.SelectedItem).Tag;
         if (!applyingAutostart) updated.LaunchAtSignIn = AutostartBox.IsChecked == true;
-        updated.Rules = rules.ToList();
-        PortableConfiguration.ValidateSettings(updated);
+        updated.Rules = rules.Select(rule => rule.Copy()).ToList();
         return updated;
     }
 
-    private void CommitSettings(Settings updated)
+    private Task CommitSettingsAsync(Settings updated)
     {
-        ProfileAppearance.AssignMissingColors(updated.Profiles);
-        persistSettings(updated);
-        ApplySettings(updated);
-        log.SetLimit(updated.LogSizeMb);
-        WriteLog("Settings saved.");
-        SetBusy(busy);
+        long revision = ++settingsRevision;
+        ++analysisRevision;
+        settingsReady = analysis is not null && SettingsAnalysis.SameNetwork(analysis.Settings, updated);
+        ApplySettingsView(updated);
+        return settingsUpdate = CommitCoreAsync(updated, revision);
+    }
+
+    private async Task CommitCoreAsync(Settings updated, long revision)
+    {
+        try
+        {
+            var result = await settingsWriter.SaveAsync(updated);
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (revision >= durableRevision) { durable = result; durableRevision = revision; }
+                if (revision != settingsRevision) return;
+                analysis = result; settingsReady = true;
+                ApplySettingsView(result.Settings);
+                ObserveLogTask(logWriter.SetLimitAsync(result.Settings.LogSizeMb));
+                WriteLog("Settings saved.");
+            });
+        }
+        catch
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (revision != settingsRevision || durable is null) return;
+                analysis = durable; settingsReady = true;
+                ApplySettingsView(durable.Settings);
+            });
+            throw;
+        }
+    }
+
+    private async Task FlushSettingsAsync()
+    {
+        bool reportedFailure = settingsUpdate.IsFaulted;
+        try { await settingsUpdate; }
+        catch when (reportedFailure) { }
+        await analysisTask;
+        await settingsWriter.FlushAsync();
     }
 
     private void ApplySettings(Settings updated)
     {
+        settingsLoading = false;
+        settingsReady = false;
+        ApplySettingsView(updated);
+        analysisTask = AnalyzeViewAsync(updated, ++analysisRevision);
+    }
+
+    private async Task AnalyzeViewAsync(Settings updated, long revision)
+    {
+        var previous = analysis;
+        var result = await Task.Run(() => SettingsAnalysis.Prepare(updated, previous));
+        await Dispatcher.InvokeAsync(() =>
+        {
+            if (revision != analysisRevision || !ReferenceEquals(settings, updated)) return;
+            analysis = durable = result; settingsReady = true;
+            Sections.IsEnabled = true;
+            ApplySettingsView(result.Settings);
+        });
+    }
+
+    private void ApplySettingsView(Settings updated)
+    {
+        bool first = ProfilePicker.ItemsSource is null;
+        bool languageChanged = first || settings.Language != updated.Language;
+        bool appearanceChanged = languageChanged || settings.Theme != updated.Theme;
+        var shownProfiles = ProfilePicker.ItemsSource as System.Collections.Generic.IReadOnlyList<ProxyProfile>;
+        bool profilesChanged = shownProfiles is null || shownProfiles.Count != updated.Profiles.Count ||
+            !shownProfiles.Zip(updated.Profiles).All(pair => System.Text.Json.Nodes.JsonNode.DeepEquals(pair.First.Data, pair.Second.Data));
+        bool rulesChanged = first || rules.Count != updated.Rules.Count || !rules.Zip(updated.Rules).All(pair =>
+            pair.First.Source == pair.Second.Source && pair.First.Path == pair.Second.Path && pair.First.Destination == pair.Second.Destination &&
+            pair.First.Action == pair.Second.Action && pair.First.ProfileId == pair.Second.ProfileId);
+        string? selected = (ProfilesList.SelectedItem as ProxyProfile)?.Id;
+        int selectedRule = RulesList.SelectedIndex;
         updatingUi = true;
         try
         {
-            ProfileAppearance.AssignMissingColors(updated.Profiles);
             settings = updated;
-            UiTheme.Apply(updated.Language, updated.Theme, this);
+            if (appearanceChanged) UiTheme.Apply(updated.Language, updated.Theme, this);
             SelectTag(LanguageBox, updated.Language);
             SelectTag(ThemeBox, updated.Theme);
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
             ShowAllConnectionsBox.IsChecked = updated.ShowAllConnections;
-            ProfilePicker.ItemsSource = settings.Profiles;
-            ProfilePicker.SelectedItem = settings.ActiveProfile;
-            ProfilesList.ItemsSource = settings.Profiles;
-            ProfilesList.SelectedItem = settings.ActiveProfile;
+            if (profilesChanged)
+            {
+                ProfilePicker.ItemsSource = ProfilesList.ItemsSource = settings.Profiles;
+                ProfilesList.SelectedItem = settings.Profiles.FirstOrDefault(profile => profile.Id == selected) ?? settings.ActiveProfile;
+            }
+            ProfilePicker.SelectedItem = ((System.Collections.Generic.IEnumerable<ProxyProfile>)ProfilePicker.ItemsSource!).FirstOrDefault(profile => profile.Id == settings.ActiveProfileId);
             SelectTag(DefaultActionBox, settings.DefaultAction);
             BypassLanBox.IsChecked = settings.BypassLan;
             AutoConnectBox.IsChecked = settings.AutoConnect;
             AutostartBox.IsChecked = settings.LaunchAtSignIn == true;
             LogSizeBox.Text = settings.LogSizeMb.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            rules.Clear();
-            foreach (var rule in settings.Rules)
+            if (rulesChanged)
             {
-                rules.Add(rule);
+                rules.Clear();
+                foreach (var rule in settings.Rules) rules.Add(rule);
+                RulesList.SelectedIndex = Math.Min(selectedRule, rules.Count - 1);
             }
         }
         finally { updatingUi = false; }
@@ -237,16 +338,19 @@ public partial class MainWindow : Window
         {
             bool connected = engine?.Running == true;
             StatusText.Text = Ui.T(connected ? "Connected" : "Disconnected");
-            ConnectButton.Content = trayConnect.Header = Ui.T(connected ? "Disconnect" : "Connect");
             trayOpen.Header = Ui.T("Open MegaProxy");
             trayExit.Header = Ui.T("Exit");
             tray.Text = Ui.T(connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
             SetBusy(busy);
         }
-        SpeedSizeChanged(this, null!);
-        if (diagnosticSucceeded && lastDiagnosticResult is not null && checkedSettings is not null)
-            CompleteDiagnostics(lastDiagnosticResult, checkedSettings);
-        if (lastSpeedResults is { } results) UpdateSpeedResults(results.Direct, results.Profile);
+        if (languageChanged)
+        {
+            foreach (var profile in (System.Collections.Generic.IEnumerable<ProxyProfile>)ProfilePicker.ItemsSource!) profile.RefreshLanguage();
+            foreach (var rule in rules) rule.RefreshLanguage();
+            SpeedSizeChanged(this, null!);
+            if (diagnosticSucceeded && lastDiagnosticResult is not null && checkedSettings is not null) CompleteDiagnostics(lastDiagnosticResult, checkedSettings);
+            if (lastSpeedResults is { } results) UpdateSpeedResults(results.Direct, results.Profile);
+        }
     }
 
     private void UpdateProfileSummary()
@@ -263,7 +367,7 @@ public partial class MainWindow : Window
         if (!connected && profile is not null && error is not null) ProfileSummary.Text += " · " + error;
     }
 
-    private bool CanConnect() => ConnectionError() is null;
+    private bool CanConnect() => !settingsLoading && settingsReady && ConnectionError() is null;
 
     private IEngine CreateEngine()
     {
@@ -276,9 +380,9 @@ public partial class MainWindow : Window
         return result;
     }
 
-    private void SaveSshHostKey(SshHostKeyUpdate update)
+    private async Task SaveSshHostKey(SshHostKeyUpdate update)
     {
-        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => SaveSshHostKey(update)); return; }
+        if (!Dispatcher.CheckAccess()) { await Dispatcher.InvokeAsync(() => SaveSshHostKey(update)).Task.Unwrap(); return; }
         var updated = PortableConfiguration.Copy(settings);
         var profile = updated.Profiles.FirstOrDefault(item => item.Id == update.ProfileId);
         if (profile is null || profile.Type != "SSH" || profile.Port != update.Port ||
@@ -288,27 +392,26 @@ public partial class MainWindow : Window
         if (profile.Data["windows"] is not System.Text.Json.Nodes.JsonObject) profile.Data["windows"] = new System.Text.Json.Nodes.JsonObject();
         profile.Data["windows"]!["sshHostKey"] = update.PublicKey;
         profile.Proxy["trustedHostKey"] = update.Fingerprint;
-        CommitSettings(updated);
+        await CommitSettingsAsync(updated);
+        var persisted = durable?.Settings.Profiles.FirstOrDefault(item => item.Id == update.ProfileId);
+        if (persisted is null || persisted.Type != "SSH" || !string.Equals(persisted.Host.Trim('[', ']'), update.Host.Trim('[', ']'), StringComparison.OrdinalIgnoreCase) || persisted.Port != update.Port ||
+            persisted.Proxy["trustedHostKey"]?.ToString() != update.Fingerprint)
+            throw new InvalidOperationException(Ui.T("The SSH profile changed during key verification. Connect again."));
         WriteLog("Saved the verified SSH server key.");
     }
 
-    private string? ConnectionError()
-    {
-        try { Configuration.Build(settings, 9999, "validation", allowUnresolvedSsh: true); return null; }
-        catch (ArgumentException error) { return error.Message; }
-        catch (System.IO.InvalidDataException error) { return error.Message; }
-    }
+    private string? ConnectionError() => settingsReady ? analysis?.Error : null;
 
-    private void ProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void ProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (updatingUi || quitting || ProfilePicker.SelectedItem is not ProxyProfile profile) return;
         try
         {
             var updated = CaptureSettings();
             updated.ActiveProfileId = profile.Id;
-            CommitSettings(updated);
+            await CommitSettingsAsync(updated);
         }
-        catch (Exception error) { ApplySettings(settings); ShowError(error); }
+        catch (Exception error) { ShowError(error); }
     }
 
     private void AddProfileClick(object sender, RoutedEventArgs e) => EditProfile(ProxyProfile.Create(), isNew: true);
@@ -324,7 +427,7 @@ public partial class MainWindow : Window
         copy.Data["name"] = profile.Name + Ui.T(" — copy");
         EditProfile(copy, isNew: true);
     }
-    private void EditProfile(ProxyProfile profile, bool isNew)
+    private async void EditProfile(ProxyProfile profile, bool isNew)
     {
         var dialog = new ProfileWindow(profile, settings.Profiles) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Profile is null) return;
@@ -334,12 +437,12 @@ public partial class MainWindow : Window
             if (isNew) updated.Profiles.Add(dialog.Profile);
             else updated.Profiles[updated.Profiles.FindIndex(item => item.Id == profile.Id)] = dialog.Profile;
             if (updated.ActiveProfile is null) updated.ActiveProfileId = dialog.Profile.Id;
-            CommitSettings(updated);
+            await CommitSettingsAsync(updated);
             ProfilesList.SelectedItem = settings.Profiles.First(item => item.Id == dialog.Profile.Id);
         }
         catch (Exception error) { ShowError(error); }
     }
-    private void DeleteProfileClick(object sender, RoutedEventArgs e)
+    private async void DeleteProfileClick(object sender, RoutedEventArgs e)
     {
         if (ProfilesList.SelectedItem is not ProxyProfile profile) return;
         try
@@ -350,7 +453,7 @@ public partial class MainWindow : Window
             var updated = CaptureSettings();
             updated.Profiles.RemoveAll(item => item.Id == profile.Id);
             if (updated.ActiveProfile is null) updated.ActiveProfileId = updated.Profiles.FirstOrDefault()?.Id;
-            CommitSettings(updated);
+            await CommitSettingsAsync(updated);
         }
         catch (Exception error) { ShowError(error); }
     }
@@ -364,31 +467,44 @@ public partial class MainWindow : Window
         _ => false
     };
 
-    private void ImportClick(object sender, RoutedEventArgs e)
+    private async void ImportClick(object sender, RoutedEventArgs e)
     {
-        if (busy) return;
+        if (busy || quitting) return;
         var dialog = new OpenFileDialog { Filter = "MegaProxy JSON|*.json", CheckFileExists = true };
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            var updated = PortableConfiguration.Import(PortableConfiguration.ReadFile(dialog.FileName), CaptureSettings());
-            CommitSettings(updated);
+            string text = await TrackFileAsync(Task.Run(() => PortableConfiguration.ReadFile(dialog.FileName)));
+            if (quitting) return;
+            Settings updated;
+            while (true)
+            {
+                long revision = settingsRevision;
+                var current = CaptureSettings();
+                updated = await TrackFileAsync(Task.Run(() => PortableConfiguration.Import(text, current)));
+                if (quitting) return;
+                if (revision == settingsRevision) break;
+            }
+            await CommitSettingsAsync(updated);
             int unsupported = settings.Profiles.Count(profile => !profile.Supported);
             MessageText.Text = Ui.F("Imported {0} profiles; unsupported connection types: {1}. Windows startup was not changed.", settings.Profiles.Count, unsupported);
         }
         catch (Exception error) { ShowError(error); }
     }
 
-    private void ExportClick(object sender, RoutedEventArgs e)
+    private async void ExportClick(object sender, RoutedEventArgs e)
     {
+        if (quitting) return;
         try
         {
             var options = new ExportWindow { Owner = this };
             if (options.ShowDialog() != true) return;
-            var document = PortableConfiguration.Export(CaptureSettings(), options.IncludePasswords, options.IncludePrivateKeys);
+            var snapshot = CaptureSettings();
+            var document = await TrackFileAsync(Task.Run(() => PortableConfiguration.Export(snapshot, options.IncludePasswords, options.IncludePrivateKeys)));
+            if (quitting) return;
             var dialog = new SaveFileDialog { FileName = "MegaProxy.json", DefaultExt = ".json", Filter = "MegaProxy JSON|*.json", AddExtension = true };
             if (dialog.ShowDialog(this) != true) return;
-            SettingsStore.WriteAtomic(dialog.FileName, document.ToJsonString(Configuration.JsonOptions));
+            await TrackFileAsync(Task.Run(() => SettingsStore.WriteAtomic(dialog.FileName, document.ToJsonString(Configuration.JsonOptions))));
             MessageText.Text = Ui.T("MegaProxy.json exported.");
         }
         catch (Exception error) { ShowError(error); }
@@ -414,7 +530,7 @@ public partial class MainWindow : Window
                 if (settings.ActiveProfile is { Type: "HTTPS" or "HTTPS_JUMP" or "MASQUE" } selected &&
                     (selected.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() == true || selected.Type == "HTTPS_JUMP" && selected.Proxy["jump"]?["allowInvalidProxyCertificate"]?.GetValue<bool>() == true) &&
                     MessageBox.Show(this, Ui.T("Proxy certificate verification is disabled in this profile. Connect with this exception?"), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-                SaveSettings();
+                await SaveSettingsAsync();
                 if (settings.ActiveProfile is { Type: "SSH" } ssh && ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() == true &&
                     MessageBox.Show(this, Ui.T("SSH server identity verification is disabled in this profile. Connect with this exception?"), "SSH", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
                 StatusText.Text = Ui.T("Connecting…");
@@ -436,19 +552,14 @@ public partial class MainWindow : Window
         ConnectButton.IsEnabled = !quitting && (connecting || !value && (engine?.Running == true || (!testing && CanConnect())));
         ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
         trayConnect.IsEnabled = ConnectButton.IsEnabled;
-        bool editable = !quitting;
+        bool editable = !quitting && !settingsLoading;
         ProfilePanel.IsEnabled = editable; RulesPanel.IsEnabled = editable;
         ProfilePicker.IsEnabled = editable;
         TestConnectionButton.IsEnabled = !value && !testing && (engine?.Running == true || CanConnect());
         SpeedOptionsPanel.IsEnabled = !testing;
         SpeedTestButton.IsEnabled = !value && diagnosticSucceeded && (!testing || speedRunning);
         ReconnectButton.IsEnabled = !value && !testing && engine?.Running == true && CanConnect();
-        bool changed = false;
-        if (engine?.Running == true)
-        {
-            try { changed = engine.AppliedSignature != Configuration.Signature(settings); }
-            catch (ArgumentException) { changed = true; }
-        }
+        bool changed = engine?.Running == true && (!settingsReady || engine.AppliedSignature != analysis?.Signature);
         ReconnectButton.Content = changed ? Ui.T("Reconnect •") : Ui.T("Reconnect");
         System.Windows.Automation.AutomationProperties.SetName(ReconnectButton,
             changed ? Ui.T("Reconnect and apply changes") : Ui.T("Reconnect"));
@@ -470,15 +581,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool CanPollConnections() => IsVisible && WindowState != WindowState.Minimized &&
+        ((TabItem)Sections.Items[0]).IsSelected && connection.State == ConnectionState.Connected && engine?.Running == true;
+
     private async Task RefreshConnectionsAsync()
     {
-        if (polling || engine?.Running != true) return;
+        if (!CanPollConnections()) { previousTrafficTime = default; return; }
+        if (polling) return;
         polling = true;
-        var current = engine;
+        var current = engine!;
+        bool showAll = ShowAllConnectionsBox.IsChecked == true;
+        string language = Ui.Language;
         try
         {
-            var snapshot = await current.GetConnectionsAsync(ShowAllConnectionsBox.IsChecked == true);
-            if (current != engine || !current.Running) return;
+            var snapshot = await Task.Run(() => current.GetConnectionsAsync(showAll));
+            if (current != engine || !CanPollConnections() || language != Ui.Language || showAll != (ShowAllConnectionsBox.IsChecked == true)) return;
             UpdateConnections(snapshot.Rows);
             ConnectionsHint.Text = Ui.F("Shown: {0} of {1}.", snapshot.Rows.Count, snapshot.Total);
             var now = DateTimeOffset.UtcNow;
@@ -511,21 +628,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SettingsChanged(object? sender, EventArgs e)
+    private async void SettingsChanged(object? sender, EventArgs e)
     {
         if (updatingUi || quitting) return;
         try
         {
             var updated = CaptureSettings();
-            persistSettings(updated);
-            settings = updated;
-            SetBusy(busy);
-            WriteLog("Settings saved.");
+            await CommitSettingsAsync(updated);
         }
         catch (Exception error)
         {
-            // CollectionChanged cannot restore the collection while its notification is being delivered.
-            Dispatcher.BeginInvoke(() => { ApplySettings(settings); SetBusy(busy); ShowError(error); });
+            ShowError(error);
         }
     }
 
@@ -544,7 +657,7 @@ public partial class MainWindow : Window
                 await setAutostart(requested);
                 var updated = CaptureSettings();
                 updated.LaunchAtSignIn = requested;
-                CommitSettings(updated);
+                await CommitSettingsAsync(updated);
             }
             catch
             {
@@ -609,11 +722,11 @@ public partial class MainWindow : Window
         await RefreshConnectionsAsync();
     }
 
-    private void PreferencesChanged(object sender, SelectionChangedEventArgs e)
+    private async void PreferencesChanged(object sender, SelectionChangedEventArgs e)
     {
         if (updatingUi || quitting) return;
-        try { CommitSettings(CaptureSettings()); }
-        catch (Exception error) { ApplySettings(settings); ShowError(error); }
+        try { await CommitSettingsAsync(CaptureSettings()); }
+        catch (Exception error) { ShowError(error); }
     }
 
     private async void ReconnectClick(object sender, RoutedEventArgs e)
@@ -735,8 +848,8 @@ public partial class MainWindow : Window
 
     private async void SectionsChanged(object sender, SelectionChangedEventArgs e)
     {
-        RefreshLog();
-        if (e.Source != Sections || !e.AddedItems.Contains(DiagnosticsTab) || !IsLoaded || updatingUi || quitting) return;
+        await RefreshLogAsync();
+        if (e.Source != Sections || !e.AddedItems.Contains(DiagnosticsTab) || !DiagnosticsTab.IsSelected || !IsLoaded || updatingUi || quitting) return;
         if (busy || testing) return;
         await diagnosticsOnEnter();
     }
@@ -763,7 +876,7 @@ public partial class MainWindow : Window
         }
         try
         {
-            if (engine?.Running == true && engine.AppliedSignature != Configuration.Signature(checkedSettings))
+            if (engine?.Running == true && !ReferenceEquals(checkedSettings, engine.AppliedSettings) && engine.AppliedSignature != (await Task.Run(() => Configuration.Signature(checkedSettings))))
                 throw new InvalidOperationException(Ui.T("The connection changed. Run diagnostics again before testing speed."));
             await connection.RunDiagnosticsAsync(checkedSettings, async (target, cancellation) =>
             {
@@ -820,35 +933,69 @@ public partial class MainWindow : Window
 
     private void AppendDiagnosticEntry(string message)
     {
-        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(() => AppendDiagnosticEntry(message)); return; }
         if (quitting) return;
-        LogAutoScroll.Append(TestLogText, $"{DateTime.Now:HH:mm:ss} {DiagnosticLog.Redact(message)}{Environment.NewLine}");
-    }
-
-    private void LogChanged() => logDirty = true;
-
-    private void WriteLog(string message)
-    {
-        try { log.Write(message); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        string entry = $"{DateTime.Now:HH:mm:ss} {(message.Length > 8192 ? message[..8192] : message)}{Environment.NewLine}";
+        lock (diagnosticGate)
         {
-            if (quitting) return;
-            Dispatcher.BeginInvoke(() => { if (!quitting) MessageText.Text = Ui.T("Could not write the log to disk."); });
+            diagnosticEntries.Enqueue(entry); diagnosticLength += entry.Length;
+            while (diagnosticLength > 64000) diagnosticLength -= diagnosticEntries.Dequeue().Length;
+            if (!diagnosticWriting) { diagnosticWriting = true; diagnosticTextUpdate = Task.Run(DrainDiagnosticTextAsync); }
         }
     }
 
-    private void RefreshLog()
+    private async Task DrainDiagnosticTextAsync()
     {
-        if (!logDirty || !((TabItem)Sections.Items[^1]).IsSelected || LogText.SelectionLength > 0) return;
-        try { LogAutoScroll.Replace(LogText, log.Read(tailOnly: true)); logDirty = false; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { MessageText.Text = Ui.T("Could not read the log."); }
+        while (true)
+        {
+            string[] batch;
+            lock (diagnosticGate)
+            {
+                if (diagnosticEntries.Count == 0) { diagnosticWriting = false; return; }
+                batch = diagnosticEntries.ToArray(); diagnosticEntries.Clear(); diagnosticLength = 0;
+            }
+            string text = string.Concat(batch.Select(entry => DiagnosticLog.Redact(entry).TrimEnd('\r', '\n') + Environment.NewLine));
+            await Dispatcher.InvokeAsync(() => { if (!quitting) LogAutoScroll.Append(TestLogText, text); });
+        }
     }
 
-    private void ExportLogClick(object sender, RoutedEventArgs e)
+    private void LogChanged() => Interlocked.Increment(ref logVersion);
+
+    private void WriteLog(string message) => logWriter.Write(message);
+
+    private async void ObserveLogTask(Task task)
     {
+        try { await task; }
+        catch (Exception) { if (!quitting) await Dispatcher.InvokeAsync(() => MessageText.Text = Ui.T("Could not write the log to disk.")); }
+    }
+
+    private async Task RefreshLogAsync()
+    {
+        if (quitting) return;
+        long version = Interlocked.Read(ref logVersion);
+        if (readingLog || !IsVisible || version == displayedLogVersion || !((TabItem)Sections.Items[^1]).IsSelected || LogText.SelectionLength > 0) return;
+        readingLog = true;
+        try
+        {
+            string text = await logWriter.ReadAsync(tailOnly: true);
+            if (!quitting && IsVisible && ((TabItem)Sections.Items[^1]).IsSelected && LogText.SelectionLength == 0)
+            {
+                LogAutoScroll.Replace(LogText, text);
+                displayedLogVersion = version;
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { MessageText.Text = Ui.T("Could not read the log."); }
+        finally { readingLog = false; }
+    }
+
+    private async void ExportLogClick(object sender, RoutedEventArgs e)
+    {
+        if (quitting) return;
         var dialog = new SaveFileDialog { FileName = "MegaProxy.log", Filter = Ui.T("Text log|*.log"), AddExtension = true };
         if (dialog.ShowDialog(this) != true) return;
-        try { SettingsStore.WriteAtomic(dialog.FileName, log.Read()); }
+        try
+        {
+            await TrackFileAsync(logWriter.ExportAsync(dialog.FileName));
+        }
         catch (Exception error) { ShowError(error); }
     }
 
@@ -858,7 +1005,7 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter) { SaveLogSize(); e.Handled = true; }
     }
 
-    private void SaveLogSize()
+    private async void SaveLogSize()
     {
         if (updatingUi || quitting || !IsLoaded) return;
         if (!int.TryParse(LogSizeBox.Text, out int size) || size is < 1 or > 100)
@@ -871,7 +1018,7 @@ public partial class MainWindow : Window
         try
         {
             var updated = CaptureSettings(); updated.LogSizeMb = size;
-            CommitSettings(updated);
+            await CommitSettingsAsync(updated);
             WriteLog("Log size changed.");
         }
         catch (Exception error) { ShowError(error); }
@@ -887,6 +1034,7 @@ public partial class MainWindow : Window
     }
     private void ShowError(Exception error)
     {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(() => ShowError(error)); return; }
         MessageText.Text = Ui.T(error.Message);
         WriteLog("Error: " + error.GetType().Name);
         if (!IsVisible) tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("Operation failed. Open the application window."), Forms.ToolTipIcon.Error);
@@ -914,11 +1062,13 @@ public partial class MainWindow : Window
         connection.Cancel();
         try
         {
-            await connection.ShutdownAsync();
+            await Task.WhenAll(connection.ShutdownAsync(), FlushSettingsAsync(), diagnosticTextUpdate,
+                Task.WhenAll(fileOperations.ToArray()));
         }
         catch (Exception error) { MessageBox.Show(this, error.Message, Ui.T("Disconnecting")); }
         finally
         {
+            await logWriter.DisposeAsync();
             log.Changed -= LogChanged;
             SystemEvents.UserPreferenceChanged -= ThemeChanged;
             trayMenu.IsOpen = false; tray.Visible = false; tray.Dispose(); trayIcon.Dispose(); lightTrayIcon.Dispose(); connectedIcon.Dispose();

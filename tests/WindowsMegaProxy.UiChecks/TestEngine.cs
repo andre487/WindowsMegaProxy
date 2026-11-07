@@ -15,6 +15,8 @@ internal sealed class TestEngine : IEngine
     public bool HasProbeProfile => AppliedSettings is { } settings && Configuration.UsesProxy(settings);
     public bool Disposed { get; private set; }
     public int Stops { get; private set; }
+    public int Polls { get; private set; }
+    public int PollThread { get; private set; }
     public Func<CancellationToken, Task>? Start { get; set; }
     public event Action? Exited;
     public event Action<string>? Log;
@@ -30,7 +32,11 @@ internal sealed class TestEngine : IEngine
     public Task StopAsync() { Stops++; Running = false; return Task.CompletedTask; }
     public void Exit() { Running = false; Exited?.Invoke(); }
     public void Dispose() => Disposed = true;
-    public Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll) => Task.FromResult(new ConnectionSnapshot([], 0, 0, 0));
+    public Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)
+    {
+        Polls++; PollThread = Environment.CurrentManagedThreadId;
+        return Task.FromResult(new ConnectionSnapshot([], 0, 0, 0));
+    }
     public HttpClient CreateProbeClient(bool throughProfile) => throw new InvalidOperationException("UI fixtures must not send network traffic.");
     public Task<string> CheckHttp3Async(CancellationToken token) => Task.FromResult("");
 }

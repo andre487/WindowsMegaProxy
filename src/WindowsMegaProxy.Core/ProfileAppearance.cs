@@ -20,40 +20,62 @@ public static class ProfileAppearance
 {
     private static readonly ProfileColor[] Palette = Read<ProfileColor[]>("ProfileColors.json");
     private static readonly ProfileCountry[] CountryCatalog = Read<ProfileCountry[]>("Countries.json");
-    public static IReadOnlyList<ProfileColor> Colors => Palette.Select(color => color with { Name = Ui.T(color.Name) }).ToArray();
+    public static int ColorCount => Palette.Length;
+    private static readonly Dictionary<string, ProfileColor[]> LocalizedColors = new();
+    public static IReadOnlyList<ProfileColor> Colors
+    {
+        get
+        {
+            lock (LocalizedColors)
+                return LocalizedColors.TryGetValue(Ui.Language, out var colors) ? colors
+                    : LocalizedColors[Ui.Language] = Palette.Select(color => color with { Name = Ui.T(color.Name) }).ToArray();
+        }
+    }
     private static readonly Dictionary<string, ProfileCountry[]> LocalizedCountries = new();
-    public static IReadOnlyList<ProfileCountry> Countries => LocalizedCountries.TryGetValue(Ui.Language, out var countries) ? countries
-        : LocalizedCountries[Ui.Language] = CountryCatalog
-        .Select(country => country with { Name = CountryName(country.Code, country.Name) })
-        .OrderBy(country => country.Name, StringComparer.CurrentCulture)
-        .Prepend(new ProfileCountry("", Ui.T("Not specified"), -1)).ToArray();
+    public static IReadOnlyList<ProfileCountry> Countries
+    {
+        get
+        {
+            string language = Ui.Language;
+            var culture = CultureInfo.GetCultureInfo(language);
+            lock (LocalizedCountries)
+                return LocalizedCountries.TryGetValue(language, out var countries) ? countries
+                    : LocalizedCountries[language] = CountryCatalog
+                    .Select(country => country with { Name = CountryName(country.Code, country.Name, culture) })
+                    .OrderBy(country => country.Name, StringComparer.Create(culture, false))
+                    .Prepend(new ProfileCountry("", language == "ru" ? Ui.Russian["Not specified"] : "Not specified", -1)).ToArray();
+        }
+    }
 
     public static ProfileCountry Country(string code) => Countries.FirstOrDefault(country => country.Code == code)
         ?? new ProfileCountry("", code, -1);
 
     public static int NextColor(IEnumerable<ProxyProfile> profiles)
     {
-        var counts = new int[Colors.Count];
+        var counts = new int[ColorCount];
         foreach (var profile in profiles) counts[profile.ColorIndex]++;
         return Enumerable.Range(0, counts.Length).OrderBy(index => counts[index]).ThenBy(index => index).First();
     }
 
     public static int ColorForCountry(string code, int fallback)
     {
-        int preferred = Country(code).PreferredColor;
+        int preferred = CountryCatalog.FirstOrDefault(country => country.Code == code)?.PreferredColor ?? -1;
         return preferred >= 0 ? preferred : fallback;
     }
 
     public static void AssignMissingColors(IEnumerable<ProxyProfile> profiles)
     {
         var list = profiles.ToList();
-        var assigned = list.Where(profile => profile.Data["color"] is not null).ToList();
+        var counts = new int[ColorCount];
+        foreach (var profile in list.Where(profile => profile.Data["color"] is not null)) counts[profile.ColorIndex]++;
         foreach (var profile in list.Where(profile => profile.Data["color"] is null))
         {
-            profile.Data["color"] = ColorForCountry(profile.CountryCode, NextColor(assigned));
+            int fallback = Enumerable.Range(0, counts.Length).MinBy(index => counts[index]);
+            int color = ColorForCountry(profile.CountryCode, fallback);
+            profile.Data["color"] = color;
+            counts[color]++;
             if (profile.Data["windows"] is null) profile.Data["windows"] = new System.Text.Json.Nodes.JsonObject();
             if (profile.Data["windows"] is System.Text.Json.Nodes.JsonObject options && !options.ContainsKey("colorMode")) options["colorMode"] = "auto";
-            assigned.Add(profile);
         }
     }
 

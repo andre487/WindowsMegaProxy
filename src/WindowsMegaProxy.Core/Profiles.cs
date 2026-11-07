@@ -1,12 +1,15 @@
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace WindowsMegaProxy;
 
-public sealed class ProxyProfile
+public sealed class ProxyProfile : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public void RefreshLanguage() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CountryName)));
     public JsonObject Data { get; set; } = new();
 
     public ProxyProfile() { }
@@ -24,7 +27,7 @@ public sealed class ProxyProfile
     [JsonIgnore] public string Description => $"{Host}:{Port} · {Type}";
     [JsonIgnore] public string SelectionLabel => $"{Name} · {Type}";
     [JsonIgnore] public string Availability => Supported ? "" : Ui.T("This connection type is not supported by the Windows client yet");
-    [JsonIgnore] public int ColorIndex => (Data["color"]?.GetValue<int>() ?? 0) % ProfileAppearance.Colors.Count;
+    [JsonIgnore] public int ColorIndex => (Data["color"]?.GetValue<int>() ?? 0) % ProfileAppearance.ColorCount;
     [JsonIgnore] public string ColorHex => ProfileAppearance.Colors[ColorIndex].Hex;
     [JsonIgnore] public string CountryCode => Data["countryCode"]?.GetValue<string>() ?? "";
     [JsonIgnore] public string CountryName => ProfileAppearance.Country(CountryCode).Label;

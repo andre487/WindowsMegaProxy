@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -28,16 +29,38 @@ public sealed class Settings
     public List<RoutingRule> Rules { get; set; } = [];
 
     [JsonIgnore] public ProxyProfile? ActiveProfile => Profiles.FirstOrDefault(profile => profile.Id == ActiveProfileId);
+
+    public Settings Copy()
+    {
+        var result = (Settings)MemberwiseClone();
+        result.Profiles = Profiles.Select(profile => profile.Copy()).ToList();
+        result.Rules = Rules.Select(rule => rule.Copy()).ToList();
+        result.SharedOptions = (JsonObject)SharedOptions.DeepClone();
+        result.WindowsOptions = (JsonObject)WindowsOptions.DeepClone();
+        return result;
+    }
 }
 
-public sealed class RoutingRule
+public sealed class RoutingRule : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public void RefreshLanguage()
+    {
+        foreach (string name in new[] { nameof(SourceLabel), nameof(DestinationLabel), nameof(ActionLabel) })
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
     public string Source { get; set; } = "all";
     public string Path { get; set; } = "";
     public string Destination { get; set; } = "";
     public string Action { get; set; } = "proxy";
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ProfileId { get; set; }
     [JsonIgnore] public string? ProfileName { get; set; }
+    public RoutingRule Copy()
+    {
+        var copy = (RoutingRule)MemberwiseClone();
+        copy.PropertyChanged = null;
+        return copy;
+    }
     [JsonIgnore] public string SourceLabel => Source == "all" ? Ui.T("All applications") : Path;
     [JsonIgnore] public string DestinationLabel => Destination.Length == 0 ? Ui.T("All destinations") : Destination;
     [JsonIgnore] public string ActionLabel => Action switch

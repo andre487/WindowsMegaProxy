@@ -32,7 +32,7 @@ public sealed class Engine : IEngine
     public bool Http3Selected { get; private set; }
     public bool UsedHttp3Fallback { get; private set; }
     public Func<SshHostKeyUpdate, Task<bool>>? ConfirmSshHostKeyChange { get; set; }
-    public Action<SshHostKeyUpdate>? SaveSshHostKey { get; set; }
+    public Func<SshHostKeyUpdate, Task>? SaveSshHostKey { get; set; }
     private string[] outboundTags = [];
     private int probePort;
     private string probeSecret = "";
@@ -66,7 +66,7 @@ public sealed class Engine : IEngine
             var update = new SshHostKeyUpdate(ssh.Id, ssh.Name, ssh.Host, ssh.Port, previous, fingerprint, key);
             if (previous.Length > 0 && previous != fingerprint && (ConfirmSshHostKeyChange is null || !await ConfirmSshHostKeyChange(update)))
                 throw new InvalidOperationException("The SSH server key changed. Connection cancelled.");
-            if (previous != fingerprint || SshConfiguration.PublicKey(ssh) != key) SaveSshHostKey?.Invoke(update);
+            if ((previous != fingerprint || SshConfiguration.PublicKey(ssh) != key) && SaveSshHostKey is not null) await SaveSshHostKey(update).ConfigureAwait(false);
             if (ssh.Data["windows"] is not JsonObject) ssh.Data["windows"] = new JsonObject();
             ssh.Data["windows"]!["sshHostKey"] = key;
             ssh.Proxy["trustedHostKey"] = fingerprint;
@@ -184,9 +184,9 @@ public sealed class Engine : IEngine
 
     public async Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)
     {
-        using var response = await client.GetAsync("connections");
+        using var response = await client.GetAsync("connections").ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        var root = JsonNode.Parse(await response.Content.ReadAsStringAsync()) ?? throw new IOException("Empty core response.");
+        var root = JsonNode.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false)) ?? throw new IOException("Empty core response.");
         return ConnectionSnapshot.Parse(root, AppliedSettings!, showAll);
     }
 
@@ -289,7 +289,7 @@ public sealed class Engine : IEngine
 
     private async Task DrainAsync(StreamReader reader)
     {
-        try { while (await reader.ReadLineAsync() is { } line) Log?.Invoke(line); }
+        try { while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line) Log?.Invoke(line); }
         catch (ObjectDisposedException) { }
         catch (IOException) { }
     }
