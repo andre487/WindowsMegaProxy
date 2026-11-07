@@ -27,6 +27,10 @@ jobs:
       UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}\.tools\python
       UV_CACHE_DIR: ${{ github.workspace }}\.tools\uv-cache
     steps:
+      - name: "Release CI identity: PR ${{ github.event.pull_request.number }} head ${{ github.event.pull_request.head.sha }} base ${{ github.event.pull_request.base.sha }}"
+        if: github.event_name == 'pull_request'
+        run: echo Checking the recorded pull request revision and base.
+
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
