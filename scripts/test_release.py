@@ -1,6 +1,7 @@
 import io
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -144,6 +145,20 @@ class VirusTotalTests(unittest.TestCase):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class ReleaseRetryTests(unittest.TestCase):
+    def test_github_utf8_json_is_read_correctly_on_a_windows_ansi_locale(self):
+        payload = {"draft": False, "tag_name": TAG, "body": "Release notes: \u0441\u0431\u043e\u0440\u043a\u0430 \u65e5\u672c"}
+        encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        real_run = release.sp.run
+
+        def child(args, **kwargs):
+            # Reproduce a Windows runner's default even on UTF-8 development machines.
+            kwargs.setdefault("encoding", "cp1252")
+            return real_run([sys.executable, "-c", f"import sys; sys.stdout.buffer.write({encoded!r})"], **kwargs)
+
+        with patch.object(release.sp, "run", side_effect=child):
+            self.assertEqual(json.loads(release.gh("api", "synthetic")), payload)
+            self.assertEqual(release.release_state(REPO, TAG), payload)
+
     def test_github_failures_do_not_log_response_bodies(self):
         with patch.object(release.sp, "run", return_value=Mock(returncode=1, stderr="private-response", stdout="private-response")):
             with self.assertRaisesRegex(RuntimeError, "^GitHub command failed: release upload$"):
