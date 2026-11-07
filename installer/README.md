@@ -1,5 +1,7 @@
 # Installer and release builds
 
+Credential setup and local file locations: [local development secrets](LOCAL-SECRETS.md).
+
 Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in
 `artifacts/release-preview`. Preview manifests use disposable keys and have
 `preview: true`; do not distribute them as trusted updates.
@@ -8,8 +10,9 @@ The installer targets Windows 10/11 x64, requires one administrator approval,
 and installs the shared service and UI into Program Files. Both pinned official
 sing-box packages, including libcronet and embedded signed Wintun, are bundled.
 The installer downloads a checksum-verified .NET 10 Desktop Runtime from
-Microsoft only when the required version is missing. Optional SSH support uses
-the Windows OpenSSH Client capability. Python, uv and the .NET SDK are build
+Microsoft only when the required version is missing. SSH support uses the
+Windows OpenSSH Client capability and is selected by default; users can opt out.
+Python, uv and the .NET SDK are build
 tools only. Prerequisites are prepared before changing an existing service.
 
 Each installation uses a separate version directory. Existing clients close

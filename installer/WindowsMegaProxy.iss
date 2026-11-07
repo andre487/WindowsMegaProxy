@@ -32,7 +32,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
-Name: "ssh"; Description: "{cm:InstallSSH}"; Flags: unchecked
+Name: "ssh"; Description: "{cm:InstallSSH}"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [CustomMessages]
