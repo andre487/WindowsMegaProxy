@@ -1,5 +1,5 @@
 name: Prepare release
-run-name: Prepare v${{ inputs.version }}
+run-name: Release v${{ inputs.version }}
 
 on:
   workflow_dispatch:
@@ -21,10 +21,13 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: windows-2025
     timeout-minutes: 30
+    outputs:
+      pr: ${{ steps.identity.outputs.pr }}
+      head: ${{ steps.identity.outputs.head }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -38,3 +41,39 @@ jobs:
           OPENAI_RELEASE_MODEL: ${{ vars.OPENAI_RELEASE_MODEL || secrets.OPENAI_RELEASE_MODEL || 'gpt-5-mini' }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: scripts\tools.cmd scripts\prepare_release.py
+
+      - name: Record release PR identity
+        id: identity
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $prs = @(gh pr list --head "prepare-release/v$env:RELEASE_VERSION" --base main --state all --json number,headRefOid | ConvertFrom-Json)
+          if ($LASTEXITCODE -or $prs.Count -ne 1) { throw 'Cannot identify exactly one release PR' }
+          $pr = $prs[0]
+          "pr=$($pr.number)" >> $env:GITHUB_OUTPUT
+          "head=$($pr.headRefOid)" >> $env:GITHUB_OUTPUT
+
+  finalize:
+    needs: prepare
+    runs-on: windows-2025
+    timeout-minutes: 70
+    steps:
+      # Run trusted workflow source, never code from the generated release PR.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Wait for CI, squash merge and tag
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_PR: ${{ needs.prepare.outputs.pr }}
+          RELEASE_HEAD: ${{ needs.prepare.outputs.head }}
+        run: scripts\tools.cmd scripts\finish_release.py

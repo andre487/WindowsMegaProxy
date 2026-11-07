@@ -54,11 +54,17 @@ parts before note generation, without truncating the evidence. Set `RELEASE_BOT_
 contents and pull-request write access; a bot token lets the new PR trigger CI.
 Set `OPENAI_API_KEY`; optionally set the Actions variable `OPENAI_RELEASE_MODEL`
 (default: `gpt-5-mini`, with a same-named secret also supported). Generated notes
-are reviewed in the PR. Preparation does not merge, tag or publish automatically.
+remain visible in the PR. The explicitly requested workflow waits for full CI,
+squash merges the unchanged release PR and tags the merged commit. Tag creation
+starts publication. Failed, skipped or cancelled checks stop finalization.
+If main advances, rebase the release PR and restart preparation to check the new
+base. Retries reuse an existing release PR and never move an existing tag.
 
-1. Update both versions in `Directory.Build.props` (production and `-dev`) and
-   commit English/Russian notes as `release-notes/vX.Y.Z.md` in a reviewed PR.
-2. Merge after CI succeeds. Tag that main commit `vX.Y.Z` and push the tag.
+1. Run `Prepare release` on main with version `X.Y.Z`. It updates both versions
+   in `Directory.Build.props` and commits generated English/Russian notes as
+   `release-notes/vX.Y.Z.md` in the preparation PR.
+2. The workflow waits for the release PR CI, squash merges it and creates
+   `vX.Y.Z`. The tag points to the merged commit, which must also pass main CI.
 3. The Release action builds and publishes the installer, application archive,
    separate stable/H3 core archives, application source, signed update manifest
    and SHA256SUMS, plus VirusTotal reports for the installer and application ZIP.

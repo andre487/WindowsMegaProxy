@@ -38,13 +38,14 @@ Create a [fine-grained personal access token](https://github.com/settings/person
 - Resource owner: the repository owner.
 - Repository access: only `andre487/WindowsMegaProxy`.
 - Repository permissions: **Contents: Read and write**, **Pull requests: Read
-  and write**. Metadata read access is included automatically.
+  and write**, **Actions: Read** to inspect release CI. Metadata read access is included automatically.
 - Choose an expiration and record a renewal reminder.
 
 Save the token in `release-bot-token.txt`. The preparation action uses the
 repository secret `RELEASE_BOT_TOKEN`; local preparation uses `GH_TOKEN`.
-It creates a branch and PR, but does not merge, tag, edit workflows or manage
-repository secrets. An organization may require approval of the token.
+It creates a branch and PR, waits for full CI, squash merges the checked PR and
+creates its release tag. It does not edit workflows or manage repository secrets.
+An organization may require approval of the token.
 
 For ordinary local GitHub CLI work, prefer `gh auth login` with Windows secure
 credential storage. You do not need to export or duplicate that login's token.

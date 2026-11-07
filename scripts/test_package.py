@@ -46,6 +46,7 @@ class PackageTests(unittest.TestCase):
             notes = "Keep `code`, $() and Markdown literally."
             with patch.object(prepare_release, "ROOT", root), patch.object(prepare_release, "version", return_value="0.0.1"), \
                  patch.object(prepare_release, "generate_notes", return_value=(notes, "Описание")) as generate, \
+                 patch.object(prepare_release, "existing_release_pr", return_value=None), \
                  patch.object(prepare_release.sp, "run") as run, patch.object(prepare_release.sp, "check_output", return_value=""), \
                  patch.dict("os.environ", GH_TOKEN="test", RELEASE_VERSION="0.0.2"):
                 prepare_release.main()

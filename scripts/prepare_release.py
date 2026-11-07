@@ -1,4 +1,5 @@
 """Prepare a reviewable version/notes PR; publishing is handled by release.yml."""
+import json
 import os
 import re
 import subprocess as sp
@@ -7,6 +8,7 @@ from pathlib import Path
 
 from common import ROOT, cli
 from package import version
+from publish_release import gh
 from release_notes import generate_notes
 
 
@@ -21,6 +23,10 @@ def main():
     current = version()
     if tuple(map(int, target.split("."))) < tuple(map(int, current.split("."))):
         raise ValueError("Release version cannot go backwards.")
+    existing = existing_release_pr(target)
+    if existing:
+        print(f"Resuming release preparation PR #{existing}.")
+        return
     if sp.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip():
         raise RuntimeError("Release preparation requires a clean checkout.")
     english, russian = generate_notes(target)
@@ -41,8 +47,17 @@ def main():
     sp.run(["git", "push", "origin", branch], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory() as temporary:
         body = Path(temporary) / "body.md"
-        body.write_text(f"Prepare {tag}. After CI and review, merge and tag the main commit `{tag}` to publish.\n\n" + notes.read_text(encoding="utf-8"), encoding="utf-8")
+        body.write_text(f"Prepare {tag}. The requested release workflow waits for full CI, squash merges this PR and tags the merged commit `{tag}` to publish.\n\n" + notes.read_text(encoding="utf-8"), encoding="utf-8")
         sp.run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", tag, "--body-file", str(body)], cwd=ROOT, check=True)
+
+
+def existing_release_pr(target):
+    rows = json.loads(gh("pr", "list", "--head", "prepare-release/v" + target, "--base", "main", "--state", "all", "--json", "number,state"))
+    if not rows:
+        return None
+    if len(rows) != 1 or rows[0]["state"] not in ("OPEN", "MERGED"):
+        raise RuntimeError("Release preparation branch has an ambiguous or closed PR.")
+    return rows[0]["number"]
 
 
 if __name__ == "__main__":
