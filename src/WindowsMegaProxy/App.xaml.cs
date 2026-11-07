@@ -26,7 +26,8 @@ public partial class App : Application
         {
             try
             {
-                if (UserInstallation.IsUser) { UserInstallation.Launch(); Shutdown(); return; }
+                if (UserInstallation.IsUser)
+                    throw new UnauthorizedAccessException("The scheduled user application requires administrator privileges. Use its launcher or repair the installation.");
                 var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas" };
                 foreach (string argument in e.Args) start.ArgumentList.Add(argument);
                 Process.Start(start)?.Dispose();
