@@ -10,6 +10,8 @@ public static class UserInstallation
     public static string Sid => WindowsIdentity.GetCurrent().User!.Value;
     public static string RegistryPath => StartupConfiguration.RegistryPath + @"\UserInstallation";
     public static string TaskName => AppIdentity.Name + ".User." + Sid;
+    // Keep personal profiles out of the legacy store that system installs migrate to global settings.
+    public static string DataDirectory => Path.Combine(SettingsStore.DirectoryPath, "Personal");
     public static string ValidateMode(string mode) => StartupConfiguration.Validate(mode) == "service"
         ? throw new ArgumentException("Windows service mode is not available in a current-user installation.") : mode;
     public static string ProtectedRoot(string programFiles, string sid) =>

@@ -14,7 +14,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
         SetCurrentProcessExplicitAppUserModelID(AppIdentity.Name);
-        bool standalone = StartupConfiguration.Mode != "service";
+        bool standalone;
+        try { standalone = StartupConfiguration.Mode != "service"; }
+        catch (Exception error)
+        {
+            MessageBox.Show(Ui.T("Could not open the application: ") + error.Message, "MegaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
         if (standalone && !StartupConfiguration.IsElevated)
         {
             try

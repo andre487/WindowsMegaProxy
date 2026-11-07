@@ -24,15 +24,17 @@ internal static class Program
         if (args.Length == 2 && args[0] == "--user-settings-check")
         {
             if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new Exception("Installed settings fixtures require a disposable CI runner.");
+            var personalStore = new MachineSettingsStore(UserInstallation.DataDirectory, machine: false);
             if (args[1] == "seed")
             {
                 var profile = ProxyProfile.Create("Personal preservation check");
                 profile.Proxy["host"] = "personal.invalid";
                 profile.Proxy["password"] = "personal-synthetic-secret";
-                SettingsStore.PrepareDirectory();
-                SettingsStore.Save(new Settings { Profiles = [profile], AutoConnect = false });
+                personalStore.Save(new Settings { Profiles = [profile], AutoConnect = false });
             }
-            var personal = SettingsStore.Load();
+            var personal = personalStore.Load();
+            if (File.ReadAllText(Path.Combine(personalStore.DirectoryPath, "settings.json")).Contains("personal-synthetic-secret", StringComparison.Ordinal))
+                throw new Exception("Personal secrets must remain encrypted on disk.");
             if (personal.Profiles.Count != 1 || personal.Profiles[0].Name != "Personal preservation check" || personal.Profiles[0].Proxy["password"]?.ToString() != "personal-synthetic-secret")
                 throw new Exception("Personal settings were not preserved.");
             return;

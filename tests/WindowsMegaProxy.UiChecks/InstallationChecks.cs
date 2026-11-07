@@ -38,6 +38,8 @@ internal static class InstallationChecks
         File.Delete(leaseName);
         const string programFiles = @"C:\Program Files";
         const string sid = "S-1-5-21-100-200-300-1001";
+        if (UserInstallation.DataDirectory == SettingsStore.DirectoryPath || UserInstallation.DataDirectory == MachineSettingsStore.DefaultDirectory)
+            throw new Exception("Personal profiles must be isolated from both global and automatically migrated legacy settings.");
         if (UserInstallation.ValidateMode("manual") != "manual" || UserInstallation.ValidateMode("login") != "login")
             throw new Exception("User installations must support manual and sign-in launch.");
         foreach (string invalid in new[] { "service", "", "automatic" })

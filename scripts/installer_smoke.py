@@ -80,10 +80,10 @@ def main():
                 sp.run(["sc.exe", "sdset", "WindowsMegaProxy", original], check=True, capture_output=True)
         previous = current
         time.sleep(1)
+    check_user_install(setups[0], logs, data)
     sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'uninstall.log'}"], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
-    check_user_install(setups[0], logs, data)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
 
 
@@ -96,6 +96,8 @@ def check_user_install(setup, logs, global_data):
         raise RuntimeError("Refusing to alter an existing current-user installation.")
     namespace = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
     name = "WindowsMegaProxy.User." + sid
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
+        system_helper = winreg.QueryValueEx(key, "HelperPath")[0]
     previous = None
     for mode in ("manual", "login", "manual"):
         sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=" + mode,
@@ -108,6 +110,8 @@ def check_user_install(setup, logs, global_data):
         assert not (destination / "WindowsMegaProxy.exe").exists(), "Only the unprivileged launcher belongs in the user-writable install directory."
         assert (global_data / "preservation-check.txt").read_text() == "preserved"
         assert service_state("WindowsMegaProxy") is None
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
+            assert winreg.QueryValueEx(key, "HelperPath")[0] == system_helper, "A user install must preserve the system registration."
         for task_name, login in ((name, False), (name + ".Login", True)):
             task = sp.run(["schtasks.exe", "/Query", "/TN", task_name, "/XML"], capture_output=True, text=True)
             if login and mode != "login":
@@ -129,6 +133,13 @@ def check_user_install(setup, logs, global_data):
                 time.sleep(0.2)
             else:
                 raise RuntimeError("The protected scheduled user application did not open its window.")
+            sp.run([helper, "--set-mode", "login"], check=True, timeout=60)
+            for _ in range(150):
+                if "windowsmegaproxy.exe" in running_images() and workspace_windows("MegaProxy"):
+                    break
+                time.sleep(0.2)
+            else:
+                raise RuntimeError("Changing the user operating mode did not relaunch the scheduled application.")
             stop_workspace_app(dev=False, workspace_only=False)
             assert "sing-box.exe" not in running_images(), "The fixture must never activate TUN."
         previous = helper
@@ -138,9 +149,11 @@ def check_user_install(setup, logs, global_data):
     sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'user-uninstall.log'}"], check=True, timeout=120)
     for task_name in (name, name + ".Login"):
         assert sp.run(["schtasks.exe", "/Query", "/TN", task_name], capture_output=True).returncode != 0
-    assert (local / "WindowsMegaProxy/settings.json").is_file(), "Personal settings must survive uninstall."
+    assert (local / "WindowsMegaProxy/Personal/settings.json").is_file(), "Personal settings must survive uninstall."
     assert not list(protected.rglob("user-installation.sid")), "Uninstall must remove markers from every installed version."
     assert (global_data / "preservation-check.txt").read_text() == "preserved"
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
+        assert winreg.QueryValueEx(key, "HelperPath")[0] == system_helper, "User uninstall must preserve the system registration."
     print("Current-user install/repair, protected highest-privilege tasks, personal DPAPI settings and uninstall passed.")
 
 

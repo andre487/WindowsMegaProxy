@@ -54,7 +54,11 @@ public static class StartupConfiguration
 
     public static Settings LoadLocal()
     {
-        if (UserInstallation.IsUser) return SettingsStore.Load();
+        if (UserInstallation.IsUser)
+        {
+            var personal = new MachineSettingsStore(UserInstallation.DataDirectory, machine: false);
+            return personal.Initialized ? personal.Load() : new Settings();
+        }
         var store = new MachineSettingsStore();
         if (AppIdentity.IsDev && File.Exists(Path.Combine(SettingsStore.DirectoryPath, "settings.json")) &&
             (!store.Initialized || System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(store.DirectoryPath, "settings.json")))?["scope"]?.GetValue<string>() != "machine"))
@@ -67,11 +71,11 @@ public static class StartupConfiguration
 
     public static void SaveLocal(Settings settings)
     {
-        if (UserInstallation.IsUser) { SettingsStore.Save(settings); return; }
+        if (UserInstallation.IsUser) { new MachineSettingsStore(UserInstallation.DataDirectory, machine: false).Save(settings); return; }
         new MachineSettingsStore().Save(settings);
     }
 
-    public static string LocalDirectory => UserInstallation.IsUser ? SettingsStore.DirectoryPath : MachineSettingsStore.DefaultDirectory;
+    public static string LocalDirectory => UserInstallation.IsUser ? UserInstallation.DataDirectory : MachineSettingsStore.DefaultDirectory;
 
     public static IDisposable ClaimRuntime(string? path = null)
     {

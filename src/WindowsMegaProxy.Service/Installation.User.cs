@@ -78,7 +78,8 @@ public static partial class Installation
         task.Settings.ExecutionTimeLimit = "PT0S";
         task.Settings.DisallowStartIfOnBatteries = false;
         task.Settings.StopIfGoingOnBatteries = false;
-        task.Settings.MultipleInstances = 2;
+        // A mode-switch helper may still belong to the old scheduled process tree during relaunch.
+        task.Settings.MultipleInstances = 0;
         if (login)
         {
             dynamic trigger = task.Triggers.Create(9);
