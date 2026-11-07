@@ -64,7 +64,7 @@ var TargetVersion: String;
 function VersionPath(Param: String): String;
 begin
   if TargetVersion = '' then
-    TargetVersion := ExpandConstant('{app}\versions\{#VersionDirectory}-') + GetDateTimeString('yyyymmddhhnnss', '', '');
+    TargetVersion := ExpandConstant('{app}\versions\{#VersionDirectory}-') + GetDateTimeString('yyyymmddhhnnss', '-', ':');
   Result := TargetVersion;
 end;
 
