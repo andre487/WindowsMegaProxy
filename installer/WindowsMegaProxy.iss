@@ -22,6 +22,7 @@ SetupIconFile={#RepositoryRoot}\src\WindowsMegaProxy\Assets\app.ico
 UninstallDisplayIcon={code:LaunchPath}
 Compression=lzma2
 SolidCompression=yes
+ArchiveExtraction=full
 WizardStyle=modern
 CloseApplications=no
 RestartApplications=no
@@ -64,8 +65,14 @@ Name: "{code:ProtectedUserRoot}"; Permissions: admins-full system-full users-rea
 Name: "{code:ProtectedUserRoot}\versions"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
 
 [Files]
-Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Excludes: "launcher\*,dependencies\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion; Check: IsUserInstall
+Source: "{tmp}\stable-core\{#StableCoreDirectory}\sing-box.exe"; DestDir: "{code:VersionPath}\dependencies\sing-box"; Flags: external ignoreversion
+Source: "{tmp}\stable-core\{#StableCoreDirectory}\libcronet.dll"; DestDir: "{code:VersionPath}\dependencies\sing-box"; Flags: external ignoreversion
+Source: "{tmp}\stable-core\{#StableCoreDirectory}\LICENSE"; DestDir: "{code:VersionPath}\dependencies\sing-box"; Flags: external ignoreversion
+Source: "{tmp}\h3-core\{#H3CoreDirectory}\sing-box.exe"; DestDir: "{code:VersionPath}\dependencies\sing-box-h3"; Flags: external ignoreversion
+Source: "{tmp}\h3-core\{#H3CoreDirectory}\libcronet.dll"; DestDir: "{code:VersionPath}\dependencies\sing-box-h3"; Flags: external ignoreversion
+Source: "{tmp}\h3-core\{#H3CoreDirectory}\LICENSE"; DestDir: "{code:VersionPath}\dependencies\sing-box-h3"; Flags: external ignoreversion
 
 [Icons]
 Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"
@@ -250,12 +257,35 @@ begin
   end;
 end;
 
+procedure VerifyCore(Directory, ExecutableHash, CronetHash: String);
+begin
+  if not FileExists(Directory + '\sing-box.exe') or not FileExists(Directory + '\libcronet.dll') then
+    RaiseException('Downloaded sing-box package is incomplete.');
+  if (CompareText(GetSHA256OfFile(Directory + '\sing-box.exe'), ExecutableHash) <> 0) or
+     (CompareText(GetSHA256OfFile(Directory + '\libcronet.dll'), CronetHash) <> 0) then
+    RaiseException('sing-box file checksum verification failed.');
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer; Download: TDownloadWizardPage;
 begin
   Result := '';
   try
     SelectedMode;
+    Download := CreateDownloadPage(CustomMessage('Prerequisites'), 'sing-box', nil);
+    try
+      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');
+      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');
+      Download.Show;
+      Download.Download;
+    finally
+      Download.Hide;
+      Download.Free;
+    end;
+    ExtractArchive(ExpandConstant('{tmp}\sing-box-stable.zip'), ExpandConstant('{tmp}\stable-core'), '', True, nil);
+    ExtractArchive(ExpandConstant('{tmp}\sing-box-h3.zip'), ExpandConstant('{tmp}\h3-core'), '', True, nil);
+    VerifyCore(ExpandConstant('{tmp}\stable-core\{#StableCoreDirectory}'), '{#StableCoreExecutableSHA256}', '{#StableCoreCronetSHA256}');
+    VerifyCore(ExpandConstant('{tmp}\h3-core\{#H3CoreDirectory}'), '{#H3CoreExecutableSHA256}', '{#H3CoreCronetSHA256}');
     if not RuntimeInstalled then begin
       Download := CreateDownloadPage(CustomMessage('Prerequisites'), '.NET Desktop Runtime', nil);
       try
@@ -292,6 +322,8 @@ var Code: Integer; Command: String;
 begin
   if Step = ssPostInstall then begin
     ConfigurationFailed := True;
+    VerifyCore(VersionPath('') + '\dependencies\sing-box', '{#StableCoreExecutableSHA256}', '{#StableCoreCronetSHA256}');
+    VerifyCore(VersionPath('') + '\dependencies\sing-box-h3', '{#H3CoreExecutableSHA256}', '{#H3CoreCronetSHA256}');
     if IsAdminInstallMode then Command := '--configure-mode ' else Command := '--configure-user ';
     Command := Command + SelectedMode + ' --automatic-updates ';
     if WizardIsTaskSelected('automaticupdates') then Command := Command + 'true' else Command := Command + 'false';

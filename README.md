@@ -52,6 +52,8 @@ SSH key verification requires the Windows OpenSSH Client optional feature.
 
 Early preview. HTTP/3 is experimental. SSH Jump and passphrase-protected SSH keys are not yet supported. Automatic failover to SSH requires a previously verified server key.
 
+See [antivirus classifications and upstream-core reports](docs/ANTIVIRUS.md) for known Kaspersky and DeepInstinct results.
+
 ## License
 
 See the [Privacy Policy](PRIVACY.md) for local storage, network requests and third-party services.

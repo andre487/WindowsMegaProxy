@@ -19,6 +19,7 @@ from dependencies import (
     CORE_VERSION,
     H3_CORE_VERSION,
     asset,
+    core_package,
     install_core,
     release,
     runtime_installer,
@@ -89,6 +90,16 @@ def compiler():
     if not executable.is_file():
         raise RuntimeError("Inno Setup compiler is missing.")
     return executable
+
+
+def core_installer_definitions(payload):
+    definitions = {}
+    for label, folder, http3 in (("StableCore", "sing-box", False), ("H3Core", "sing-box-h3", True)):
+        core = core_package(http3=http3)
+        definitions.update({label + "URL": core["url"], label + "SHA256": core["sha256"], label + "Directory": core["name"],
+                            label + "ExecutableSHA256": digest(payload / "dependencies" / folder / "sing-box.exe", "sha256"),
+                            label + "CronetSHA256": digest(payload / "dependencies" / folder / "libcronet.dll", "sha256")})
+    return definitions
 
 
 def main():
@@ -169,6 +180,7 @@ def main():
             "RuntimeVersion": runtime["version"], "RuntimeURL": runtime_file["url"],
             "RuntimeSHA256": digest(runtime_download, "sha256"),
         }
+        definitions.update(core_installer_definitions(payload))
         (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
         shutil.copy2(ROOT / "installer/WindowsMegaProxy.iss", staging / "WindowsMegaProxy.iss")
         sp.run([str(compiler()), "/Qp", str(staging / "WindowsMegaProxy.iss")], check=True)
