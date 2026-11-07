@@ -709,6 +709,22 @@ internal static class Program
             Layout(exportDialog);
             Capture((Visual)exportDialog.Content, Path.Combine(output, "export-dialog.png"));
             exportDialog.Close();
+            profileList.SelectedIndex = 0;
+            var beforeRefresh = (Settings)typeof(MainWindow).GetMethod("CaptureSettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null)!;
+            int savesBeforeRefresh = saved.Count;
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var edit = window.OwnedWindows.OfType<ProfileWindow>().Single();
+                var refreshed = beforeRefresh.Copy(); refreshed.Profiles[0].Proxy["host"] = "refreshed.example";
+                typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [refreshed]);
+                ((TextBox)edit.FindName("NameBox")).Text = "Stale editor";
+                Descendants(edit).OfType<Button>().Single(button => button.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            }));
+            typeof(MainWindow).GetMethod("EditProfileClick", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [window, new RoutedEventArgs()]);
+            Layout(window);
+            var afterRefresh = (Settings)typeof(MainWindow).GetMethod("CaptureSettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null)!;
+            Assert(afterRefresh.Profiles[0].Host == "refreshed.example" && afterRefresh.Profiles[0].Name != "Stale editor" && saved.Count == savesBeforeRefresh,
+                "An open editor cannot overwrite a subscription/service refresh with stale profile data.");
             var transferSettings = new Settings { Profiles = [profile.Copy()], ActiveProfileId = profile.Id };
             var importReview = new ImportReview(ProfileTransfer.Parse(PortableConfiguration.Export(transferSettings).ToJsonString()), transferSettings);
             var importWindow = new ImportWindow(importReview) { Owner = window, Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };

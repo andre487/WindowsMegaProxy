@@ -35,7 +35,7 @@ internal static class ConfigurationRefreshChecks
             calls.Add(url);
             return Task.FromResult(url == definition.Url ? "not a proxy list" : "socks5://feed.example:1080?title=Feed");
         });
-        Check(calls.SequenceEqual(definition.Sources) && updated!.Profiles.Count == 2 && updated.ActiveProfileId == local.Id, "Subscription retries malformed primary and preserves local selection.");
+        Check(calls.SequenceEqual(definition.Sources) && updated!.Profiles.Count == 2 && updated.ActiveProfileId == local.Id && ConfigurationSubscription.SourceIndex(updated) == 1, "Subscription retries malformed primary, records the successful source and preserves local selection.");
         string ownedId = ConfigurationSubscription.OwnedIds(updated!).Single();
         var second = await SubscriptionRefresh.RunAsync(updated!, true, CancellationToken.None, (_, _, _) => Task.FromResult("socks5://feed.example:1080?title=Feed"));
         Check(ConfigurationSubscription.OwnedIds(second!).Single() == ownedId && second!.Profiles.Count == 2, "Text subscriptions reuse stable owned IDs.");

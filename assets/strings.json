@@ -408,6 +408,7 @@
     "Remove missing profiles (optional)": "Удалить отсутствующие профили (необязательно)",
     "Allow imported profiles to disable certificate or SSH host-key verification": "Разрешить импортируемым профилям отключать проверку сертификата или ключа SSH-сервера",
     "Settings changed during import. Review the file again.": "Настройки изменились во время импорта. Проверьте файл ещё раз.",
+    "Settings changed while editing. Open the profile again.": "Настройки изменились во время редактирования. Откройте профиль ещё раз.",
     "Export configuration": "Экспорт конфигурации",
     "Configuration exported.": "Конфигурация экспортирована.",
     "Format": "Формат",

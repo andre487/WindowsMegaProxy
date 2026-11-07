@@ -439,6 +439,7 @@ public partial class MainWindow : Window
 
     private void ApplySettings(Settings updated)
     {
+        ++settingsRevision;
         settingsLoading = false;
         settingsReady = false;
         ApplySettingsView(updated);
@@ -602,10 +603,12 @@ public partial class MainWindow : Window
     private async void EditProfile(ProxyProfile profile, bool isNew)
     {
         if (!canEdit) return;
+        long expected = settingsRevision;
         var dialog = new ProfileWindow(profile, settings.Profiles) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Profile is null) return;
         try
         {
+            if (!isNew && expected != settingsRevision) throw new IOException(Ui.T("Settings changed while editing. Open the profile again."));
             var updated = CaptureSettings();
             if (isNew) updated.Profiles.Add(dialog.Profile);
             else updated.Profiles[updated.Profiles.FindIndex(item => item.Id == profile.Id)] = dialog.Profile;

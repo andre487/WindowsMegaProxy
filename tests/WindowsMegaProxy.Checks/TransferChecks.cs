@@ -67,6 +67,10 @@ internal static class TransferChecks
         Check(PortableConfiguration.Export(refreshed)["subscription"]!["password"] is null, "Subscription passwords follow the export password option.");
         var collision = PortableConfiguration.Export(new Settings { Profiles = [local.Copy()], ActiveProfileId = local.Id });
         Reject(() => ConfigurationSubscription.ApplySnapshot(subscribed, ProfileTransfer.Parse(collision.ToJsonString()), 0, DateTimeOffset.UtcNow));
+        var badSubscription = (JsonObject)feed.DeepClone(); badSubscription["subscription"] = new JsonArray("invalid");
+        Reject(() => ConfigurationSubscription.ApplySnapshot(subscribed, ProfileTransfer.Parse(badSubscription.ToJsonString()), 0, DateTimeOffset.UtcNow));
+        var badBackups = (JsonObject)feed.DeepClone(); badBackups["failover"] = new JsonObject { ["mode"] = "SELECTED", ["profileIds"] = new JsonArray((JsonNode?)null) };
+        Reject(() => ConfigurationSubscription.ApplySnapshot(subscribed, ProfileTransfer.Parse(badBackups.ToJsonString()), 0, DateTimeOffset.UtcNow));
         var unchanged = ConfigurationSubscription.Failed(subscribed, DateTimeOffset.UtcNow);
         Check(unchanged.Profiles.Count == subscribed.Profiles.Count && ConfigurationSubscription.Status(unchanged) == "Update failed", "Failed snapshots preserve working configuration.");
         foreach (string url in new[] { "http://feed.example/config", "https://user:pass@feed.example/config", "https://feed.example/config#token", "https://feed.example/a b" })
