@@ -9,11 +9,19 @@ import zipfile
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from package import archive, merge, signed_manifest, version
+from package import archive, checksums, merge, signed_manifest, version
 import prepare_release
 
 
 class PackageTests(unittest.TestCase):
+    def test_checksums_use_portable_gnu_line_endings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "file.zip").write_bytes(b"abc")
+            checksums(root, ["file.zip"])
+            self.assertEqual((root / "SHA256SUMS").read_bytes(),
+                             b"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  file.zip\n")
+
     def test_release_preparation_changes_both_versions_and_preserves_notes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

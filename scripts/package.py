@@ -68,6 +68,10 @@ def signed_manifest(manifest, directory, key):
     (directory / "update-public-key.txt").write_text(base64.b64encode(public).decode() + "\n", encoding="ascii")
 
 
+def checksums(directory, names):
+    (directory / "SHA256SUMS").write_text("".join(f"{digest(directory / name, 'sha256')}  {name}\n" for name in names), encoding="ascii", newline="\n")
+
+
 def compiler():
     destination = ROOT / ".tools/inno"
     executable = destination / "ISCC.exe"
@@ -92,7 +96,7 @@ def main():
     if args.preview:
         key = Ed25519PrivateKey.generate()
     else:
-        encoded = os.environ.get("UPDATE_SIGNING_KEY", "")
+        encoded = os.environ.pop("UPDATE_SIGNING_KEY", "")
         if not encoded:
             raise RuntimeError("UPDATE_SIGNING_KEY is required. Use --preview for a local test package.")
         key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(encoded, validate=True))
@@ -168,7 +172,7 @@ def main():
                     "runtime": {"version": runtime["version"], "url": runtime_file["url"], "sha512": runtime_file["hash"]}}
         signed_manifest(manifest, staging, key)
         names = [item["file"] for item in components.values()] + ["update-manifest.json", "update-manifest.sig", "update-public-key.txt"]
-        (staging / "SHA256SUMS").write_text("".join(f"{digest(staging / name, 'sha256')}  {name}\n" for name in names), encoding="ascii")
+        checksums(staging, names)
         for name in (*names, "SHA256SUMS"):
             shutil.copy2(staging / name, output / name)
     print(f"Package ready: {output}")
