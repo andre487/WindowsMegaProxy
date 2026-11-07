@@ -34,7 +34,7 @@ For development, run `stop-prod.cmd`, then `run.cmd`. DEV has separate processes
 
 SSH key verification requires the Windows OpenSSH Client optional feature.
 
-`trace-probe.cmd` runs a console test: Cloudflare trace followed by repeated 50 MB download/upload measurements with HTTP latency and a one-second pause. It shows the latest three results; press Enter to stop.
+`run-trace-probe.cmd` builds and runs the standalone console test: Cloudflare trace followed by repeated 50 MB download/upload measurements with HTTP latency and a one-second pause. It shows the latest three results; press Enter to stop. The existing `trace-probe.cmd` command remains available.
 
 ## Status
 
