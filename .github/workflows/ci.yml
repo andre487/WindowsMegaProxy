@@ -55,11 +55,24 @@ jobs:
       - name: Publish framework-dependent applications
         run: build.cmd
 
+      - name: Compile preview installer and verify update packages
+        run: build-installer.cmd --preview --skip-build
+
+      - name: Upload preview installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-installer-preview
+          path: artifacts/release-preview/*
+          retention-days: 7
+
       - name: Test DEV identity, resources and isolation
         run: scripts\dotnet.cmd run --project tests\WindowsMegaProxy.UiChecks -c Release -p:MegaProxyDev=true
 
       - name: Publish DEV without touching installed services
         run: build.cmd --dev
+
+      - name: Test installer on disposable runner without activating TUN
+        run: scripts\tools.cmd scripts\installer_smoke.py
 
       - name: Upload test reports and interface screenshots
         if: ${{ !cancelled() }}
@@ -71,5 +84,6 @@ jobs:
             artifacts/**/failure.txt
             artifacts/ui-checks/*.png
             artifacts/ui-checks-dev/*.png
+            artifacts/installer-checks/*.log
           if-no-files-found: warn
           retention-days: 7

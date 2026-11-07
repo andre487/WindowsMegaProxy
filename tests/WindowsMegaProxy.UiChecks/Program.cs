@@ -20,6 +20,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        InstallationChecks.Run();
         if (CoreProcessChecks.RunFixture(args)) return;
         if (RecoveryChecks.RunFixture(args)) return;
         if (args.Contains("--ui-recovery-check"))

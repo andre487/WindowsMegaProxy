@@ -13,7 +13,13 @@ internal sealed class Program : ServiceBase
     private Task run = Task.CompletedTask;
 
     private Program() { ServiceName = ServiceProtocol.Name; CanShutdown = true; }
-    private static void Main() { Ui.SetLanguage("en"); Run(new Program()); }
+    private static int Main(string[] args)
+    {
+        Ui.SetLanguage("en");
+        if (args.Length != 0) return Installation.Run(args[0]);
+        Run(new Program());
+        return 0;
+    }
 
     protected override void OnStart(string[] args) => run = Task.Run(RunAsync);
     protected override void OnStop()

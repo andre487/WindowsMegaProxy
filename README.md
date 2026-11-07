@@ -18,6 +18,8 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 
 ## Quick start
 
+Native installer and release packages: see [installer builds](installer/README.md).
+
 Requires Windows 10/11 x64 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```cmd

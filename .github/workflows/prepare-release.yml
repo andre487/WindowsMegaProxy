@@ -1,0 +1,47 @@
+name: Prepare release
+run-name: Prepare v${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version (X.Y.Z)
+        required: true
+        type: string
+      notes_en:
+        description: English release notes (Markdown)
+        required: true
+        type: string
+      notes_ru:
+        description: Russian release notes (Markdown)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Open release preparation PR
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_NOTES_EN: ${{ inputs.notes_en }}
+          RELEASE_NOTES_RU: ${{ inputs.notes_ru }}
+        run: scripts\tools.cmd scripts\prepare_release.py
