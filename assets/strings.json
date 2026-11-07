@@ -363,6 +363,7 @@
     "Install service…": "Установить службу…",
     "Service unavailable": "Служба недоступна",
     "Development builds are started with run.cmd.": "Версия для разработки запускается через run.cmd.",
+    "The DEV service is unavailable. Run install.cmd --dev to install or repair it.": "Служба DEV недоступна. Запустите install.cmd --dev для её установки или восстановления.",
     "MegaProxy — service unavailable": "MegaProxy — служба недоступна",
     "The service restarted. Refresh and try again.": "Служба перезапущена. Дождитесь обновления состояния и повторите попытку.",
     "The connection changed. Refresh and try again.": "Подключение изменилось. Дождитесь обновления состояния и повторите попытку.",

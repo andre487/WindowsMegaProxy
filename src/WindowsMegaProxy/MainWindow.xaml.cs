@@ -218,7 +218,9 @@ public partial class MainWindow : Window
             if (AppIdentity.IsDev) start.Arguments = "--dev";
             using var installer = System.Diagnostics.Process.Start(start) ?? throw new IOException("Could not start the service installer.");
             await installer.WaitForExitAsync();
-            if (installer.ExitCode != 0) throw new IOException("Service installation failed. Run install.cmd to see the details.");
+            if (installer.ExitCode != 0) throw new IOException(AppIdentity.IsDev
+                ? "Service installation failed. Run install.cmd --dev to see the details."
+                : "Service installation failed. Run install.cmd to see the details.");
             await RefreshServiceAsync();
         }
         catch (Exception error) { ShowError(error); }
@@ -257,7 +259,7 @@ public partial class MainWindow : Window
             {
                 ApplySettings(new Settings());
                 LoseServiceConnection();
-                MessageText.Text = Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
+                MessageText.Text = ServiceUnavailableMessage;
                 WriteLog("The MegaProxy service is unavailable: " + error.GetType().Name);
                 InstallServiceButton.Visibility = installScript is not null && ClientAccess.Current().CanEdit ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -298,7 +300,7 @@ public partial class MainWindow : Window
             serviceInstance = reply.InstanceId; serviceAvailable = true; serviceTesting = reply.Testing;
             canEdit = reply.CanEdit;
             InstallServiceButton.Visibility = Visibility.Collapsed;
-            if (MessageText.Text == Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.")) MessageText.Text = "";
+            if (rebind || MessageText.Text == ServiceUnavailableMessage) MessageText.Text = "";
             if (engine is RemoteEngine remote)
             {
                 remote.Apply(reply);
@@ -312,7 +314,7 @@ public partial class MainWindow : Window
         catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException or Win32Exception)
         {
             LoseServiceConnection();
-            MessageText.Text = Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
+            MessageText.Text = ServiceUnavailableMessage;
             SetBusy(busy);
         }
         finally { refreshingService = false; }
@@ -349,6 +351,9 @@ public partial class MainWindow : Window
     }
 
     private static string BrandLabel(string key) => Ui.T(key).Replace("MegaProxy", AppIdentity.DisplayName, StringComparison.Ordinal);
+    private static string ServiceUnavailableMessage => Ui.T(AppIdentity.IsDev
+        ? "The DEV service is unavailable. Run install.cmd --dev to install or repair it."
+        : "The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
 
     private Task SaveSettingsAsync() => CommitSettingsAsync(CaptureSettings());
 

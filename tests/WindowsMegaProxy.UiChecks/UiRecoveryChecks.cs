@@ -42,6 +42,8 @@ internal static class UiRecoveryChecks
             Wait(window, Invoke(window, "RefreshServiceAsync"));
             Assert(((TextBlock)window.FindName("StatusText")).Text == "Service unavailable" && migrations == 0,
                 "An unavailable service cannot overwrite or prematurely migrate settings.");
+            Assert(((TextBlock)window.FindName("MessageText")).Text.Contains(AppIdentity.IsDev ? "install.cmd --dev" : "install.cmd to"),
+                "Repair instructions must target the same build channel.");
             var first = new RecoveryFixture(store, pipe);
             try
             {
