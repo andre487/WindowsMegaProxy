@@ -3,6 +3,6 @@
         <OutputType>Exe</OutputType>
     </PropertyGroup>
     <ItemGroup>
-        <Compile Include="../WindowsMegaProxy/NetworkDiagnostics.cs" Link="NetworkDiagnostics.cs" />
+        <ProjectReference Include="../WindowsMegaProxy.Core/WindowsMegaProxy.Core.csproj" />
     </ItemGroup>
 </Project>

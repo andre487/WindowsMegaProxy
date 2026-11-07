@@ -15,7 +15,7 @@ public sealed class UiStrings : INotifyPropertyChanged
     internal void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
 }
 
-public static partial class Ui
+public static class Ui
 {
     public static UiStrings Strings { get; } = new();
     public static IReadOnlyDictionary<string, string> Russian { get; } = ReadStrings();

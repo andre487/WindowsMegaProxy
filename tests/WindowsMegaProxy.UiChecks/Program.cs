@@ -20,6 +20,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (CoreProcessChecks.RunFixture(args)) return;
         System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
         if (args.Length == 2 && args[0] == "--ssh-check") { SshChecks.RunAsync(args[1]).GetAwaiter().GetResult(); return; }
         if (args.Contains("--http3-check")) { Http3Checks.RunAsync().GetAwaiter().GetResult(); return; }
@@ -31,6 +32,8 @@ internal static class Program
             return;
         }
         if (args.Contains("--engine-check")) { CheckEngineAsync().GetAwaiter().GetResult(); return; }
+        ControllerChecks.RunAsync().GetAwaiter().GetResult();
+        CoreProcessChecks.RunAsync().GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Resources.MergedDictionaries.Add(new ResourceDictionary
         {
@@ -40,6 +43,8 @@ internal static class Program
         bool rejectSave = false;
         int diagnosticEntries = 0;
         bool autostartEnabled = false, rejectAutostart = false;
+        var fixtureEngine = new TestEngine();
+        var testConnection = new ConnectionController(() => fixtureEngine);
         var window = new MainWindow(false, value =>
         {
             if (rejectSave) throw new IOException("Synthetic save failure.");
@@ -49,14 +54,14 @@ internal static class Program
             if (rejectAutostart && enabled) throw new IOException("Synthetic task failure.");
             autostartEnabled = enabled;
             return Task.CompletedTask;
-        }, () => Task.FromResult(autostartEnabled), () => { diagnosticEntries++; return Task.CompletedTask; }) { Left = -10000, Top = -10000, ShowInTaskbar = false };
+        }, () => Task.FromResult(autostartEnabled), () => { diagnosticEntries++; return Task.CompletedTask; }, testConnection) { Left = -10000, Top = -10000, ShowInTaskbar = false };
         // Exercise layout without executing startup tasks, autoconnect or any network operations.
         window.Loaded -= typeof(MainWindow).GetMethod("WindowLoaded", BindingFlags.NonPublic | BindingFlags.Instance)!
             .CreateDelegate<RoutedEventHandler>(window);
         try
         {
             var fixture = new Settings { DefaultAction = "proxy", Language = "ru" };
-            Ui.Apply("ru", "auto", window);
+            UiTheme.Apply("ru", "auto", window);
             typeof(MainWindow).GetField("settings", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(window, fixture);
             var updateSummary = typeof(MainWindow).GetMethod("UpdateProfileSummary", BindingFlags.NonPublic | BindingFlags.Instance)!;
             updateSummary.Invoke(window, null);
@@ -69,7 +74,6 @@ internal static class Program
             typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [fixture]);
             Assert(((TextBlock)window.FindName("ProfileSummary")).Text.Contains("proxy.example.com:443"), "Show the selected proxy endpoint.");
             var settingsField = typeof(MainWindow).GetField("settings", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var engineField = typeof(MainWindow).GetField("engine", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var applySettings = typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var originalSettings = PortableConfiguration.Copy((Settings)settingsField.GetValue(window)!);
             var pendingSettings = PortableConfiguration.Copy(originalSettings);
@@ -82,25 +86,20 @@ internal static class Program
             runningSettings.ActiveProfile.Proxy["type"] = "MASQUE";
             var timer = (DispatcherTimer)typeof(MainWindow).GetField("timer", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
             timer.Stop();
-            using (var liveProcess = System.Diagnostics.Process.GetCurrentProcess())
             {
-                var fakeEngine = (Engine)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Engine));
-                typeof(Engine).GetField("process", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(fakeEngine, liveProcess);
-                typeof(Engine).GetProperty("AppliedSettings")!.SetValue(fakeEngine, runningSettings);
-                typeof(Engine).GetProperty("AppliedSignature")!.SetValue(fakeEngine, Engine.Signature(runningSettings));
-                typeof(Engine).GetProperty("Http3Selected")!.SetValue(fakeEngine, true);
+                var fakeEngine = fixtureEngine;
+                testConnection.ConnectAsync(runningSettings).GetAwaiter().GetResult();
                 try
                 {
-                    engineField.SetValue(window, fakeEngine);
                     applySettings.Invoke(window, [pendingSettings]);
                     string summary = ((TextBlock)window.FindName("ProfileSummary")).Text;
                     Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && summary.Contains("HTTP/3") && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
                     Assert(((Button)window.FindName("ConnectButton")).IsEnabled && ((Button)window.FindName("ReconnectButton")).IsEnabled, "Accept-new enables SSH reconnect without a manually pasted server key.");
-                    typeof(Engine).GetProperty("AppliedSettings")!.SetValue(fakeEngine, pendingSettings);
-                    typeof(Engine).GetProperty("Http3Selected")!.SetValue(fakeEngine, false);
+                    fakeEngine.AppliedSettings = pendingSettings;
+                    fakeEngine.Http3Selected = false;
                     updateSummary.Invoke(window, null);
                     Assert(((TextBlock)window.FindName("ProfileSummary")).Text.Contains("SSH KZ") && !((TextBlock)window.FindName("ProfileSummary")).Text.Contains("HTTP/3"), "After reconnect the summary switches to the applied SSH profile and drops H3.");
-                    engineField.SetValue(window, null);
+                    testConnection.DisconnectAsync().GetAwaiter().GetResult();
                     string key = "ssh-ed25519 " + Convert.ToBase64String(Convert.FromHexString("0000000B7373682D6564323535313900000020" + new string('0', 64)));
                     var update = new SshHostKeyUpdate(pendingSsh.Id, pendingSsh.Name, pendingSsh.Host, pendingSsh.Port, "", SshConfiguration.Fingerprint(key), key);
                     typeof(MainWindow).GetMethod("SaveSshHostKey", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [update]);
@@ -113,7 +112,7 @@ internal static class Program
                     Assert(Descendants(keyDialog).OfType<TextBox>().Count(box => box.IsReadOnly) == 2, "Both fingerprints can be selected and copied.");
                     keyDialog.Close();
                 }
-                finally { engineField.SetValue(window, null); applySettings.Invoke(window, [originalSettings]); timer.Start(); }
+                finally { testConnection.DisconnectAsync().GetAwaiter().GetResult(); applySettings.Invoke(window, [originalSettings]); timer.Start(); }
             }
             ((CheckBox)window.FindName("AutoConnectBox")).IsChecked = false;
             var rules = (ObservableCollection<RoutingRule>)typeof(MainWindow).GetField("rules", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
@@ -300,6 +299,28 @@ internal static class Program
             connectionView = (System.Windows.Data.ListCollectionView)((DataGrid)window.FindName("ConnectionsGrid")).ItemsSource;
             Assert(connectionView.SortDescriptions.Count == 1 && connectionView.SortDescriptions[0].Direction == System.ComponentModel.ListSortDirection.Descending, "Refreshing connections preserves the chosen row sorting.");
             sections.SelectedIndex = 0; Layout(window);
+            var liveGrid = (DataGrid)window.FindName("ConnectionsGrid");
+            liveGrid.SelectedItem = groupedRows[1];
+            liveGrid.Focus();
+            var changedRows = groupedRows.Select(row => row.Process == "a-profile"
+                ? new ConnectionRow(row.Process, row.Destination, row.Network, row.Route, "2 KiB", "3 KiB", 0, 2048, 3072)
+                : row).Append(new ConnectionRow("new-process", "new.example:443", "TCP", "System", "0 B", "0 B")).ToArray();
+            updateConnections.Invoke(window, [changedRows]);
+            Layout(window);
+            Assert(ReferenceEquals(liveGrid.ItemsSource, connectionView) && ReferenceEquals(liveGrid.SelectedItem, groupedRows[1]), "Polling keeps the collection and selected connection alive.");
+            Assert(groupedRows[1].UploadedBytes == 2048 && connectionView.Cast<ConnectionRow>().Any(row => row.Process == "new-process"), "A selected table keeps receiving new connections and counter updates.");
+            updateConnections.Invoke(window, [changedRows.Where(row => row.Process != "new-process").ToArray()]);
+            Assert(!connectionView.Cast<ConnectionRow>().Any(row => row.Process == "new-process"), "Ended connections are removed from the existing view.");
+            connectionView.SortDescriptions.Clear();
+            connectionView.SortDescriptions.Add(new System.ComponentModel.SortDescription("UploadedBytes", System.ComponentModel.ListSortDirection.Descending));
+            Layout(window);
+            Assert(((System.Windows.Data.CollectionViewGroup)connectionView.Groups![0]).Items.Cast<ConnectionRow>().First().Process == "a-profile", "Traffic sorting uses numeric counters.");
+            updateConnections.Invoke(window, [groupedRows.Select(row => row.Process == "z-profile"
+                ? new ConnectionRow(row.Process, row.Destination, row.Network, row.Route, "4 KiB", "0 B", 0, 4096) : row).ToArray()]);
+            Layout(window);
+            Assert(((System.Windows.Data.CollectionViewGroup)connectionView.Groups![0]).Items.Cast<ConnectionRow>().First().Process == "z-profile", "Live counter updates reorder rows within their existing route group.");
+            connectionView.SortDescriptions.Clear();
+            connectionView.SortDescriptions.Add(new System.ComponentModel.SortDescription("Process", System.ComponentModel.ListSortDirection.Descending));
             Capture((Visual)window.Content, Path.Combine(output, "connection-groups.png"));
             ((DataGrid)window.FindName("SpeedResultsGrid")).Visibility = Visibility.Collapsed;
             var connectionsContent = (DependencyObject)((TabItem)sections.Items[0]).Content;
@@ -309,6 +330,20 @@ internal static class Program
             Assert(((TabItem)sections.Items[sections.Items.IndexOf(diagnosticTab) - 1]).Header as string == "Настройки", "Diagnostics is immediately to the right of settings.");
             Assert(!Descendants((DependencyObject)((TabItem)sections.Items[3]).Content).OfType<TextBlock>().Any(text => text.Text.StartsWith("Закрытие окна")), "Settings have no long explanatory footer.");
             Assert(((StackPanel)window.FindName("SpeedPanel")).Visibility == Visibility.Collapsed, "Speed measurements stay locked until diagnostics succeed.");
+            fixtureEngine.Start = token => Task.Delay(System.Threading.Timeout.Infinite, token);
+            var pendingConnection = testConnection.ConnectAsync((Settings)settingsField.GetValue(window)!);
+            int blockedEntries = diagnosticEntries;
+            sections.SelectedItem = diagnosticTab; Layout(window);
+            Assert(diagnosticEntries == blockedEntries && testConnection.State == ConnectionState.Connecting, "Entering diagnostics during startup does not launch an automatic check.");
+            Assert(((Button)window.FindName("ConnectButton")).IsEnabled && ((Button)window.FindName("ConnectButton")).Content as string == Ui.T("Cancel connection"), "A pending connection exposes an enabled cancel action.");
+            testConnection.Cancel();
+            var cancelWatch = System.Diagnostics.Stopwatch.StartNew();
+            while (!pendingConnection.IsCompleted && cancelWatch.Elapsed < TimeSpan.FromSeconds(5)) Layout(window);
+            Assert(pendingConnection.IsCompleted, "The UI can finish startup cancellation without closing the application.");
+            try { pendingConnection.GetAwaiter().GetResult(); throw new Exception("Startup was not cancelled."); }
+            catch (OperationCanceledException) { }
+            fixtureEngine.Start = null;
+            sections.SelectedIndex = 0; Layout(window);
             sections.SelectedItem = diagnosticTab; Layout(window);
             Assert(Descendants((DependencyObject)diagnosticTab.Content).Contains((Button)window.FindName("TestConnectionButton")), "The dedicated diagnostics tab owns its controls.");
             typeof(MainWindow).GetMethod("AppendDiagnosticEntry", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, ["Synthetic diagnostic step"]);
@@ -453,7 +488,7 @@ internal static class Program
             Assert(Descendants(dialog).OfType<Button>().Any(button => button.IsCancel), "Rule dialog supports Escape/cancel.");
             Capture((Visual)dialog.Content, Path.Combine(output, "rule-dialog.png"));
             dialog.Close();
-            Assert(typeof(MainWindow).GetField("engine", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window) is null, "UI check must never start TUN.");
+            Assert(testConnection.Engine is null, "UI check must never start TUN.");
             var editorProfile = profile.Copy();
             editorProfile.Data["browser"] = new System.Text.Json.Nodes.JsonObject { ["futureField"] = "retain" };
             var editor = new ProfileWindow(editorProfile) { Owner = window, WindowStartupLocation = WindowStartupLocation.Manual, Left = -10000, Top = -10000, ShowInTaskbar = false };
@@ -543,9 +578,9 @@ internal static class Program
             string signature = engine.AppliedSignature!;
             var updated = PortableConfiguration.Copy(engine.AppliedSettings!);
             updated.AutoConnect = !updated.AutoConnect;
-            Assert(Engine.Signature(updated) == signature, "UI-only settings do not require reconnect.");
+            Assert(Configuration.Signature(updated) == signature, "UI-only settings do not require reconnect.");
             updated.BypassLan = !updated.BypassLan;
-            Assert(Engine.Signature(updated) != signature && engine.AppliedSignature == signature, "Connection edits require reconnect while the running snapshot remains unchanged.");
+            Assert(Configuration.Signature(updated) != signature && engine.AppliedSignature == signature, "Connection edits require reconnect while the running snapshot remains unchanged.");
             var snapshot = await engine.GetConnectionsAsync(false);
             Assert(snapshot.Rows.Count == 0, "The real authenticated API supplies a connection snapshot.");
             using var probeClient = engine.CreateProbeClient(false);

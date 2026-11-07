@@ -9,15 +9,9 @@
         <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     </PropertyGroup>
     <ItemGroup>
-        <EmbeddedResource Include="../../assets/strings.json" LogicalName="WindowsMegaProxy.Strings.json" />
+        <ProjectReference Include="../WindowsMegaProxy.Core/WindowsMegaProxy.Core.csproj" />
         <Resource Include="Assets/*.ico" />
         <Resource Include="Assets/Flags/*.png" />
-        <EmbeddedResource
-            Include="../../assets/profile-colors.json"
-            LogicalName="WindowsMegaProxy.ProfileColors.json" />
-        <EmbeddedResource
-            Include="../../assets/flags/countries.json"
-            LogicalName="WindowsMegaProxy.Countries.json" />
         <Content
             Include="../../assets/flags/LICENSE"
             Link="Notices/flag-icons-LICENSE.txt"

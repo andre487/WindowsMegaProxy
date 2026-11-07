@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:WindowsMegaProxy"
+    xmlns:core="clr-namespace:WindowsMegaProxy;assembly=WindowsMegaProxy.Core"
     x:Class="WindowsMegaProxy.MainWindow"
     Title="MegaProxy"
     Width="1100"
@@ -357,7 +358,7 @@
                                 ClipboardContentBinding="{Binding Process}"
                                 SortMemberPath="Process"
                                 Width="2*"
-                                Header="{Binding [Application], Source={x:Static local:Ui.Strings}}">
+                                Header="{Binding [Application], Source={x:Static core:Ui.Strings}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <local:PathTextBox FullPath="{Binding Process}" />
@@ -367,25 +368,25 @@
                             <DataGridTextColumn
                                 Binding="{Binding Destination}"
                                 Width="2*"
-                                Header="{Binding [Destination], Source={x:Static local:Ui.Strings}}" />
+                                Header="{Binding [Destination], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Network}"
                                 Width="95"
-                                Header="{Binding [Protocol], Source={x:Static local:Ui.Strings}}" />
+                                Header="{Binding [Protocol], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Route}"
                                 Width="*"
-                                Header="{Binding [Route], Source={x:Static local:Ui.Strings}}" />
+                                Header="{Binding [Route], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Upload}"
                                 SortMemberPath="UploadedBytes"
                                 Width="105"
-                                Header="{Binding [Uploaded], Source={x:Static local:Ui.Strings}}" />
+                                Header="{Binding [Uploaded], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Download}"
                                 SortMemberPath="DownloadedBytes"
                                 Width="105"
-                                Header="{Binding [Downloaded], Source={x:Static local:Ui.Strings}}" />
+                                Header="{Binding [Downloaded], Source={x:Static core:Ui.Strings}}" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
@@ -520,7 +521,7 @@
                             <DataGridTemplateColumn
                                 Width="2*"
                                 ClipboardContentBinding="{Binding SourceLabel}"
-                                Header="{Binding [Application], Source={x:Static local:Ui.Strings}}">
+                                Header="{Binding [Application], Source={x:Static core:Ui.Strings}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <local:PathTextBox FullPath="{Binding SourceLabel}" />
@@ -530,11 +531,11 @@
                             <DataGridTextColumn
                                 Width="*"
                                 Binding="{Binding DestinationLabel}"
-                                Header="{Binding [Destination], Source={x:Static local:Ui.Strings}}" />
+                                Header="{Binding [Destination], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Width="*"
                                 Binding="{Binding ActionLabel}"
-                                Header="{Binding [Action], Source={x:Static local:Ui.Strings}}" />
+                                Header="{Binding [Action], Source={x:Static core:Ui.Strings}}" />
                         </DataGrid.Columns>
                     </DataGrid>
                     <WrapPanel Grid.Row="3" Margin="0,12,0,0">
@@ -860,11 +861,11 @@
                                             <DataGridTextColumn
                                                 Binding="{Binding Metric}"
                                                 Width="*"
-                                                Header="{Binding [Metric], Source={x:Static local:Ui.Strings}}" />
+                                                Header="{Binding [Metric], Source={x:Static core:Ui.Strings}}" />
                                             <DataGridTemplateColumn
                                                 ClipboardContentBinding="{Binding Direct}"
                                                 Width="2*"
-                                                Header="{Binding [Without profile], Source={x:Static local:Ui.Strings}}">
+                                                Header="{Binding [Without profile], Source={x:Static core:Ui.Strings}}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Orientation="Horizontal" Margin="4,2">
@@ -897,7 +898,7 @@
                                             <DataGridTemplateColumn
                                                 ClipboardContentBinding="{Binding Profile}"
                                                 Width="2*"
-                                                Header="{Binding [Through profile], Source={x:Static local:Ui.Strings}}">
+                                                Header="{Binding [Through profile], Source={x:Static core:Ui.Strings}}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Orientation="Horizontal" Margin="4,2">

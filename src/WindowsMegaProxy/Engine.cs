@@ -6,7 +6,6 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -16,15 +15,15 @@ namespace WindowsMegaProxy;
 
 public sealed record SshHostKeyUpdate(string ProfileId, string ProfileName, string Host, int Port, string PreviousFingerprint, string Fingerprint, string PublicKey);
 
-public sealed class Engine : IDisposable
+public sealed class Engine : IEngine
 {
     private Process? process;
     private HttpClient client = new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
     private string configPath = "";
     private readonly string stateDirectory;
     private readonly Uri http3ProbeUri;
-    private readonly ConsoleHandler consoleHandler = signal => signal == 0;
-    private IntPtr job;
+    private ProcessJob? job;
+    private IDisposable? consoleLease;
     public bool Running => process is { HasExited: false };
     public event Action? Exited;
     public event Action<string>? Log;
@@ -52,22 +51,7 @@ public sealed class Engine : IDisposable
     {
         this.stateDirectory = stateDirectory ?? SettingsStore.DirectoryPath;
         this.http3ProbeUri = http3ProbeUri ?? new Uri("https://example.com/");
-        // Isolate Ctrl+C from development shells; the console belongs only to this manager and its core.
-        FreeConsole();
-        if (!AllocConsole()) throw new InvalidOperationException("Could not create the core control console.");
-        ShowWindow(GetConsoleWindow(), 0);
-        SetConsoleCtrlHandler(consoleHandler, true);
     }
-
-    public static string Signature(Settings settings) => new JsonObject
-    {
-        ["configuration"] = Configuration.Build(settings, 1, "snapshot", allowUnresolvedSsh: true),
-        ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? settings.TlsFingerprint : null,
-        ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,
-        ["preferHttp3"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.PreferHttp3 == true,
-        ["sshFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" ? settings.ActiveProfile.Proxy["trustedHostKey"]?.DeepClone() : null,
-        ["acceptAnySshKey"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" && (settings.ActiveProfile.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false)
-    }.ToJsonString();
 
     public async Task StartAsync(Settings settings, bool testOnly = false, CancellationToken cancellationToken = default)
     {
@@ -121,7 +105,7 @@ public sealed class Engine : IDisposable
             savedSsh.Data["windows"]!["sshHostKey"] = appliedSsh.Data["windows"]?["sshHostKey"]?.DeepClone();
             savedSsh.Proxy["trustedHostKey"] = appliedSsh.Proxy["trustedHostKey"]?.DeepClone();
         }
-        AppliedSignature = Signature(AppliedSettings);
+        AppliedSignature = Configuration.Signature(AppliedSettings);
     }
 
     private static string CoreExecutable(bool http3) => Environment.GetEnvironmentVariable(http3 ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE")
@@ -139,7 +123,7 @@ public sealed class Engine : IDisposable
         var secret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var config = Configuration.Build(settings, port, secret);
         AppliedSettings = PortableConfiguration.Copy(settings);
-        AppliedSignature = Signature(settings);
+        AppliedSignature = Configuration.Signature(settings);
         outboundTags = config["outbounds"]!.AsArray().Select(item => item!["tag"]!.ToString()).Where(tag => tag != "direct").ToArray();
         if (testOnly) config["inbounds"] = new JsonArray();
         using (var probeListener = new TcpListener(IPAddress.Loopback, 0))
@@ -167,24 +151,17 @@ public sealed class Engine : IDisposable
         try
         {
             await File.WriteAllTextAsync(configPath, config.ToJsonString(Configuration.JsonOptions));
-            using (var check = Process.Start(StartInfo(executable, "check")) ?? throw new InvalidOperationException("The core did not start."))
+            var check = await CoreProcess.RunAsync(StartInfo(executable, "check"), TimeSpan.FromSeconds(30), cancellationToken);
+            if (check.ExitCode != 0)
             {
-                var output = check.StandardOutput.ReadToEndAsync();
-                var error = check.StandardError.ReadToEndAsync();
-                await check.WaitForExitAsync(cancellationToken);
-                await Task.WhenAll(output, error);
-                if (check.ExitCode != 0)
-                {
-                    Log?.Invoke(await error);
-                    throw new InvalidOperationException("sing-box rejected the configuration. Check the profile and rules.");
-                }
+                Log?.Invoke(check.Error);
+                throw new InvalidOperationException("sing-box rejected the configuration. Check the profile and rules.");
             }
-            job = CreateJobObject(IntPtr.Zero, null);
-            var limits = new JobExtendedLimit { BasicLimitInformation = new JobBasicLimit { LimitFlags = 0x2000 } };
-            if (job == IntPtr.Zero || !SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf<JobExtendedLimit>()))
-                throw new InvalidOperationException("Could not enable core shutdown on application failure.");
+            cancellationToken.ThrowIfCancellationRequested();
+            consoleLease = await CoreConsole.AcquireAsync(cancellationToken);
+            job = new ProcessJob();
             process = Process.Start(StartInfo(executable, "run")) ?? throw new InvalidOperationException("The core did not start.");
-            if (!AssignProcessToJobObject(job, process.Handle)) throw new InvalidOperationException("Could not attach the core to the application.");
+            job.Assign(process);
             process.EnableRaisingEvents = true;
             process.Exited += (_, _) => Exited?.Invoke();
             drain = Task.WhenAll(DrainAsync(process.StandardOutput), DrainAsync(process.StandardError));
@@ -273,62 +250,31 @@ public sealed class Engine : IDisposable
     private async Task<(int ExitCode, string Error)> RunCoreToolAsync(string executable, JsonObject config, string url, CancellationToken token)
     {
         string path = Path.Combine(stateDirectory, $"http3-probe-{Guid.NewGuid():N}.json");
-        Process? fetch = null;
-        IntPtr toolJob = IntPtr.Zero;
         try
         {
             await File.WriteAllTextAsync(path, config.ToJsonString(), token);
-            toolJob = CreateJobObject(IntPtr.Zero, null);
-            var limits = new JobExtendedLimit { BasicLimitInformation = new JobBasicLimit { LimitFlags = 0x2000 } };
-            if (toolJob == IntPtr.Zero || !SetInformationJobObject(toolJob, 9, ref limits, (uint)Marshal.SizeOf<JobExtendedLimit>()))
-                throw new IOException("Could not protect the diagnostic process lifetime.");
-            var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.GetDirectoryName(executable)! };
+            var start = new ProcessStartInfo(executable) { WorkingDirectory = Path.GetDirectoryName(executable)! };
             foreach (string argument in new[] { "-c", path, "--disable-color", "tools", "fetch", url }) start.ArgumentList.Add(argument);
-            fetch = Process.Start(start) ?? throw new IOException("Could not start HTTP/3 diagnostics.");
-            if (!AssignProcessToJobObject(toolJob, fetch.Handle)) throw new IOException("Could not attach HTTP/3 diagnostics to the application.");
-            var output = ReadToolOutputAsync(fetch.StandardOutput, capture: false, token);
-            var errors = ReadToolOutputAsync(fetch.StandardError, capture: true, token);
-            await Task.WhenAll(output, errors, fetch.WaitForExitAsync(token));
-            return (fetch.ExitCode, await errors);
+            var result = await CoreProcess.RunAsync(start, TimeSpan.FromSeconds(15), token);
+            return (result.ExitCode, result.Error);
         }
-        finally
-        {
-            if (fetch is not null)
-            {
-                if (!fetch.HasExited) { fetch.Kill(true); await fetch.WaitForExitAsync(); }
-                fetch.Dispose();
-            }
-            if (toolJob != IntPtr.Zero) CloseHandle(toolJob);
-            File.Delete(path);
-        }
-    }
-
-    private static async Task<string> ReadToolOutputAsync(StreamReader reader, bool capture, CancellationToken token)
-    {
-        var buffer = new char[4096];
-        var text = new System.Text.StringBuilder();
-        int total = 0, count;
-        while ((count = await reader.ReadAsync(buffer, token)) > 0)
-        {
-            if ((total += count) > 65536) throw new IOException("HTTP/3 diagnostic output exceeds the size limit.");
-            if (capture) text.Append(buffer, 0, count);
-        }
-        return text.ToString();
+        finally { File.Delete(path); }
     }
 
     public async Task StopAsync()
     {
         if (Running)
         {
-            GenerateConsoleCtrlEvent(0, 0);
+            CoreConsole.Stop();
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try { await process!.WaitForExitAsync(timeout.Token); }
             catch (OperationCanceledException) { if (Running) { process!.Kill(true); await process.WaitForExitAsync(); } }
         }
+        job?.Dispose(); job = null;
         await drain;
         process?.Dispose();
         process = null;
-        if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; }
+        consoleLease?.Dispose(); consoleLease = null;
         if (configPath.Length > 0) File.Delete(configPath);
         Log?.Invoke("Network core stopped.");
     }
@@ -350,37 +296,10 @@ public sealed class Engine : IDisposable
 
     public void Dispose()
     {
-        if (job != IntPtr.Zero) CloseHandle(job);
+        job?.Dispose(); job = null;
+        consoleLease?.Dispose(); consoleLease = null;
         process?.Dispose();
         client.Dispose();
-        SetConsoleCtrlHandler(consoleHandler, false);
     }
 
-    private delegate bool ConsoleHandler(uint signal);
-    [StructLayout(LayoutKind.Sequential)] private struct JobBasicLimit
-    {
-        public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
-        public uint LimitFlags;
-        public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize;
-        public uint ActiveProcessLimit;
-        public UIntPtr Affinity;
-        public uint PriorityClass, SchedulingClass;
-    }
-    [StructLayout(LayoutKind.Sequential)] private struct IoCounters { public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount, ReadTransferCount, WriteTransferCount, OtherTransferCount; }
-    [StructLayout(LayoutKind.Sequential)] private struct JobExtendedLimit
-    {
-        public JobBasicLimit BasicLimitInformation;
-        public IoCounters IoInfo;
-        public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
-    }
-    [DllImport("kernel32.dll")] private static extern bool AllocConsole();
-    [DllImport("kernel32.dll")] private static extern bool FreeConsole();
-    [DllImport("kernel32.dll")] private static extern IntPtr GetConsoleWindow();
-    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
-    [DllImport("kernel32.dll")] private static extern bool SetConsoleCtrlHandler(ConsoleHandler handler, bool add);
-    [DllImport("kernel32.dll")] private static extern bool GenerateConsoleCtrlEvent(uint signal, uint group);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CreateJobObject(IntPtr attributes, string? name);
-    [DllImport("kernel32.dll")] private static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref JobExtendedLimit info, uint size);
-    [DllImport("kernel32.dll")] private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
-    [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
 }

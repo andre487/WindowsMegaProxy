@@ -30,23 +30,26 @@ public partial class MainWindow : Window
     private readonly ContextMenu trayMenu;
     private readonly MenuItem trayOpen, trayConnect, trayExit;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) };
-    private Engine? engine;
-    private Engine? diagnosticEngine;
+    private readonly ConnectionController connection;
+    private IEngine? engine => connection.Engine;
+    private bool busy => connection.IsBusy;
+    private bool testing => connection.IsTesting;
+    private readonly ObservableCollection<ConnectionRow> connectionRows = new();
+    private readonly ListCollectionView connectionView;
     private readonly bool startInTray;
     private readonly Action<Settings> persistSettings;
     private readonly DiagnosticLog log;
     private readonly Func<bool, Task> setAutostart;
     private readonly Func<Task<bool>> getAutostart;
-    private bool testing, applyingAutostart, logDirty;
+    private bool applyingAutostart, logDirty;
     private bool speedRunning, diagnosticSucceeded;
     private readonly Func<Task> diagnosticsOnEnter;
     private Settings? checkedSettings;
     private DiagnosticResult? lastDiagnosticResult;
     private (SpeedResult Direct, SpeedResult Profile)? lastSpeedResults;
-    private CancellationTokenSource? diagnosticCancellation;
     private long previousUpload, previousDownload;
     private DateTimeOffset previousTrafficTime;
-    private bool busy, polling, quitting, updatingUi, restartRequested;
+    private bool polling, quitting, updatingUi, restartRequested;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -62,23 +65,28 @@ public partial class MainWindow : Window
         {
             if (restartRequested || quitting) return;
             restartRequested = true;
-            while (busy) await Task.Delay(100);
             await QuitAsync();
         });
         return new IntPtr(0x487);
     }
 
     public MainWindow(bool startInTray, Action<Settings>? persistSettings = null, DiagnosticLog? diagnosticLog = null,
-        Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null)
+        Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null)
     {
+        connection = connectionController ?? new ConnectionController(CreateEngine);
         this.persistSettings = persistSettings ?? SettingsStore.Save;
         this.setAutostart = setAutostart ?? Autostart.SetAsync;
         this.getAutostart = getAutostart ?? Autostart.IsEnabledAsync;
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
         log = diagnosticLog ?? new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"));
         settings = SettingsStore.Load();
-        Ui.Apply(settings.Language, settings.Theme, this);
+        UiTheme.Apply(settings.Language, settings.Theme, this);
         InitializeComponent();
+        connectionView = new ListCollectionView(connectionRows) { IsLiveSorting = true, IsLiveGrouping = true };
+        var grouping = new PropertyGroupDescription(nameof(ConnectionRow.RouteGroup));
+        grouping.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
+        connectionView.GroupDescriptions.Add(grouping);
+        ConnectionsGrid.ItemsSource = connectionView;
         this.startInTray = startInTray;
         log.SetLimit(settings.LogSizeMb);
         log.Changed += LogChanged;
@@ -125,6 +133,20 @@ public partial class MainWindow : Window
         TlsFingerprintBox.SelectionChanged += PreferencesChanged;
         rules.CollectionChanged += SettingsChanged;
         Sections.SelectionChanged += SectionsChanged;
+        connection.Changed += () =>
+        {
+            if (Dispatcher.CheckAccess()) SetBusy(busy);
+            else Dispatcher.BeginInvoke(() => SetBusy(busy));
+        };
+        connection.UnexpectedExit += () => Dispatcher.BeginInvoke(async () =>
+        {
+            if (quitting) return;
+            SetConnected(false);
+            MessageText.Text = Ui.T("The core exited unexpectedly. Connections are no longer protected by TUN.");
+            tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("The core exited. TUN is disconnected."), Forms.ToolTipIcon.Warning);
+            try { await connection.DisconnectAsync(); }
+            catch (Exception error) { ShowError(error); }
+        });
     }
 
     private async void WindowLoaded(object sender, RoutedEventArgs e)
@@ -189,7 +211,7 @@ public partial class MainWindow : Window
         {
             ProfileAppearance.AssignMissingColors(updated.Profiles);
             settings = updated;
-            Ui.Apply(updated.Language, updated.Theme, this);
+            UiTheme.Apply(updated.Language, updated.Theme, this);
             SelectTag(LanguageBox, updated.Language);
             SelectTag(ThemeBox, updated.Theme);
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
@@ -243,11 +265,16 @@ public partial class MainWindow : Window
 
     private bool CanConnect() => ConnectionError() is null;
 
-    private Engine CreateEngine() => new()
+    private IEngine CreateEngine()
     {
-        ConfirmSshHostKeyChange = async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true),
-        SaveSshHostKey = SaveSshHostKey
-    };
+        var result = new Engine
+        {
+            ConfirmSshHostKeyChange = async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true),
+            SaveSshHostKey = SaveSshHostKey
+        };
+        result.Log += WriteLog;
+        return result;
+    }
 
     private void SaveSshHostKey(SshHostKeyUpdate update)
     {
@@ -371,15 +398,15 @@ public partial class MainWindow : Window
 
     private async Task ToggleAsync()
     {
+        if (connection.State == ConnectionState.Connecting) { connection.Cancel(); return; }
         if (busy || quitting || (testing && engine?.Running != true)) return;
-        busy = true; SetBusy(true);
+
         try
         {
             if (engine?.Running == true)
             {
-                diagnosticCancellation?.Cancel();
                 StatusText.Text = Ui.T("Disconnecting…");
-                await engine.StopAsync(); engine.Dispose(); engine = null;
+                await connection.DisconnectAsync();
                 SetConnected(false);
             }
             else
@@ -390,34 +417,24 @@ public partial class MainWindow : Window
                 SaveSettings();
                 if (settings.ActiveProfile is { Type: "SSH" } ssh && ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() == true &&
                     MessageBox.Show(this, Ui.T("SSH server identity verification is disabled in this profile. Connect with this exception?"), "SSH", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-                if (engine is not null) { await engine.StopAsync(); engine.Dispose(); }
-                engine = CreateEngine();
-                engine.Log += WriteLog;
-                var current = engine;
-                engine.Exited += () => Dispatcher.BeginInvoke(async () =>
-                {
-                    if (engine != current || busy || quitting) return;
-                    SetConnected(false);
-                    MessageText.Text = Ui.T("The core exited unexpectedly. Connections are no longer protected by TUN.");
-                    tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("The core exited. TUN is disconnected."), Forms.ToolTipIcon.Warning);
-                    await current.StopAsync();
-                    SetBusy(false);
-                });
                 StatusText.Text = Ui.T("Connecting…");
-                await engine.StartAsync(settings);
+                await connection.ConnectAsync(settings);
                 SetConnected(true); timer.Start();
                 previousTrafficTime = default;
                 MessageText.Text = "";
                 await RefreshConnectionsAsync();
             }
         }
+        catch (OperationCanceledException) { SetConnected(false); }
         catch (Exception error) { SetConnected(false); ShowError(error); }
-        finally { busy = false; SetBusy(false); }
+        finally { SetBusy(busy); }
     }
 
     private void SetBusy(bool value)
     {
-        ConnectButton.IsEnabled = !value && (engine?.Running == true || (!testing && CanConnect()));
+        bool connecting = connection.State == ConnectionState.Connecting;
+        ConnectButton.IsEnabled = !quitting && (connecting || !value && (engine?.Running == true || (!testing && CanConnect())));
+        ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
         trayConnect.IsEnabled = ConnectButton.IsEnabled;
         bool editable = !quitting;
         ProfilePanel.IsEnabled = editable; RulesPanel.IsEnabled = editable;
@@ -429,7 +446,7 @@ public partial class MainWindow : Window
         bool changed = false;
         if (engine?.Running == true)
         {
-            try { changed = engine.AppliedSignature != Engine.Signature(settings); }
+            try { changed = engine.AppliedSignature != Configuration.Signature(settings); }
             catch (ArgumentException) { changed = true; }
         }
         ReconnectButton.Content = changed ? Ui.T("Reconnect •") : Ui.T("Reconnect");
@@ -448,7 +465,7 @@ public partial class MainWindow : Window
         WriteLog(value ? "TUN connected." : "TUN disconnected.");
         if (!value)
         {
-            ConnectionsGrid.ItemsSource = null; ConnectionsHint.Text = Ui.T("TUN disconnected.");
+            connectionRows.Clear(); ConnectionsHint.Text = Ui.T("TUN disconnected.");
             TrafficText.Text = "↑ —  ↓ —";
         }
     }
@@ -462,9 +479,8 @@ public partial class MainWindow : Window
         {
             var snapshot = await current.GetConnectionsAsync(ShowAllConnectionsBox.IsChecked == true);
             if (current != engine || !current.Running) return;
-            if (!ConnectionsGrid.IsKeyboardFocusWithin) UpdateConnections(snapshot.Rows);
-            ConnectionsHint.Text = Ui.F("Shown: {0} of {1}.", snapshot.Rows.Count, snapshot.Total) +
-                (ConnectionsGrid.IsKeyboardFocusWithin ? Ui.T(" List updates paused for copying.") : "");
+            UpdateConnections(snapshot.Rows);
+            ConnectionsHint.Text = Ui.F("Shown: {0} of {1}.", snapshot.Rows.Count, snapshot.Total);
             var now = DateTimeOffset.UtcNow;
             if (previousTrafficTime != default)
             {
@@ -480,18 +496,19 @@ public partial class MainWindow : Window
 
     private void UpdateConnections(System.Collections.Generic.IReadOnlyList<ConnectionRow> rows)
     {
-        var sorting = (ConnectionsGrid.ItemsSource as ListCollectionView)?.SortDescriptions.ToArray() ?? [];
-        var view = new ListCollectionView(rows.ToList());
-        ConnectionsGrid.ItemsSource = view;
-        using (view.DeferRefresh())
+        if (!ReferenceEquals(ConnectionsGrid.ItemsSource, connectionView)) ConnectionsGrid.ItemsSource = connectionView;
+        var incoming = rows.ToDictionary(row => row.Id, StringComparer.Ordinal);
+        var existing = connectionRows.ToDictionary(row => row.Id, StringComparer.Ordinal);
+        foreach (var row in connectionRows.ToArray())
         {
-            var grouping = new PropertyGroupDescription(nameof(ConnectionRow.RouteGroup));
-            grouping.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
-            view.GroupDescriptions.Add(grouping);
-            foreach (var sort in sorting) view.SortDescriptions.Add(sort);
+            bool copying = Keyboard.FocusedElement is TextBox { SelectionLength: > 0 } box && ReferenceEquals(box.DataContext, row);
+            if (!incoming.ContainsKey(row.Id) && !copying) connectionRows.Remove(row);
         }
-        foreach (var column in ConnectionsGrid.Columns)
-            column.SortDirection = sorting.FirstOrDefault(sort => sort.PropertyName == column.SortMemberPath) is { PropertyName.Length: > 0 } match ? match.Direction : null;
+        foreach (var row in rows)
+        {
+            if (existing.TryGetValue(row.Id, out var current)) current.Update(row);
+            else connectionRows.Add(row);
+        }
     }
 
     private void SettingsChanged(object? sender, EventArgs e)
@@ -601,7 +618,7 @@ public partial class MainWindow : Window
 
     private async void ReconnectClick(object sender, RoutedEventArgs e)
     {
-        if (engine?.Running != true || testing) return;
+        if (busy || engine?.Running != true || testing) return;
         await ToggleAsync();
         if (engine?.Running != true && !quitting) await ToggleAsync();
     }
@@ -610,14 +627,12 @@ public partial class MainWindow : Window
 
     private async Task RunConnectionTestAsync()
     {
-        if (testing || quitting) return;
-        testing = true;
+        if (busy || testing || quitting) return;
         SetBusy(busy);
         diagnosticSucceeded = false;
         lastDiagnosticResult = null;
         lastSpeedResults = null;
         checkedSettings = null;
-        diagnosticCancellation = new CancellationTokenSource();
         SpeedPanel.Visibility = Visibility.Collapsed;
         SpeedLockedText.Visibility = Visibility.Visible;
         DiagnosticCountryPanel.Visibility = Visibility.Collapsed;
@@ -629,43 +644,45 @@ public partial class MainWindow : Window
         TestResultText.Text = engine?.Running == true ? Ui.T("Testing the applied connection.") : Ui.T("Testing the current profile without starting TUN.");
         LogAutoScroll.Replace(TestLogText, "");
         TestProgress.Visibility = Visibility.Visible;
-        Engine? temporary = null;
-        Engine? target = null;
+        CancellationToken testToken = default;
         try
         {
-            target = engine;
-            if (target?.Running != true)
+            var snapshot = PortableConfiguration.Copy(settings);
+            if (engine?.Running != true)
             {
-                var snapshot = PortableConfiguration.Copy(settings);
                 if (snapshot.ActiveProfile is { Supported: false } unsupported) throw new InvalidOperationException(unsupported.Availability);
                 if (snapshot.ActiveProfile?.Supported == true) snapshot.DefaultAction = "proxy";
-                diagnosticEngine = temporary = target = CreateEngine();
-                target.Log += WriteLog;
+            }
+            await connection.RunDiagnosticsAsync(snapshot, async (target, token) =>
+            {
+                testToken = token;
                 target.Log += AppendDiagnosticEntry;
-                await target.StartAsync(snapshot, testOnly: true, diagnosticCancellation?.Token ?? CancellationToken.None);
-            }
-            else target.Log += AppendDiagnosticEntry;
-            if (target.HasProbeProfile && !target.Http3Selected)
-                await ProxyAuthenticationProbe.CheckAsync(target.AppliedSettings!.ActiveProfile,
-                    message => { AppendDiagnosticEntry(message); WriteLog(message); }, diagnosticCancellation!.Token);
-            using var probe = target.CreateProbeClient(target.HasProbeProfile);
-            var details = await NetworkDiagnostics.CheckAsync(probe, target.HasProbeProfile,
-                message => { AppendDiagnosticEntry(message); WriteLog(message); }, diagnosticCancellation!.Token);
-            if (target.HasProbeProfile)
-            {
-                string http3 = await target.CheckHttp3Async(diagnosticCancellation!.Token);
-                details = details with { Http3 = http3 };
-                if (http3.Length > 0) { AppendDiagnosticEntry(http3); WriteLog(http3); }
-            }
-            if (!quitting && (temporary is not null || target == engine))
-            {
-                CompleteDiagnostics(details, target.AppliedSettings!);
-                TestStatusText.Text += " · " + ConnectionSnapshot.RouteName(target.SelectedOutbound, target.AppliedSettings!);
-                if (target.Http3Selected) TestStatusText.Text += " · HTTP/3";
-                else if (target.UsedHttp3Fallback) TestStatusText.Text += " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP");
-            }
+                try
+                {
+                    if (target.HasProbeProfile && !target.Http3Selected)
+                        await ProxyAuthenticationProbe.CheckAsync(target.AppliedSettings!.ActiveProfile,
+                            message => { AppendDiagnosticEntry(message); WriteLog(message); }, token);
+                    using var probe = target.CreateProbeClient(target.HasProbeProfile);
+                    var details = await NetworkDiagnostics.CheckAsync(probe, target.HasProbeProfile,
+                        message => { AppendDiagnosticEntry(message); WriteLog(message); }, token);
+                    if (target.HasProbeProfile)
+                    {
+                        string http3 = await target.CheckHttp3Async(token);
+                        details = details with { Http3 = http3 };
+                        if (http3.Length > 0) { AppendDiagnosticEntry(http3); WriteLog(http3); }
+                    }
+                    if (!quitting)
+                    {
+                        CompleteDiagnostics(details, target.AppliedSettings!);
+                        TestStatusText.Text += " · " + ConnectionSnapshot.RouteName(target.SelectedOutbound, target.AppliedSettings!);
+                        if (target.Http3Selected) TestStatusText.Text += " · HTTP/3";
+                        else if (target.UsedHttp3Fallback) TestStatusText.Text += " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP");
+                    }
+                }
+                finally { target.Log -= AppendDiagnosticEntry; }
+            });
         }
-        catch (OperationCanceledException) when (diagnosticCancellation?.IsCancellationRequested == true)
+        catch (OperationCanceledException) when (quitting || testToken.IsCancellationRequested)
         {
             if (!quitting)
             {
@@ -686,19 +703,10 @@ public partial class MainWindow : Window
         }
         finally
         {
-            try { if (temporary is not null) await temporary.StopAsync(); }
-            catch (Exception error) { if (!quitting) ShowError(error); }
-            finally
+            if (!quitting)
             {
-                temporary?.Dispose(); diagnosticEngine = null;
-                if (target is not null) target.Log -= AppendDiagnosticEntry;
-                testing = false;
-                diagnosticCancellation?.Dispose(); diagnosticCancellation = null;
-                if (!quitting)
-                {
-                    TestProgress.Visibility = Visibility.Collapsed;
-                    SetBusy(busy);
-                }
+                TestProgress.Visibility = Visibility.Collapsed;
+                SetBusy(busy);
             }
         }
     }
@@ -729,7 +737,7 @@ public partial class MainWindow : Window
     {
         RefreshLog();
         if (e.Source != Sections || !e.AddedItems.Contains(DiagnosticsTab) || !IsLoaded || updatingUi || quitting) return;
-        if (testing) return;
+        if (busy || testing) return;
         await diagnosticsOnEnter();
     }
 
@@ -741,15 +749,11 @@ public partial class MainWindow : Window
 
     private async void SpeedTestClick(object sender, RoutedEventArgs e)
     {
-        if (speedRunning) { diagnosticCancellation?.Cancel(); return; }
-        if (testing || !diagnosticSucceeded || checkedSettings is null) return;
-        testing = speedRunning = true;
-        diagnosticCancellation = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-        var token = diagnosticCancellation.Token;
+        if (speedRunning) { connection.Cancel(); return; }
+        if (busy || testing || !diagnosticSucceeded || checkedSettings is null) return;
+        speedRunning = true;
         SpeedTestButton.Content = Ui.T("Stop speed test");
         SetBusy(busy);
-        Engine? temporary = null;
-        Engine? target = engine;
         SpeedResult direct = new("Without profile"), profile = new("Through profile");
         void Update(bool throughProfile, SpeedResult result)
         {
@@ -759,47 +763,40 @@ public partial class MainWindow : Window
         }
         try
         {
-            if (target?.Running == true && target.AppliedSignature != Engine.Signature(checkedSettings))
+            if (engine?.Running == true && engine.AppliedSignature != Configuration.Signature(checkedSettings))
                 throw new InvalidOperationException(Ui.T("The connection changed. Run diagnostics again before testing speed."));
-            if (target?.Running != true)
+            await connection.RunDiagnosticsAsync(checkedSettings, async (target, cancellation) =>
             {
-                diagnosticEngine = temporary = target = CreateEngine();
-                target.Log += WriteLog;
-                await target.StartAsync(checkedSettings, testOnly: true, token);
-            }
-            int size = int.Parse((string)((ComboBoxItem)SpeedSizeBox.SelectedItem).Tag);
-            string protocol = (string)((ComboBoxItem)SpeedProtocolBox.SelectedItem).Tag;
-            Update(false, direct); Update(true, profile);
-            foreach (bool throughProfile in new[] { false, true })
-            {
-                string name = throughProfile ? "Through profile" : "Without profile";
-                if (throughProfile && !target.HasProbeProfile) { Update(true, profile with { Status = "No profile selected" }); continue; }
-                try
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                deadline.CancelAfter(TimeSpan.FromMinutes(5));
+                var token = deadline.Token;
+                int size = int.Parse((string)((ComboBoxItem)SpeedSizeBox.SelectedItem).Tag);
+                string protocol = (string)((ComboBoxItem)SpeedProtocolBox.SelectedItem).Tag;
+                Update(false, direct); Update(true, profile);
+                foreach (bool throughProfile in new[] { false, true })
                 {
-                    using var probe = target.CreateProbeClient(throughProfile);
-                    await Task.Run(() => NetworkDiagnostics.MeasureAsync(probe, name, size, protocol, throughProfile,
-                        result => Update(throughProfile, result), message => { AppendDiagnosticEntry(message); WriteLog(message); }, token), token);
+                    string name = throughProfile ? "Through profile" : "Without profile";
+                    if (throughProfile && !target.HasProbeProfile) { Update(true, profile with { Status = "No profile selected" }); continue; }
+                    try
+                    {
+                        using var probe = target.CreateProbeClient(throughProfile);
+                        await Task.Run(() => NetworkDiagnostics.MeasureAsync(probe, name, size, protocol, throughProfile,
+                            result => Update(throughProfile, result), message => { AppendDiagnosticEntry(message); WriteLog(message); }, token), token);
+                    }
+                    catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
+                    {
+                        Update(throughProfile, (throughProfile ? profile : direct) with { Status = "Error" });
+                        AppendDiagnosticEntry(name + ": " + error.GetType().Name);
+                    }
                 }
-                catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
-                {
-                    Update(throughProfile, (throughProfile ? profile : direct) with { Status = "Error" });
-                    AppendDiagnosticEntry(name + ": " + error.GetType().Name);
-                }
-            }
+            });
         }
         catch (OperationCanceledException) { AppendDiagnosticEntry("Speed test stopped."); Update(false, direct with { Status = "Stopped" }); Update(true, profile with { Status = "Stopped" }); }
         catch (Exception error) { AppendDiagnosticEntry("Diagnostic failed: " + error.GetType().Name); ShowError(error); }
         finally
         {
-            try { if (temporary is not null) await temporary.StopAsync(); }
-            catch (Exception error) { if (!quitting) ShowError(error); }
-            finally
-            {
-                temporary?.Dispose(); diagnosticEngine = null;
-                diagnosticCancellation.Dispose(); diagnosticCancellation = null;
-                testing = speedRunning = false;
-                if (!quitting) { SpeedTestButton.Content = Ui.T("Test speed"); SetBusy(busy); }
-            }
+            speedRunning = false;
+            if (!quitting) { SpeedTestButton.Content = Ui.T("Test speed"); SetBusy(busy); }
         }
     }
 
@@ -912,21 +909,19 @@ public partial class MainWindow : Window
 
     private async Task QuitAsync()
     {
-        if (busy || quitting) return;
+        if (quitting) return;
         quitting = true; timer.Stop(); SetBusy(true);
-        diagnosticCancellation?.Cancel();
+        connection.Cancel();
         try
         {
-            while (testing) await Task.Delay(25);
-            if (engine is not null) await engine.StopAsync();
-            if (diagnosticEngine is not null) await diagnosticEngine.StopAsync();
+            await connection.ShutdownAsync();
         }
         catch (Exception error) { MessageBox.Show(this, error.Message, Ui.T("Disconnecting")); }
         finally
         {
             log.Changed -= LogChanged;
             SystemEvents.UserPreferenceChanged -= ThemeChanged;
-            engine?.Dispose(); trayMenu.IsOpen = false; tray.Visible = false; tray.Dispose(); trayIcon.Dispose(); lightTrayIcon.Dispose(); connectedIcon.Dispose();
+            trayMenu.IsOpen = false; tray.Visible = false; tray.Dispose(); trayIcon.Dispose(); lightTrayIcon.Dispose(); connectedIcon.Dispose();
             Application.Current.Shutdown();
         }
     }

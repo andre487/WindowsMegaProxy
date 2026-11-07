@@ -99,7 +99,7 @@ internal static class Http3Checks
                     {
                         await engine.StartAsync(settings, true, token);
                         Assert(engine.Http3Selected == h3 && engine.UsedHttp3Fallback == !h3, "Choose HTTP/3 or stable TCP according to actual QUIC availability.");
-                        Assert(engine.AppliedSignature == Engine.Signature(settings) && engine.AppliedSettings!.ActiveProfile!.PreferHttp3, "Runtime fallback preserves the saved preference and reconnect signature.");
+                        Assert(engine.AppliedSignature == Configuration.Signature(settings) && engine.AppliedSettings!.ActiveProfile!.PreferHttp3, "Runtime fallback preserves the saved preference and reconnect signature.");
                         using var client = engine.CreateProbeClient(true);
                         string body = await client.GetStringAsync(probeUri, token);
                         Assert(body == "fixture", "Proxy transfers actual target response bytes.");

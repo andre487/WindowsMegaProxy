@@ -57,6 +57,16 @@ public static class Configuration
     public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || settings.Rules.Any(rule => rule.Action == "proxy");
     public static bool RequiresHttp3(Settings settings) => UsesProxy(settings) && settings.ActiveProfile?.UsesHttp3 == true;
 
+    public static string Signature(Settings settings) => new JsonObject
+    {
+        ["configuration"] = Configuration.Build(settings, 1, "snapshot", allowUnresolvedSsh: true),
+        ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? settings.TlsFingerprint : null,
+        ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,
+        ["preferHttp3"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.PreferHttp3 == true,
+        ["sshFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" ? settings.ActiveProfile.Proxy["trustedHostKey"]?.DeepClone() : null,
+        ["acceptAnySshKey"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" && (settings.ActiveProfile.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false)
+    }.ToJsonString();
+
     public static string FolderPattern(string folder)
     {
         if (!System.IO.Path.IsPathFullyQualified(folder))
