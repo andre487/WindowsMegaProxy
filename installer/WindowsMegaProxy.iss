@@ -88,7 +88,7 @@ function CloseServiceHandle(Handle: THandle): Boolean;
   external 'CloseServiceHandle@advapi32.dll stdcall';
 
 function RuntimeInstalled: Boolean;
-var Names: TArrayOfString; I: Integer; Version, Minimum: Int64;
+var Names: TArrayOfString; I: Integer; Version, Minimum: Int64; Directory: String; Entry: TFindRec;
 begin
   Result := False;
   if not StrToVersion('{#RuntimeVersion}', Minimum) then Exit;
@@ -96,6 +96,19 @@ begin
     for I := 0 to GetArrayLength(Names) - 1 do
       if (Pos('10.', Names[I]) = 1) and StrToVersion(Names[I], Version) and
         (ComparePackedVersion(Version, Minimum) >= 0) then Result := True;
+  if Result then Exit;
+  Directory := ExpandConstant('{autopf}\dotnet\shared\Microsoft.WindowsDesktop.App');
+  if FindFirst(Directory + '\*', Entry) then begin
+    try
+      repeat
+        if (Pos('10.', Entry.Name) = 1) and StrToVersion(Entry.Name, Version) and
+          (ComparePackedVersion(Version, Minimum) >= 0) and
+          FileExists(Directory + '\' + Entry.Name + '\PresentationFramework.dll') then Result := True;
+      until not FindNext(Entry);
+    finally
+      FindClose(Entry);
+    end;
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -115,6 +128,7 @@ begin
       end;
       if not Exec(ExpandConstant('{tmp}\dotnet-desktop.exe'), '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, Code) then
         RaiseException('Could not start the .NET Desktop Runtime installer.');
+      Log(Format('.NET Desktop Runtime installer exit code: %d', [Code]));
       if Code = 3010 then begin
         NeedsRestart := True;
         RaiseException('Restart Windows before continuing installation. Existing MegaProxy files have not been changed.');
@@ -137,7 +151,7 @@ procedure CurStepChanged(Step: TSetupStep);
 var Code: Integer;
 begin
   if Step = ssPostInstall then
-    if not Exec(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--install-service', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--install-service', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
       RaiseException('Could not configure the MegaProxy service. Close MegaProxy in all Windows sessions and retry. See the setup log.');
 end;
 
@@ -147,7 +161,7 @@ begin
   Result := False;
   if RegQueryStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Services\WindowsMegaProxy', 'ImagePath', ImagePath) then begin
     Executable := RemoveQuotes(ImagePath);
-    if not Exec(Executable, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then begin
+    if not ExecAndLogOutput(Executable, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
       MsgBox('Close MegaProxy in all Windows sessions and retry. The .NET Desktop Runtime must remain installed until MegaProxy is removed.', mbError, MB_OK);
       Exit;
     end;
