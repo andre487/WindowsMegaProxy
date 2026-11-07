@@ -168,7 +168,7 @@ def main():
             item.update(size=file.stat().st_size, sha256=digest(file, "sha256"),
                         url=f"{REPOSITORY}/releases/download/v{app_version}/{file.name}")
         manifest = {"schemaVersion": 1, "version": app_version, "commit": commit, "platform": "win-x64",
-                    "preview": args.preview, "serviceProtocol": 2, "components": components,
+                    "preview": args.preview, "serviceProtocol": 3, "components": components,
                     "runtime": {"version": runtime["version"], "url": runtime_file["url"], "sha512": runtime_file["hash"]}}
         signed_manifest(manifest, staging, key)
         names = [item["file"] for item in components.values()] + ["update-manifest.json", "update-manifest.sig", "update-public-key.txt"]

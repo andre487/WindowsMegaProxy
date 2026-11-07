@@ -45,10 +45,17 @@ public sealed class Settings
 
 public sealed class RoutingRule : INotifyPropertyChanged
 {
+    private bool enabled = true;
+    public string Name { get; set; } = "";
+    public bool Enabled
+    {
+        get => enabled;
+        set { if (enabled == value) return; enabled = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Enabled))); }
+    }
     public event PropertyChangedEventHandler? PropertyChanged;
     public void RefreshLanguage()
     {
-        foreach (string name in new[] { nameof(SourceLabel), nameof(DestinationLabel), nameof(ActionLabel) })
+        foreach (string name in new[] { nameof(NameLabel), nameof(SourceLabel), nameof(DestinationLabel), nameof(ActionLabel) })
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
     public string Source { get; set; } = "all";
@@ -64,6 +71,7 @@ public sealed class RoutingRule : INotifyPropertyChanged
         return copy;
     }
     [JsonIgnore] public string SourceLabel => Source == "all" ? Ui.T("All applications") : Path;
+    [JsonIgnore] public string NameLabel => Name.Length > 0 ? Name : Source == "all" ? DestinationLabel : System.IO.Path.GetFileName(Path.TrimEnd('\\', '/'));
     [JsonIgnore] public string DestinationLabel => Destination.Length == 0 ? Ui.T("All destinations") : Destination;
     [JsonIgnore] public string ActionLabel => Action switch
     {
@@ -79,7 +87,7 @@ public static class Configuration
     public const string Http3CoreVersion = "1.15.0-alpha.13";
     public static readonly string[] TlsFingerprints = ["default", "chrome", "firefox", "edge", "safari", "ios", "android", "randomized"];
     public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || settings.Rules.Any(rule => rule.Action == "proxy");
+    public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || settings.Rules.Any(rule => rule.Enabled && rule.Action == "proxy");
     public static bool RequiresHttp3(Settings settings) => UsesProxy(settings) && settings.ActiveProfile?.UsesHttp3 == true;
 
     public static string Signature(Settings settings)
@@ -108,7 +116,7 @@ public static class Configuration
         ValidateAction(settings.DefaultAction);
         bool proxyDefault = settings.DefaultAction == "proxy";
         var outbounds = new JsonArray(new JsonObject { ["type"] = "direct", ["tag"] = "direct" });
-        if (proxyDefault || settings.Rules.Any(rule => rule.Action == "proxy"))
+        if (UsesProxy(settings))
         {
             var selected = settings.ActiveProfile ?? throw new ArgumentException(Ui.T("Select a connection profile."));
             outbounds.Insert(0, BuildOutbound(selected, "proxy", settings.TlsFingerprint, allowUnresolvedSsh));
@@ -122,7 +130,7 @@ public static class Configuration
                 : new JsonObject { ["protocol"] = "dns", ["action"] = "route", ["outbound"] = "direct" },
             new JsonObject { ["process_name"] = new JsonArray("sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe"), ["action"] = "route", ["outbound"] = "direct" }
         };
-        foreach (var rule in settings.Rules)
+        foreach (var rule in settings.Rules.Where(rule => rule.Enabled))
             rules.Add(BuildRule(rule));
         if (settings.BypassLan)
             rules.Add(new JsonObject { ["ip_is_private"] = true, ["action"] = "route", ["outbound"] = "direct" });
@@ -224,6 +232,8 @@ public static class Configuration
 
     public static JsonObject BuildRule(RoutingRule rule)
     {
+        if (rule.Name is null || rule.Name.Length > 80 || rule.Name.Any(char.IsControl))
+            throw new ArgumentException(Ui.T("Rule names must be at most 80 characters without line breaks."));
         ValidateAction(rule.Action);
         var result = new JsonObject();
         switch (rule.Source)

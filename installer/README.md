@@ -38,6 +38,10 @@ IPC before stopping/removing the old service. DEV uses independent user-scope
 DPAPI settings. `uninstall-dev.cmd` migrates settings from a running legacy DEV
 service and removes its registered service and installed binaries only.
 
+IPC v3 carries rule names and enabled state. Update the interface and service
+together; the installation helper can still read a v2 service during legacy
+configuration migration.
+
 ## Release
 
 The `Prepare release` action accepts a version and English/Russian notes and

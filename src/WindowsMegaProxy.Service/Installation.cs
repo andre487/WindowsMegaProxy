@@ -31,7 +31,8 @@ public static class Installation
             if (AppIdentity.IsDev && command == "--migrate-dev-settings")
             {
                 if (!StartupConfiguration.IsElevated) throw new UnauthorizedAccessException("Migration requires administrator approval.");
-                var reply = new ServiceClient().CallAsync(new("hello")).GetAwaiter().GetResult();
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var (_, reply) = MigrationClientAsync(deadline.Token).GetAwaiter().GetResult();
                 if (!reply.CanEdit || reply.Settings is null) throw new IOException("Could not read DEV service settings.");
                 StartupConfiguration.SaveLocal(reply.Settings);
                 return 0;
@@ -101,6 +102,17 @@ public static class Installation
         }
     }
 
+    private static async Task<(ServiceClient Client, ServiceReply Reply)> MigrationClientAsync(CancellationToken token)
+    {
+        var client = new ServiceClient();
+        try { return (client, await client.CallAsync(new("hello"), token)); }
+        catch (System.TimeoutException)
+        {
+            var legacy = new ServiceClient(ServiceProtocol.Name + ".Control.v2");
+            return (legacy, await legacy.CallAsync(new("hello"), token));
+        }
+    }
+
     private static async Task<byte[]?> MigrateSettingsAsync()
     {
         string path = Path.Combine(MachineSettingsStore.DefaultDirectory, "settings.json");
@@ -114,12 +126,13 @@ public static class Installation
         if (old.Status == ServiceControllerStatus.Stopped) { old.Start(); old.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30)); }
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         ServiceReply reply;
-        var client = new ServiceClient();
         while (true)
         {
             try
             {
-                reply = await client.CallAsync(new("hello"), deadline.Token);
+                var migrated = await MigrationClientAsync(deadline.Token);
+                var client = migrated.Client;
+                reply = migrated.Reply;
                 if (reply.Testing) { await Task.Delay(200, deadline.Token); continue; }
                 if (reply.Status is not null)
                     await client.CallAsync(new("stop", InstanceId: reply.InstanceId, Generation: reply.Status.Generation), deadline.Token);

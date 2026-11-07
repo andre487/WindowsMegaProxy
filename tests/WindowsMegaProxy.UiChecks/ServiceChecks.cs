@@ -11,7 +11,7 @@ internal static class ServiceChecks
     public static async Task RunAsync()
     {
         string name = AppIdentity.IsDev ? "WindowsMegaProxy.Dev" : "WindowsMegaProxy";
-        Assert(ServiceProtocol.Name == name && ServiceProtocol.PipeName == name + ".Control.v2", "Build channels have separate services and pipes.");
+        Assert(ServiceProtocol.Name == name && ServiceProtocol.PipeName == name + ".Control.v3", "Build channels have separate services and versioned pipes.");
         Assert(Path.GetFileName(MachineSettingsStore.DefaultDirectory) == name && Path.GetFileName(SettingsStore.DirectoryPath) == name,
             "Build channels have separate machine and user settings.");
         Assert(AppIdentity.MutexName == @"Local\" + name, "Build channels do not share the UI instance mutex.");

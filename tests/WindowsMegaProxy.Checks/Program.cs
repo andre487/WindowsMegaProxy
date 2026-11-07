@@ -45,6 +45,29 @@ if (args.Length == 2 && args[0] == "--real-config")
 }
 
 var pattern = Configuration.FolderPattern(@"C:\Apps\A+B");
+Assert(Regex.IsMatch(@"C:\Project\artifacts\trace-probe\MegaProxy.TraceProbe.exe", Configuration.FolderPattern(@"C:\Project\artifacts\trace-probe")), "Folder rules match the actual TraceProbe publish directory.");
+Assert(!Regex.IsMatch(@"C:\Project\artifacts\trace-probe\MegaProxy.TraceProbe.exe", Configuration.FolderPattern(@"C:\Project\src\MegaProxy.TraceProbe\bin")), "Source build and published application folders are distinct.");
+var disabledRule = new RoutingRule { Name = "Trace", Enabled = false, Source = "folder", Path = @"C:\Project\artifacts\trace-probe", Action = "proxy" };
+var disabledSettings = new Settings { Rules = [disabledRule] };
+Assert(!Configuration.UsesProxy(disabledSettings), "Disabled proxy rules must not require a profile.");
+var disabledSignature = Configuration.Signature(disabledSettings);
+Assert(!Configuration.Build(disabledSettings, 1, "check")["route"]!["rules"]!.AsArray().Any(item => item?["process_path_regex"] is not null), "Disabled rules must not reach the core.");
+disabledRule.Name = "Renamed trace";
+Assert(Configuration.Signature(disabledSettings) == disabledSignature, "Renaming a rule must not require reconnecting.");
+disabledRule.Enabled = true;
+Assert(Configuration.UsesProxy(disabledSettings) && !SettingsAnalysis.SameNetwork(disabledSettings, new Settings { Rules = [new RoutingRule { Enabled = false, Source = disabledRule.Source, Path = disabledRule.Path }] }), "Enabling a rule changes the network configuration.");
+var legacyRule = System.Text.Json.JsonSerializer.Deserialize<RoutingRule>("{\"Source\":\"all\",\"Action\":\"system\"}")!;
+Assert(legacyRule.Enabled, "Existing rules without the new flag remain enabled.");
+var namedRuleProfile = ProxyProfile.Create("Rule test");
+namedRuleProfile.Proxy["host"] = "proxy.invalid";
+var namedRuleSettings = new Settings { Profiles = [namedRuleProfile], ActiveProfileId = namedRuleProfile.Id, Rules = [disabledRule] };
+string namedRuleSignature = Configuration.Signature(namedRuleSettings);
+disabledRule.Name = "Short name";
+Assert(Configuration.Signature(namedRuleSettings) == namedRuleSignature, "Active rule names are metadata, not a network change.");
+disabledRule.Enabled = false;
+var namedRuleRoundtrip = PortableConfiguration.Import(PortableConfiguration.Export(namedRuleSettings).ToJsonString(), new Settings());
+Assert(namedRuleRoundtrip.Rules.Single() is { Name: "Short name", Enabled: false }, "Rule name and enabled state round-trip through MegaProxy.json.");
+Reject(() => Configuration.BuildRule(new RoutingRule { Name = new string('x', 81) }));
 Assert(Regex.IsMatch(@"c:\apps\a+b\nested\client.exe", pattern), "Recursive case-insensitive folder match.");
 Assert(!Regex.IsMatch(@"C:\Apps\A+B-Other\client.exe", pattern), "Sibling folder must not match.");
 Assert(!Regex.IsMatch(@"C:\Apps\AB\client.exe", pattern), "Regex characters in paths must be literal.");

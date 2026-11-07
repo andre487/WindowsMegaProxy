@@ -21,7 +21,7 @@ public sealed record ServiceReply(bool CanEdit, Settings? Settings = null, Servi
 public static class ServiceProtocol
 {
     public const string Name = AppIdentity.Name;
-    public const string PipeName = Name + ".Control.v2";
+    public const string PipeName = Name + ".Control.v3";
     public const int MaximumFrameBytes = 16 * 1024 * 1024;
     public static readonly JsonSerializerOptions Options = new() { UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow };
 

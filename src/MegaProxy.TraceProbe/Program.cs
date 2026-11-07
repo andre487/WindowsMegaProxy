@@ -11,6 +11,7 @@ internal static class Program
     private static async Task<int> Main()
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
+        Console.WriteLine($"Executable: {Environment.ProcessPath}");
         using var stop = new CancellationTokenSource();
         ConsoleCancelEventHandler cancel = (_, args) => { args.Cancel = true; stop.Cancel(); };
         Console.CancelKeyPress += cancel;

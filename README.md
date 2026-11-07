@@ -5,7 +5,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 ## Features
 
 - **Proxy profiles:** HTTPS, SOCKS5, SSH, HTTPS Jump and experimental MASQUE (HTTP/3). Create, edit, duplicate and switch profiles, with colors and country flags.
-- **Flexible routing:** ordered rules for EXE files, folders including subfolders, domains, wildcard domains, IP addresses and subnets. Use the active profile, system mode or blocking; system mode is the default.
+- **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses and subnets. Use the active profile, system mode or blocking; system mode is the default.
 - **HTTP/3:** optional preference for HTTPS and HTTPS Jump, with TCP fallback when available. HTTP/3 checks appear only for supported transports.
 - **Connection monitoring:** grouped connections, traffic rates, sortable columns and copyable application paths.
 - **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests.

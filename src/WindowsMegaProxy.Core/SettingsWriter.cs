@@ -11,7 +11,7 @@ public sealed record SettingsAnalysis(Settings Settings, string? Signature, stri
     public static bool SameNetwork(Settings a, Settings b) => a.DefaultAction == b.DefaultAction && a.BypassLan == b.BypassLan &&
         a.TlsFingerprint == b.TlsFingerprint && a.ActiveProfileId == b.ActiveProfileId &&
         a.Rules.Count == b.Rules.Count && a.Rules.Zip(b.Rules).All(pair => pair.First.Source == pair.Second.Source &&
-            pair.First.Path == pair.Second.Path && pair.First.Destination == pair.Second.Destination && pair.First.Action == pair.Second.Action) &&
+            pair.First.Path == pair.Second.Path && pair.First.Destination == pair.Second.Destination && pair.First.Action == pair.Second.Action && pair.First.Enabled == pair.Second.Enabled) &&
         JsonNode.DeepEquals(a.ActiveProfile?.Proxy, b.ActiveProfile?.Proxy);
 
     public static SettingsAnalysis Prepare(Settings settings, SettingsAnalysis? previous = null)

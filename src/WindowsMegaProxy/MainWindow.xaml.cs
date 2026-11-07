@@ -21,6 +21,8 @@ public sealed record SpeedMetricRow(string Metric, string Direct, string Profile
 
 public partial class MainWindow : Window
 {
+    public static readonly DependencyProperty RulesEditableProperty = DependencyProperty.Register(nameof(RulesEditable), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public bool RulesEditable { get => (bool)GetValue(RulesEditableProperty); private set => SetValue(RulesEditableProperty, value); }
     private readonly ServiceClient? service;
     private bool canEdit = true, refreshingService;
     private bool serviceAvailable, serviceTesting;
@@ -217,7 +219,7 @@ public partial class MainWindow : Window
                 UseShellExecute = true, Verb = "runas", WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
                 WorkingDirectory = Path.GetDirectoryName(installScript)!
             };
-            if (AppIdentity.IsDev) start.Arguments = "--dev";
+            start.Arguments = "--mode service";
             using var installer = System.Diagnostics.Process.Start(start) ?? throw new IOException("Could not start the service installer.");
             await installer.WaitForExitAsync();
             if (installer.ExitCode != 0) throw new IOException(AppIdentity.IsDev
@@ -354,8 +356,8 @@ public partial class MainWindow : Window
 
     private static string BrandLabel(string key) => Ui.T(key).Replace("MegaProxy", AppIdentity.DisplayName, StringComparison.Ordinal);
     private static string ServiceUnavailableMessage => Ui.T(AppIdentity.IsDev
-        ? "The DEV service is unavailable. Run install.cmd --dev to install or repair it."
-        : "The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
+        ? "The DEV host is unavailable. Restart it with run.cmd."
+        : "The MegaProxy service is unavailable. Repair service mode with the installer or install.cmd --mode service.");
 
     private Task SaveSettingsAsync() => CommitSettingsAsync(CaptureSettings());
 
@@ -465,7 +467,7 @@ public partial class MainWindow : Window
             !shownProfiles.Zip(updated.Profiles).All(pair => System.Text.Json.Nodes.JsonNode.DeepEquals(pair.First.Data, pair.Second.Data));
         bool rulesChanged = first || rules.Count != updated.Rules.Count || !rules.Zip(updated.Rules).All(pair =>
             pair.First.Source == pair.Second.Source && pair.First.Path == pair.Second.Path && pair.First.Destination == pair.Second.Destination &&
-            pair.First.Action == pair.Second.Action && pair.First.ProfileId == pair.Second.ProfileId);
+            pair.First.Action == pair.Second.Action && pair.First.ProfileId == pair.Second.ProfileId && pair.First.Enabled == pair.Second.Enabled && pair.First.Name == pair.Second.Name);
         string? selected = (ProfilesList.SelectedItem as ProxyProfile)?.Id;
         int selectedRule = RulesList.SelectedIndex;
         updatingUi = true;
@@ -724,6 +726,7 @@ public partial class MainWindow : Window
         ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
         trayConnect.IsEnabled = ConnectButton.IsEnabled;
         bool editable = canEdit && !quitting && !settingsLoading;
+        RulesEditable = editable;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
         foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
@@ -891,7 +894,7 @@ public partial class MainWindow : Window
         var origin = e.OriginalSource as DependencyObject;
         for (var node = origin; node is not null && node != RulesList;)
         {
-            if (node is TextBox) return;
+            if (node is TextBox or CheckBox) return;
             node = node is System.Windows.Media.Visual ? System.Windows.Media.VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
         }
         if (ItemsControl.ContainerFromElement(RulesList, origin) is not DataGridRow row) return;
@@ -1033,6 +1036,7 @@ public partial class MainWindow : Window
                 .Replace(": unavailable", ": " + Ui.T("unavailable"), StringComparison.Ordinal)
                 .Replace(": confirmed", ": " + Ui.T("confirmed"), StringComparison.Ordinal)));
         DiagnosticHttp3Text.Visibility = string.IsNullOrEmpty(details.Http3) ? Visibility.Collapsed : Visibility.Visible;
+        DiagnosticHttp3Label.Visibility = DiagnosticHttp3Text.Visibility;
         DiagnosticCountryPanel.Visibility = Visibility.Visible;
         DiagnosticCountryPanel.DataContext = ProfileAppearance.Country(details.Country ?? "");
         SpeedPanel.Visibility = Visibility.Visible;
@@ -1220,6 +1224,20 @@ public partial class MainWindow : Window
         catch (Exception error) { ShowError(error); }
     }
     private void DeleteRuleClick(object sender, RoutedEventArgs e) { if (canEdit && RulesList.SelectedItem is RoutingRule rule) rules.Remove(rule); }
+    private async void RuleEnabledClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox box || box.DataContext is not RoutingRule rule) return;
+        if (!RulesEditable || updatingUi || quitting) { box.IsChecked = rule.Enabled; return; }
+        int index = rules.IndexOf(rule);
+        if (index < 0) return;
+        try
+        {
+            var updated = CaptureSettings();
+            updated.Rules[index].Enabled = box.IsChecked == true;
+            await CommitSettingsAsync(updated);
+        }
+        catch (Exception error) { box.IsChecked = rule.Enabled; ShowError(error); }
+    }
     private void MoveRuleUpClick(object sender, RoutedEventArgs e) => MoveRule(-1);
     private void MoveRuleDownClick(object sender, RoutedEventArgs e) => MoveRule(1);
     private void MoveRule(int offset)

@@ -116,6 +116,7 @@ internal static class Program
             foreach (string name in new[] { "ConnectButton", "ReconnectButton", "ProfilePicker", "DefaultActionBox", "BypassLanBox", "AutostartBox", "LanguageBox", "TestConnectionButton" })
                 Assert(!((Control)window.FindName(name)).IsEnabled, "Read-only control: " + name);
             Assert(((DataGrid)window.FindName("RulesList")).IsEnabled, "Read-only rules remain selectable for copying.");
+            Assert(!window.RulesEditable, "Read-only users cannot toggle rules.");
             access.SetValue(window, true);
             ((TabControl)window.FindName("Sections")).IsEnabled = false;
             setBusy.Invoke(window, [false]);
@@ -368,7 +369,7 @@ internal static class Program
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
             {
                 var headers = ((DataGrid)window.FindName(gridName)).Columns.Select(column => (string)column.Header).ToArray();
-                Assert(headers[0] == (gridName == "SpeedResultsGrid" ? "Metric" : "Application") && headers.All(header => !System.Text.RegularExpressions.Regex.IsMatch(header, "[А-Яа-яЁё]")),
+                Assert(headers[0] == (gridName == "SpeedResultsGrid" ? "Metric" : gridName == "RulesList" ? "Enabled" : "Application") && headers.All(header => !System.Text.RegularExpressions.Regex.IsMatch(header, "[А-Яа-яЁё]")),
                     gridName + " column headers switch to English, including hidden tabs.");
             }
             var trayMenu = (ContextMenu)typeof(MainWindow).GetField("trayMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
@@ -398,7 +399,7 @@ internal static class Program
             Layout(window);
             Assert(saved[^1].Language == "ru" && ProfileAppearance.Country("DE").Name == "Германия", "Russian remains an explicit saved translation.");
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
-                Assert(((DataGrid)window.FindName(gridName)).Columns[0].Header as string == (gridName == "SpeedResultsGrid" ? "Параметр" : "Приложение"), "Table headers switch back to Russian.");
+                Assert(((DataGrid)window.FindName(gridName)).Columns[0].Header as string == (gridName == "SpeedResultsGrid" ? "Параметр" : gridName == "RulesList" ? "Включено" : "Приложение"), "Table headers switch back to Russian.");
             Assert(((MenuItem)trayMenu.Items[0]).Header as string == Ui.T("Open MegaProxy").Replace("MegaProxy", AppIdentity.DisplayName), "Tray menu follows language changes.");
             var groupedRows = new[]
             {
@@ -479,9 +480,11 @@ internal static class Program
             typeof(MainWindow).GetMethod("CompleteDiagnostics", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
                 [new DiagnosticResult("203.0.113.7", "DE", 32, ""), fixture]);
             Assert(((TextBlock)window.FindName("DiagnosticHttp3Text")).Visibility == Visibility.Collapsed, "Hide HTTP/3 results when the applied transport has no confirmed UDP support.");
+            Assert(((TextBlock)window.FindName("DiagnosticHttp3Label")).Visibility == Visibility.Collapsed, "Hide the HTTP/3 label along with unsupported results.");
             typeof(MainWindow).GetMethod("CompleteDiagnostics", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
                 [new DiagnosticResult("203.0.113.7", "DE", 32, "HTTP/3 · example.test: confirmed"), fixture]);
             Assert(((TextBlock)window.FindName("DiagnosticHttp3Text")).Visibility == Visibility.Visible, "Show HTTP/3 results for UDP-capable transports.");
+            Assert(((TextBlock)window.FindName("DiagnosticHttp3Label")).Visibility == Visibility.Visible, "Restore the HTTP/3 label for supported results.");
             typeof(MainWindow).GetMethod("SetBusy", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [false]);
             Assert(((TextBox)window.FindName("DiagnosticIpText")).Text == "203.0.113.7" && ((TextBox)window.FindName("DiagnosticIpText")).IsReadOnly,
                 "Result includes a selectable external IP.");
@@ -565,6 +568,8 @@ internal static class Program
                 Assert(RuleField<TextBox>(edit, "destination").Text == "*.before.example",
                     "Rule editor preloads destination and named profile.");
                 RuleField<TextBox>(edit, "destination").Text = "*.after.example";
+                RuleField<TextBox>(edit, "name").Text = "Trace check";
+                RuleField<CheckBox>(edit, "enabled").IsChecked = false;
                 Assert(editableRule.Destination == "*.before.example", "Editing must not mutate the original rule before confirmation.");
                 Descendants(edit).OfType<Button>().Single(button => button.Content as string == "Сохранить").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }));
@@ -573,6 +578,11 @@ internal static class Program
             Assert(saved.Count == savesBeforeEdit + 1 && rules.Count == countBeforeEdit && rules[1].Destination == "*.after.example" && rules[1].ProfileId is null,
                 "Saving replaces the same rule in place and persists immediately.");
             Assert(ruleGrid.SelectedIndex == 1 && rules[^1].Destination == "tail.example", "Editing preserves rule priority and selection.");
+            Assert(rules[1].Name == "Trace check" && !rules[1].Enabled && !ruleGrid.CanUserSortColumns, "Rule names and enabled state persist without sorting away priority.");
+            var enableBox = new CheckBox { DataContext = rules[1], IsChecked = true };
+            typeof(MainWindow).GetMethod("RuleEnabledClick", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [enableBox, new RoutedEventArgs(Button.ClickEvent)]);
+            Layout(window);
+            Assert(rules[1].Enabled && saved[^1].Rules[1].Enabled, "The table checkbox autosaves enabled state.");
             Layout(window);
             int savedAfterEdit = saved.Count;
             window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>

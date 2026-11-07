@@ -12,6 +12,8 @@ public sealed class RuleWindow : Window
     private readonly ComboBox source = new() { ItemsSource = new[] { Ui.T("All applications"), Ui.T("EXE file"), Ui.T("Folder (including subfolders)") }, SelectedIndex = 0 };
     private readonly TextBox path = new() { IsReadOnly = true };
     private readonly TextBox destination = new();
+    private readonly TextBox name = new() { MaxLength = 80 };
+    private readonly CheckBox enabled = new() { Content = Ui.T("Enabled"), IsChecked = true, Margin = new Thickness(0, 8, 0, 8) };
     private readonly ComboBox action = new() { ItemsSource = new[] { Ui.T("Active profile"), Ui.T("System mode"), Ui.T("Block") }, SelectedIndex = 0 };
     public RoutingRule? Rule { get; private set; }
 
@@ -26,6 +28,8 @@ public sealed class RuleWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var panel = new StackPanel { Margin = new Thickness(24) };
         Content = panel;
+        AddField(panel, Ui.T("Rule name (optional)"), name);
+        panel.Children.Add(enabled);
         AddField(panel, Ui.T("Application"), source);
         var browse = new Button { Content = Ui.T("Browse…"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 6) };
         browse.Click += (_, _) =>
@@ -50,6 +54,8 @@ public sealed class RuleWindow : Window
         AddField(panel, Ui.T("Action"), action);
         if (existingRule is not null)
         {
+            name.Text = existingRule.Name;
+            enabled.IsChecked = existingRule.Enabled;
             source.SelectedIndex = existingRule.Source switch { "exe" => 1, "folder" => 2, _ => 0 };
             path.Text = existingRule.Path;
             destination.Text = existingRule.Destination;
@@ -59,7 +65,7 @@ public sealed class RuleWindow : Window
         var save = new Button { Content = existingRule is null ? Ui.T("Add") : Ui.T("Save"), IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
         save.Click += (_, _) =>
         {
-            var rule = new RoutingRule { Source = new[] { "all", "exe", "folder" }[source.SelectedIndex], Path = path.Text,
+            var rule = new RoutingRule { Name = name.Text.Trim(), Enabled = enabled.IsChecked == true, Source = new[] { "all", "exe", "folder" }[source.SelectedIndex], Path = path.Text,
                 Destination = destination.Text.Trim(), Action = new[] { "proxy", "system", "block" }[action.SelectedIndex] };
             try { Configuration.BuildRule(rule); Rule = rule; DialogResult = true; }
             catch (ArgumentException error) { MessageBox.Show(this, error.Message, Ui.T("Rule")); }
