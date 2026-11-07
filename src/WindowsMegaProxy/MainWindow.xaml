@@ -94,9 +94,10 @@
             <Setter Property="FontWeight" Value="Normal" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="FontSize" Value="14" />
-            <Setter Property="Padding" Value="16,12" />
-            <Setter Property="MinWidth" Value="108" />
-            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Margin" Value="4,0" />
             <Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -257,7 +258,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <TabPanel IsItemsHost="True" Margin="0,0,0,12" KeyboardNavigation.TabIndex="1" />
+                        <UniformGrid Rows="1" IsItemsHost="True" Margin="0,0,0,12" KeyboardNavigation.TabIndex="1" />
                         <Border
                             Grid.Row="1"
                             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
@@ -298,6 +299,7 @@
                     </StackPanel>
                     <DataGrid
                         x:Name="ConnectionsGrid"
+                        MinColumnWidth="80"
                         VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                         Grid.Row="2"
                         AutoGenerateColumns="False"
@@ -359,6 +361,7 @@
                                 ClipboardContentBinding="{Binding Process}"
                                 SortMemberPath="Process"
                                 Width="2*"
+                                MinWidth="160"
                                 Header="{Binding [Application], Source={x:Static core:Ui.Strings}}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -369,6 +372,7 @@
                             <DataGridTextColumn
                                 Binding="{Binding Destination}"
                                 Width="2*"
+                                MinWidth="160"
                                 Header="{Binding [Destination], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Network}"
@@ -377,6 +381,7 @@
                             <DataGridTextColumn
                                 Binding="{Binding Route}"
                                 Width="*"
+                                MinWidth="120"
                                 Header="{Binding [Route], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Upload}"
@@ -637,7 +642,14 @@
                             HorizontalAlignment="Left"
                             Width="220"
                             Margin="0,0,0,12">
-                            <ComboBoxItem Content="{DynamicResource &quot;Native TLS&quot;}" Tag="default" />
+                            <ComboBoxItem Tag="default">
+                                <TextBlock>
+                                    <Run Text="{DynamicResource &quot;Default&quot;}" />
+                                    <Run Text=" (" />
+                                    <Run Text="{x:Static core:Configuration.DefaultTlsFingerprint}" />
+                                    <Run Text=")" />
+                                </TextBlock>
+                            </ComboBoxItem>
                             <ComboBoxItem Content="Chrome" Tag="chrome" />
                             <ComboBoxItem Content="Firefox" Tag="firefox" />
                             <ComboBoxItem Content="Edge" Tag="edge" />
@@ -645,6 +657,7 @@
                             <ComboBoxItem Content="iOS" Tag="ios" />
                             <ComboBoxItem Content="Android" Tag="android" />
                             <ComboBoxItem Content="{DynamicResource &quot;Randomized&quot;}" Tag="randomized" />
+                            <ComboBoxItem Content="{DynamicResource &quot;Native TLS&quot;}" Tag="native" />
                         </ComboBox>
                         <TextBlock Text="{DynamicResource &quot;HTTP/3 fingerprint&quot;}" Margin="0,0,0,4" />
                         <TextBlock Text="Native sing-box QUIC" Margin="0,0,0,4" />
@@ -799,7 +812,7 @@
                                     </StackPanel>
                                     <TextBlock
                                         Grid.Row="2"
-                                        Text="{DynamicResource &quot;HTTPS response&quot;}"
+                                        Text="{DynamicResource &quot;Check time&quot;}"
                                         ToolTip="{DynamicResource &quot;HTTPS request duration, including connection establishment when needed, TLS and reading the response body. This is not network RTT.&quot;}"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Margin="0,0,16,8" />

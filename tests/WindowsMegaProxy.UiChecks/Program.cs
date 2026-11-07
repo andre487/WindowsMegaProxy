@@ -275,6 +275,7 @@ internal static class Program
                 Assert(!Descendants(window).OfType<Button>().Any(button => button.Content as string == "Выход"), "Exit belongs in the menu.");
                 var headers = sections.Items.Cast<TabItem>().ToArray();
                 Assert(headers.Length == 6, "Six navigation sections.");
+                Assert(headers.All(header => Math.Abs(header.ActualWidth - headers[0].ActualWidth) < 1), "Navigation headers have equal widths.");
                 for (int i = 0; i < headers.Length; i++)
                 {
                     sections.SelectedIndex = i;
@@ -536,6 +537,17 @@ internal static class Program
             Assert(shortened.StartsWith("C:\\") && shortened.Contains('…') && shortened.EndsWith("client.exe"), "Long paths preserve prefix and exe.");
             sections.SelectedIndex = 0;
             var grid = (DataGrid)window.FindName("ConnectionsGrid");
+            grid.ItemsSource = Array.Empty<ConnectionRow>();
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                UiTheme.Apply("ru", theme, window);
+                sections.SelectedIndex = 1;
+                Layout(window);
+                sections.SelectedIndex = 0;
+                Layout(window);
+                Assert(grid.Columns.All(column => double.IsFinite(column.ActualWidth) && column.ActualWidth >= 80),
+                    "Empty connection columns retain readable widths after tab and theme changes.");
+            }
             grid.ItemsSource = new[] { new ConnectionRow(fullPath, "example.com:443", "TCP", "Test proxy", "1 КиБ", "2 КиБ") };
             Layout(window);
             var pathBox = Descendants(grid).OfType<PathTextBox>().First();
@@ -565,6 +577,9 @@ internal static class Program
                 var edit = window.OwnedWindows.OfType<RuleWindow>().Single();
                 Assert(RuleField<ComboBox>(edit, "source").SelectedIndex == 2 && RuleField<TextBox>(edit, "path").Text == editableRule.Path,
                     "Rule editor preloads source and recursive folder path.");
+                var pathInput = RuleField<TextBox>(edit, "path");
+                Assert(pathInput.IsEnabled && !pathInput.IsReadOnly, "Application paths accept typing and standard Ctrl+V.");
+                pathInput.Text = "\"" + editableRule.Path + "\"";
                 Assert(RuleField<TextBox>(edit, "destination").Text == "*.before.example",
                     "Rule editor preloads destination and named profile.");
                 RuleField<TextBox>(edit, "destination").Text = "*.after.example";
@@ -579,6 +594,7 @@ internal static class Program
                 "Saving replaces the same rule in place and persists immediately.");
             Assert(ruleGrid.SelectedIndex == 1 && rules[^1].Destination == "tail.example", "Editing preserves rule priority and selection.");
             Assert(rules[1].Name == "Trace check" && !rules[1].Enabled && !ruleGrid.CanUserSortColumns, "Rule names and enabled state persist without sorting away priority.");
+            Assert(rules[1].Path == editableRule.Path, "Pasted quoted folder paths are normalized.");
             var enableBox = new CheckBox { DataContext = rules[1], IsChecked = true };
             typeof(MainWindow).GetMethod("RuleEnabledClick", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [enableBox, new RoutedEventArgs(Button.ClickEvent)]);
             Layout(window);

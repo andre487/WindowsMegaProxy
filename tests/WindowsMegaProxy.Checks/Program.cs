@@ -266,7 +266,7 @@ foreach (string fingerprint in Configuration.TlsFingerprints)
     preferences.TlsFingerprint = fingerprint;
     preferences.DefaultAction = "proxy";
     var output = Configuration.Build(preferences, 9999, "test");
-    Assert(output["outbounds"]![0]!["tls"]!["utls"]?["fingerprint"]?.ToString() == (fingerprint == "default" ? null : fingerprint), "Apply the selected TCP fingerprint.");
+    Assert(output["outbounds"]![0]!["tls"]!["utls"]?["fingerprint"]?.ToString() == (fingerprint == "native" ? null : Configuration.ResolveTlsFingerprint(fingerprint)), "Resolve default TLS independently of fixed browser and native selections.");
     Assert(!Configuration.RequiresHttp3(preferences), "A browser fingerprint keeps the stable core.");
     Assert(PortableConfiguration.Import(PortableConfiguration.Export(preferences).ToJsonString(), new Settings()).TlsFingerprint == fingerprint, "Fingerprint round trip.");
     File.WriteAllText($"artifacts/fingerprint-{fingerprint}.json", output.ToJsonString(Configuration.JsonOptions));

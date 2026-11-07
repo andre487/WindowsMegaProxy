@@ -34,9 +34,10 @@ Old version directories are retained for rollback.
 Global settings use machine-scope DPAPI and a directory restricted to SYSTEM
 and administrators so either elevated desktop hosts or the service can use
 them. Legacy service-identity DPAPI settings are migrated through authenticated
-IPC before stopping/removing the old service. DEV uses independent user-scope
-DPAPI settings. `uninstall-dev.cmd` migrates settings from a running legacy DEV
-service and removes its registered service and installed binaries only.
+IPC before stopping/removing the old service. DEV uses an independent machine-scope
+store, migrating its legacy user settings on first launch. `cleanup-dev.cmd`
+preserves settings and removes DEV services, scheduled tasks, Run entries,
+operating mode registration and installed binaries. Production is untouched.
 
 IPC v3 carries rule names and enabled state. Update the interface and service
 together; the installation helper can still read a v2 service during legacy

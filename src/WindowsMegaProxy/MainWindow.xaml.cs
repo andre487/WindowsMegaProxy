@@ -107,7 +107,7 @@ public partial class MainWindow : Window
         this.getAutostart = getAutostart ?? (service is null ? () => Task.FromResult(StartupConfiguration.Mode == "login") : async () => (await service.CallAsync(new("status"))).AutoStart);
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
         // Preserve existing log history until the saved limit has been loaded.
-        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(standalone && !AppIdentity.IsDev ? MachineSettingsStore.DefaultDirectory : SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
+        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(standalone ? MachineSettingsStore.DefaultDirectory : SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
         logWriter = new BackgroundLog(log);
         logWriter.Failed += _ => Dispatcher.BeginInvoke(() => { if (!quitting) MessageText.Text = Ui.T("Could not write the log to disk."); });
         settings = new Settings();
@@ -731,7 +731,7 @@ public partial class MainWindow : Window
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
         foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
-        OperatingModeBox.IsEnabled = editable && !busy && !AppIdentity.IsDev && File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable));
+        OperatingModeBox.IsEnabled = editable && !busy && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
         ExportLogButton.IsEnabled = service is null || canEdit;

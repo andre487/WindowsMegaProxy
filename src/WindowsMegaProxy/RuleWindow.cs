@@ -10,7 +10,7 @@ namespace WindowsMegaProxy;
 public sealed class RuleWindow : Window
 {
     private readonly ComboBox source = new() { ItemsSource = new[] { Ui.T("All applications"), Ui.T("EXE file"), Ui.T("Folder (including subfolders)") }, SelectedIndex = 0 };
-    private readonly TextBox path = new() { IsReadOnly = true };
+    private readonly TextBox path = new() { IsEnabled = false };
     private readonly TextBox destination = new();
     private readonly TextBox name = new() { MaxLength = 80 };
     private readonly CheckBox enabled = new() { Content = Ui.T("Enabled"), IsChecked = true, Margin = new Thickness(0, 8, 0, 8) };
@@ -45,7 +45,7 @@ public sealed class RuleWindow : Window
                 if (dialog.ShowDialog(this) == true) path.Text = dialog.FolderName;
             }
         };
-        source.SelectionChanged += (_, _) => { path.Clear(); browse.IsEnabled = source.SelectedIndex != 0; };
+        source.SelectionChanged += (_, _) => { path.Clear(); path.IsEnabled = browse.IsEnabled = source.SelectedIndex != 0; };
         browse.IsEnabled = false;
         AutomationProperties.SetName(path, Ui.T("Application path"));
         panel.Children.Add(path);
@@ -65,7 +65,7 @@ public sealed class RuleWindow : Window
         var save = new Button { Content = existingRule is null ? Ui.T("Add") : Ui.T("Save"), IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
         save.Click += (_, _) =>
         {
-            var rule = new RoutingRule { Name = name.Text.Trim(), Enabled = enabled.IsChecked == true, Source = new[] { "all", "exe", "folder" }[source.SelectedIndex], Path = path.Text,
+            var rule = new RoutingRule { Name = name.Text.Trim(), Enabled = enabled.IsChecked == true, Source = new[] { "all", "exe", "folder" }[source.SelectedIndex], Path = path.Text.Trim().Trim('"'),
                 Destination = destination.Text.Trim(), Action = new[] { "proxy", "system", "block" }[action.SelectedIndex] };
             try { Configuration.BuildRule(rule); Rule = rule; DialogResult = true; }
             catch (ArgumentException error) { MessageBox.Show(this, error.Message, Ui.T("Rule")); }

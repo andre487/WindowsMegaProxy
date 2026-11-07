@@ -7,14 +7,13 @@ namespace WindowsMegaProxy;
 
 public static class StartupConfiguration
 {
-    public const string RegistryPath = @"SOFTWARE\WindowsMegaProxy";
+    public static string RegistryPath => @"SOFTWARE\" + AppIdentity.Name;
     public static string Validate(string mode) => mode is "manual" or "login" or "service" ? mode : throw new ArgumentException("Unknown operating mode.");
     public static bool IsElevated => new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
     public static string Mode
     {
         get
         {
-            if (AppIdentity.IsDev) return "manual";
             using var key = Registry.LocalMachine.OpenSubKey(RegistryPath);
             if (key?.GetValue("Mode") is string value) return Validate(value);
             using var legacy = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name);
@@ -24,8 +23,10 @@ public static class StartupConfiguration
 
     public static Settings LoadLocal()
     {
-        if (AppIdentity.IsDev) return SettingsStore.Load();
         var store = new MachineSettingsStore();
+        if (AppIdentity.IsDev && File.Exists(Path.Combine(SettingsStore.DirectoryPath, "settings.json")) &&
+            (!store.Initialized || System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(store.DirectoryPath, "settings.json")))?["scope"]?.GetValue<string>() != "machine"))
+            store.Save(SettingsStore.Load());
         if (store.Initialized) return store.Load();
         var settings = SettingsStore.Load();
         store.Save(settings);
@@ -34,8 +35,7 @@ public static class StartupConfiguration
 
     public static void SaveLocal(Settings settings)
     {
-        if (AppIdentity.IsDev) { SettingsStore.PrepareDirectory(); SettingsStore.Save(settings); }
-        else new MachineSettingsStore().Save(settings);
+        new MachineSettingsStore().Save(settings);
     }
 
     public static IDisposable ClaimRuntime(string? path = null)

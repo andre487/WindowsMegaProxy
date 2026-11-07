@@ -106,17 +106,23 @@ def install():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("manual", "login", "service"), default="manual")
     parser.add_argument("--elevated", action="store_true")
-    parser.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--dev", action="store_true", help="Configure the isolated DEV installation explicitly.")
+    parser.add_argument("--launch", action="store_true")
     options = parser.parse_args()
-    if options.dev:
-        raise RuntimeError("DEV runs without installation. Use run.cmd; uninstall-dev.cmd removes its old service.")
-    name = app_name()
-    sources = (artifact_root() / "app", artifact_root() / "service")
-    if not (sources[0] / (name + ".exe")).is_file() or not (sources[1] / (name + ".Service.exe")).is_file():
-        raise RuntimeError("Run build.cmd before installation.")
     if not ct.windll.shell32.IsUserAnAdmin():
         elevate()
         return
+    if options.dev:
+        from service_control import require_production_stopped
+        from run import stop_workspace_app
+        import build
+        require_production_stopped()
+        stop_workspace_app(dev=True, workspace_only=False)
+        build.main(dev=True)
+    name = app_name(options.dev)
+    sources = (artifact_root(options.dev) / "app", artifact_root(options.dev) / "service")
+    if not (sources[0] / (name + ".exe")).is_file() or not (sources[1] / (name + ".Service.exe")).is_file():
+        raise RuntimeError("Run build.cmd before installation.")
     cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
     runtime_root = known_folder(0x26) / "dotnet/shared/Microsoft.WindowsDesktop.App"
     minimum = tuple(map(int, release()["windowsdesktop"]["version"].split(".")))
@@ -141,7 +147,12 @@ def install():
         merge(source, target)
     install_core(target / "dependencies/sing-box", cache)
     install_core(target / "dependencies/sing-box-h3", cache, http3=True)
+    if options.dev:
+        for directory in ("sing-box", "sing-box-h3"):
+            (target / "dependencies" / directory / "sing-box.exe").rename(target / "dependencies" / directory / "sing-box-dev.exe")
     run(str(target / (name + ".Service.exe")), "--configure-mode", options.mode)
+    if options.launch:
+        sp.Popen([str(target / (name + ".exe"))], cwd=target)
     print(f"Installed: {target / (name + '.exe')}")
 
 

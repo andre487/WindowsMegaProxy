@@ -36,7 +36,7 @@ the interface in service mode can run without elevation.
 
 Choose an operating mode in the native installer or application settings. Manual and sign-in modes require administrator privileges and stop interception when you exit the application. Service mode keeps the shared connection running when the interface closes. Changing mode restarts the application and preserves its configuration.
 
-For development, run `stop-prod.cmd`, then `run.cmd` from an administrator terminal (or approve UAC). DEV runs directly from `artifacts/dev/app`, with separate processes, icons and settings, and installs no service. Re-running `run.cmd` closes DEV gracefully, rebuilds only the interface and restarts it. It refuses to start while production is running. `uninstall-dev.cmd` removes an older installed DEV service and binaries while preserving settings. `build.cmd --dev` only builds DEV.
+For development, run `stop-prod.cmd`, then `run.cmd` from an administrator terminal (or approve UAC). DEV runs directly from `artifacts/dev/app`, with separate processes, icons and settings. Re-running `run.cmd` removes DEV startup registrations, closes DEV gracefully, rebuilds the interface and starts in manual mode. It refuses to start while production is running. All three operating modes are available in DEV settings; explicit login/service mode installs an isolated protected DEV copy. `cleanup-dev.cmd` (also `uninstall-dev.cmd`) removes DEV services, startup entries and installed binaries while preserving settings. `build.cmd --dev` only builds DEV.
 
 SSH key verification requires the Windows OpenSSH Client optional feature.
 

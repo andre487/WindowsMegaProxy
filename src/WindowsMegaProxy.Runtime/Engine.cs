@@ -56,6 +56,10 @@ public sealed class Engine : IEngine
     public async Task StartAsync(Settings settings, bool testOnly = false, CancellationToken cancellationToken = default)
     {
         if (Running) return;
+        if (AppIdentity.IsDev && !testOnly)
+            foreach (string name in new[] { "WindowsMegaProxy", "WindowsMegaProxy.Service" })
+                foreach (var production in Process.GetProcessesByName(name))
+                    using (production) throw new IOException("Production MegaProxy is running. Use stop-prod.cmd before connecting DEV.");
         UsedHttp3Fallback = false;
         var runtime = PortableConfiguration.Copy(settings);
         if (Configuration.UsesProxy(runtime) && runtime.ActiveProfile is { Type: "SSH" } ssh && !(ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false))

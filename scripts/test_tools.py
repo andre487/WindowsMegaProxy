@@ -21,28 +21,38 @@ import install as installer
 
 class ToolsChecks(unittest.TestCase):
     def test_console_installer_uses_mode_helper_in_version_directory(self):
-        for mode in ("manual", "login", "service"):
-            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+        for mode, dev in ((mode, dev) for mode in ("manual", "login", "service") for dev in (False, True)):
+            with self.subTest(mode=mode, dev=dev), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary).resolve()
-                for directory, executable in (("app", "WindowsMegaProxy.exe"), ("service", "WindowsMegaProxy.Service.exe")):
+                name = app_name(dev)
+                for directory, executable in (("app", name + ".exe"), ("service", name + ".Service.exe")):
                     (root / directory).mkdir()
                     (root / directory / executable).write_bytes(b"fixture")
                 (root / "Program Files/dotnet/shared/Microsoft.WindowsDesktop.App/10.0.99").mkdir(parents=True)
-                with patch("sys.argv", ["install.py", "--mode", mode]), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
+                def core(destination, *_, **__):
+                    destination.mkdir(parents=True, exist_ok=True)
+                    (destination / "sing-box.exe").write_bytes(b"core-fixture")
+                with patch("sys.argv", ["install.py", "--mode", mode] + (["--dev"] if dev else [])), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
                      patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
                      patch("install.release", return_value={"windowsdesktop": {"version": "10.0.14"}}), \
                      patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
-                     patch("install.install_core"), patch("install.run") as configure, patch("builtins.print"):
+                     patch("install.install_core", side_effect=core), patch("install.run") as configure, patch("builtins.print"), \
+                     patch("run.stop_workspace_app"), patch("service_control.require_production_stopped"), patch("build.main"):
                     installer.install()
                 command = configure.call_args.args
                 self.assertIn("versions", Path(command[0]).parts)
+                self.assertEqual(Path(command[0]).name, name + ".Service.exe")
                 self.assertEqual(command[1:], ("--configure-mode", mode))
 
-    def test_console_installer_rejects_dev_before_elevation(self):
-        with patch("sys.argv", ["install.py", "--dev"]), patch("install.elevate") as elevate:
-            with self.assertRaisesRegex(RuntimeError, "without installation"):
-                installer.install()
-        elevate.assert_not_called()
+    def test_dev_cleanup_matches_only_its_own_task_names(self):
+        for task in (r"\WindowsMegaProxy.Dev.Login", r"\WindowsMegaProxy.Dev-S-1-5-21-1001", r"\WindowsMegaProxy.Dev"):
+            self.assertTrue(uninstall_dev.is_dev_task(task))
+        for task in (r"\WindowsMegaProxy.Login", r"\WindowsMegaProxy-S-1-5-21-1001", r"\Other.Dev.Login", r"\WindowsMegaProxy.Development"):
+            self.assertFalse(uninstall_dev.is_dev_task(task))
+            with patch("uninstall_dev.sp.run") as mutate:
+                with self.assertRaisesRegex(RuntimeError, "non-DEV"):
+                    uninstall_dev.remove_startup([task], [])
+                mutate.assert_not_called()
 
     def test_dev_removal_rejects_redirected_program_files_target(self):
         with patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
@@ -53,11 +63,20 @@ class ToolsChecks(unittest.TestCase):
         close.assert_not_called()
         stop.assert_not_called()
 
+    def test_dev_cleanup_without_registrations_keeps_running_standalone(self):
+        with tempfile.TemporaryDirectory() as temporary, patch("uninstall_dev.known_folder", return_value=Path(temporary)), \
+             patch("uninstall_dev.startup_records", return_value=([], [])), patch("uninstall_dev.service_state", return_value=None), \
+             patch("uninstall_dev.stop_workspace_app") as close, patch("uninstall_dev.stop_service") as stop, patch("builtins.print"):
+            uninstall_dev.cleanup()
+            uninstall_dev.cleanup()
+        close.assert_not_called()
+        stop.assert_not_called()
+
     def test_dev_run_builds_only_ui_and_never_installs_service(self):
-        with patch("run.require_production_stopped"), patch("run.stop_workspace_app"), patch("run.stop_service") as stop, \
+        with patch("run.require_production_stopped"), patch("run.stop_workspace_app"), patch("uninstall_dev.cleanup") as clean, \
              patch("run.build.main") as build, patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
             dev_runner.restart()
-        stop.assert_called_once_with("WindowsMegaProxy.Dev")
+        clean.assert_called_once_with(close_clients=False, remove_files=False)
         build.assert_called_once_with(dev=True, app_only=True)
         install.assert_not_called()
         self.assertIn("artifacts", launch.call_args.args[0][0])

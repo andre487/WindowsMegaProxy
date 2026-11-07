@@ -74,7 +74,8 @@ def stop_workspace_app(dev=True, workspace_only=True):
 def restart():
     require_production_stopped()
     stop_workspace_app(workspace_only=False)
-    stop_service(app_name(True))
+    from uninstall_dev import cleanup
+    cleanup(close_clients=False, remove_files=False)
     build.main(dev=True, app_only=True)
     require_production_stopped()
     env = os.environ.copy()

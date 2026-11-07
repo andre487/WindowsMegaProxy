@@ -85,7 +85,9 @@ public static class Configuration
 {
     public const string CoreVersion = "1.14.4";
     public const string Http3CoreVersion = "1.15.0-alpha.13";
-    public static readonly string[] TlsFingerprints = ["default", "chrome", "firefox", "edge", "safari", "ios", "android", "randomized"];
+    public const string DefaultTlsFingerprint = "chrome";
+    public static readonly string[] TlsFingerprints = ["default", "chrome", "firefox", "edge", "safari", "ios", "android", "randomized", "native"];
+    public static string ResolveTlsFingerprint(string value) => value == "default" ? DefaultTlsFingerprint : value;
     public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || settings.Rules.Any(rule => rule.Enabled && rule.Action == "proxy");
     public static bool RequiresHttp3(Settings settings) => UsesProxy(settings) && settings.ActiveProfile?.UsesHttp3 == true;
@@ -95,7 +97,7 @@ public static class Configuration
         var snapshot = new JsonObject
         {
             ["configuration"] = Configuration.Build(settings, 1, "snapshot", allowUnresolvedSsh: true),
-            ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? settings.TlsFingerprint : null,
+            ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? ResolveTlsFingerprint(settings.TlsFingerprint) : null,
             ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,
             ["preferHttp3"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.PreferHttp3 == true,
             ["sshFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" ? settings.ActiveProfile.Proxy["trustedHostKey"]?.DeepClone() : null,
@@ -209,9 +211,10 @@ public static class Configuration
         {
             // The stable core's CONNECT client speaks HTTP/1.1, including when uTLS offers HTTP/2 by default.
             outbound["tls"]!["alpn"] = new JsonArray("http/1.1");
-            if (tlsFingerprint != "default")
+            if (!TlsFingerprints.Contains(tlsFingerprint)) throw new ArgumentException("Unsupported TLS fingerprint.");
+            tlsFingerprint = ResolveTlsFingerprint(tlsFingerprint);
+            if (tlsFingerprint != "native")
             {
-                if (!TlsFingerprints.Contains(tlsFingerprint)) throw new ArgumentException("Unsupported TLS fingerprint.");
                 outbound["tls"]!["utls"] = new JsonObject { ["enabled"] = true, ["fingerprint"] = tlsFingerprint };
             }
         }

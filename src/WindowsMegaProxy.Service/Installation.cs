@@ -17,9 +17,9 @@ public static class Installation
         string root = Path.GetFullPath(Path.Combine(programFiles, AppIdentity.Name));
         string version = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
         string versions = Path.Combine(root, "versions") + Path.DirectorySeparatorChar;
-        if (AppIdentity.IsDev || !version.StartsWith(versions, StringComparison.OrdinalIgnoreCase) ||
+        if (!version.StartsWith(versions, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(Path.GetDirectoryName(version), versions.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-            throw new IOException("The service installer must run from a protected production version directory.");
+            throw new IOException("The service installer must run from its protected version directory.");
         return root;
     }
 
@@ -34,7 +34,8 @@ public static class Installation
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 var (_, reply) = MigrationClientAsync(deadline.Token).GetAwaiter().GetResult();
                 if (!reply.CanEdit || reply.Settings is null) throw new IOException("Could not read DEV service settings.");
-                StartupConfiguration.SaveLocal(reply.Settings);
+                SettingsStore.PrepareDirectory();
+                SettingsStore.Save(reply.Settings);
                 return 0;
             }
             if (command is not ("--install-service" or "--prepare-uninstall" or "--configure-mode" or "--set-mode")) throw new ArgumentException("Unknown installation command.");
@@ -232,7 +233,7 @@ public static class Installation
 
     private static void CloseClients()
     {
-        foreach (var process in Process.GetProcessesByName("WindowsMegaProxy"))
+        foreach (var process in Process.GetProcessesByName(AppIdentity.Name))
         using (process)
         {
             try
