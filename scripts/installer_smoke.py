@@ -61,6 +61,20 @@ def main():
         dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--no-build", "--", "--installed-settings-check", "seed" if attempt == 1 else "verify")
         assert "sing-box.exe" not in running_images(), "An unconfigured installation must not activate TUN."
         assert service_state("WindowsMegaProxy.Dev") is None, "Installer must not register DEV."
+        if attempt == 3:
+            security = sp.check_output(["sc.exe", "sdshow", "WindowsMegaProxy"], text=True)
+            original = next(line.strip() for line in security.splitlines() if line.strip().startswith("D:"))
+            first_entry = original.index("(")
+            denied = original[:first_entry] + "(D;;WP;;;BA)" + original[first_entry:]
+            sp.run(["sc.exe", "sdset", "WindowsMegaProxy", denied], check=True, capture_output=True)
+            try:
+                failure = sp.run([str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=manual", f"/LOG={logs / 'mode-change-failed.log'}"], timeout=120)
+                assert failure.returncode != 0, "A failed mode configuration must fail the installer."
+                assert service_state("WindowsMegaProxy") == 4, "A denied mode change must preserve the running service."
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
+                    assert winreg.QueryValueEx(key, "Mode")[0] == "service", "A failed mode change must preserve the previous mode."
+            finally:
+                sp.run(["sc.exe", "sdset", "WindowsMegaProxy", original], check=True, capture_output=True)
         previous = current
         time.sleep(1)
     sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'uninstall.log'}"], check=True, timeout=120)
