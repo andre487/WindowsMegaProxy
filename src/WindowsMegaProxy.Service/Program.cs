@@ -63,7 +63,7 @@ internal sealed class Program : ServiceBase
     private static Task SetAutostartAsync(bool enabled)
     {
         using var key = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-        if (enabled) key.SetValue(ServiceProtocol.Name, $"\"{Path.Combine(AppContext.BaseDirectory, "WindowsMegaProxy.exe")}\" --tray", RegistryValueKind.String);
+        if (enabled && !AppIdentity.IsDev) key.SetValue(ServiceProtocol.Name, $"\"{Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)}\" --tray", RegistryValueKind.String);
         else key.DeleteValue(ServiceProtocol.Name, false);
         return Task.CompletedTask;
     }

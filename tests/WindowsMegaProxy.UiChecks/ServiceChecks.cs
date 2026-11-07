@@ -10,6 +10,11 @@ internal static class ServiceChecks
 {
     public static async Task RunAsync()
     {
+        string name = AppIdentity.IsDev ? "WindowsMegaProxy.Dev" : "WindowsMegaProxy";
+        Assert(ServiceProtocol.Name == name && ServiceProtocol.PipeName == name + ".Control.v2", "Build channels have separate services and pipes.");
+        Assert(Path.GetFileName(MachineSettingsStore.DefaultDirectory) == name && Path.GetFileName(SettingsStore.DirectoryPath) == name,
+            "Build channels have separate machine and user settings.");
+        Assert(AppIdentity.MutexName == @"Local\" + name, "Build channels do not share the UI instance mutex.");
         Assert(ClientAccess.MayEdit(true, false, false, false, false, false), "Administrator accounts may edit.");
         Assert(!ClientAccess.MayEdit(false, false, false, false, false, false), "Ordinary accounts are read-only.");
         Assert(!ClientAccess.MayEdit(true, false, true, false, false, false), "Restricted administrator tokens cannot edit.");

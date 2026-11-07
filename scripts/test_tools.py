@@ -9,12 +9,60 @@ import zipfile
 from PIL import Image
 
 from artwork import preferred_color
-from common import download, extract
+from common import ROOT, download, extract, app_name, artifact_root
 from dependencies import asset
 from install import secure_directory
+from service_control import require_production_stopped, stop_service
+import run as dev_runner
+import stop_prod
 
 
 class ToolsChecks(unittest.TestCase):
+    def test_stop_service_waits_for_an_existing_stop(self):
+        with patch("service_control.service_state", side_effect=[3, 1]), patch("service_control.sp.run") as control, \
+             patch("service_control.time.sleep"):
+            stop_service("WindowsMegaProxy")
+        control.assert_not_called()
+
+    def test_dev_run_refuses_active_production_before_any_changes(self):
+        with patch("run.require_production_stopped", side_effect=RuntimeError("Production is running")), \
+             patch("run.stop_workspace_app") as stop, patch("run.build.main") as build, patch("run.sp.run") as install:
+            with self.assertRaisesRegex(RuntimeError, "Production"):
+                dev_runner.restart()
+        stop.assert_not_called()
+        build.assert_not_called()
+        install.assert_not_called()
+
+    def test_production_guard_checks_service_and_processes(self):
+        for state, processes, blocked in ((4, set(), True), (2, set(), True),
+                (1, {"windowsmegaproxy.exe"}, True), (None, {"windowsmegaproxy.service.exe"}, True),
+                (1, {"windowsmegaproxy.dev.exe"}, False), (None, set(), False)):
+            with self.subTest(state=state, processes=processes), patch("service_control.service_state", return_value=state), \
+                 patch("service_control.running_images", return_value=processes):
+                if blocked:
+                    with self.assertRaisesRegex(RuntimeError, "stop-prod.cmd"):
+                        require_production_stopped()
+                else:
+                    require_production_stopped()
+
+    def test_stop_prod_targets_only_production(self):
+        with patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
+             patch("stop_prod.stop_workspace_app") as close, patch("stop_prod.stop_service") as stop, \
+             patch("stop_prod.require_production_stopped") as verify, patch("builtins.print"):
+            stop_prod.main()
+        close.assert_called_once_with(dev=False, workspace_only=False)
+        stop.assert_called_once_with("WindowsMegaProxy")
+        verify.assert_called_once_with()
+
+    def test_build_channels_and_icons_are_distinct(self):
+        self.assertNotEqual(app_name(True), app_name(False))
+        self.assertNotEqual(artifact_root(True), artifact_root(False))
+        for name in ("app", "tray", "tray-light"):
+            with Image.open(ROOT / f"src/WindowsMegaProxy/Assets/{name}.ico") as production, \
+                 Image.open(ROOT / f"src/WindowsMegaProxy/Assets/dev-{name}.ico") as development:
+                self.assertTrue({(16, 16), (32, 32), (48, 48), (256, 256)}.issubset(development.ico.sizes()))
+                self.assertNotEqual(production.ico.getimage((16, 16)).tobytes(), development.ico.getimage((16, 16)).tobytes())
+
     def test_installer_rejects_untrusted_existing_directory_owner(self):
         api, kernel = unittest.mock.MagicMock(), unittest.mock.MagicMock()
         api.GetNamedSecurityInfoW.return_value = 0

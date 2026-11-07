@@ -5,8 +5,10 @@ import ctypes as ct
 from ctypes import wintypes as wt
 from pathlib import Path
 import subprocess as sp
+import sys
 
-from common import ROOT, cli
+from common import ROOT, cli, artifact_root, app_name
+from service_control import require_production_stopped
 import build
 
 user32 = ct.WinDLL("user32", use_last_error=True)
@@ -26,15 +28,15 @@ kernel32.CloseHandle.argtypes = [wt.HANDLE]
 kernel32.GetExitCodeProcess.argtypes = [wt.HANDLE, ct.POINTER(wt.DWORD)]
 
 
-def workspace_windows():
+def workspace_windows(title="MegaProxy DEV"):
     windows = []
 
     @callback_type
     def collect(window, _):
-        title, window_class = ct.create_unicode_buffer(256), ct.create_unicode_buffer(256)
-        user32.GetWindowTextW(window, title, 256)
+        text, window_class = ct.create_unicode_buffer(256), ct.create_unicode_buffer(256)
+        user32.GetWindowTextW(window, text, 256)
         user32.GetClassNameW(window, window_class, 256)
-        if title.value == "MegaProxy" and window_class.value.startswith("HwndWrapper"):
+        if text.value == title and window_class.value.startswith("HwndWrapper"):
             pid = wt.DWORD()
             user32.GetWindowThreadProcessId(window, ct.byref(pid))
             windows.append((window, pid.value))
@@ -44,8 +46,8 @@ def workspace_windows():
     return windows
 
 
-def stop_workspace_app():
-    for window, pid in workspace_windows():
+def stop_workspace_app(dev=True, workspace_only=True):
+    for window, pid in workspace_windows("MegaProxy DEV" if dev else "MegaProxy"):
         process = kernel32.OpenProcess(0x1000 | 0x100000, False, pid)
         if not process:
             raise ct.WinError(ct.get_last_error())
@@ -54,7 +56,7 @@ def stop_workspace_app():
             if not kernel32.QueryFullProcessImageNameW(process, 0, image, ct.byref(size)):
                 raise ct.WinError(ct.get_last_error())
             path = Path(image.value).resolve()
-            if path.name.casefold() != "windowsmegaproxy.exe" or not path.is_relative_to(ROOT):
+            if path.name.casefold() != (app_name(dev) + ".exe").casefold() or workspace_only and not path.is_relative_to(ROOT):
                 continue
             print(f"Stopping MegaProxy PID {pid} gracefully...", flush=True)
             reply = ct.c_size_t()
@@ -68,13 +70,16 @@ def stop_workspace_app():
 
 
 def restart():
-    stop_workspace_app()
-    build.main()
+    require_production_stopped()
+    stop_workspace_app(workspace_only=False)
+    build.main(dev=True)
+    sp.run([sys.executable, str(Path(__file__).parent / "install.py"), "--dev"], check=True)
+    require_production_stopped()
     env = os.environ.copy()
     env["DOTNET_ROOT"] = str(ROOT / ".tools/dotnet")
     env["WINDOWSMEGAPROXY_CORE"] = str(ROOT / ".tools/sing-box/sing-box.exe")
     env["WINDOWSMEGAPROXY_H3_CORE"] = str(ROOT / ".tools/sing-box-h3/sing-box.exe")
-    sp.Popen([str(ROOT / "artifacts/app/WindowsMegaProxy.exe")], cwd=ROOT, env=env)
+    sp.Popen([str(artifact_root(True) / "app/WindowsMegaProxy.Dev.exe")], cwd=ROOT, env=env)
 
 
 def main():

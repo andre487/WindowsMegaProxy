@@ -11,7 +11,7 @@ namespace WindowsMegaProxy;
 
 public static class SettingsStore
 {
-    public static string DirectoryPath { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WindowsMegaProxy");
+    public static string DirectoryPath { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppIdentity.Name);
     private static string FilePath => Path.Combine(DirectoryPath, "settings.json");
 
     public static void PrepareDirectory()

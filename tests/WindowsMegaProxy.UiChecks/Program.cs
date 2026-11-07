@@ -73,7 +73,7 @@ internal static class Program
             }
             if (rejectSave) throw new IOException("Synthetic save failure.");
             saved.Add(PortableConfiguration.Copy(value));
-        }, new DiagnosticLog(Path.GetFullPath("artifacts/ui-checks/logs")), enabled =>
+        }, new DiagnosticLog(Path.GetFullPath(AppIdentity.IsDev ? "artifacts/ui-checks-dev/logs" : "artifacts/ui-checks/logs")), enabled =>
         {
             if (rejectAutostart && enabled) throw new IOException("Synthetic task failure.");
             autostartEnabled = enabled;
@@ -87,7 +87,8 @@ internal static class Program
         try
         {
             string build = ((System.Windows.Documents.Run)window.FindName("BuildInformationText")).Text;
-            Assert(build.StartsWith("v0.0.1 · ") && build.Length >= 16, "Footer shows the version and source revision.");
+            Assert(build.StartsWith(AppIdentity.IsDev ? "v0.0.1-dev · " : "v0.0.1 · ") && build.Length >= 16, "Footer shows the version and source revision.");
+            Assert(window.Title == AppIdentity.DisplayName && ((TextBlock)window.FindName("AppTitle")).Text == AppIdentity.DisplayName, "The build's window and header identify its channel.");
             var access = typeof(MainWindow).GetField("canEdit", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var setBusy = typeof(MainWindow).GetMethod("SetBusy", BindingFlags.NonPublic | BindingFlags.Instance)!;
             access.SetValue(window, false);
@@ -230,7 +231,7 @@ internal static class Program
             ((TextBlock)window.FindName("MessageText")).Text = "";
             var sections = (TabControl)window.FindName("Sections");
             var connect = (Button)window.FindName("ConnectButton");
-            string output = Path.GetFullPath("artifacts/ui-checks");
+            string output = Path.GetFullPath(AppIdentity.IsDev ? "artifacts/ui-checks-dev" : "artifacts/ui-checks");
             Directory.CreateDirectory(output);
 
 #pragma warning disable WPF0001
@@ -310,6 +311,9 @@ internal static class Program
             Capture((Visual)window.Content, Path.Combine(output, "profiles-scroll.png"));
             profileList.ItemsSource = previousSource;
             var autostart = (CheckBox)window.FindName("AutostartBox");
+            if (AppIdentity.IsDev) Assert(!autostart.IsEnabled, "DEV cannot register a competing startup entry.");
+            else
+            {
             autostart.IsChecked = true; autostart.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
             Layout(window);
             Assert(autostartEnabled && saved[^1].LaunchAtSignIn == true, "Autostart applies immediately through the OS adapter.");
@@ -320,6 +324,7 @@ internal static class Program
             Layout(window);
             Assert(!autostartEnabled && autostart.IsChecked == false && saved[^1].LaunchAtSignIn == false, "Failed autostart reverts both UI and stored preference.");
             rejectAutostart = false;
+            }
             ((ComboBox)window.FindName("LogSizeBox")).Text = "25";
             typeof(MainWindow).GetMethod("SaveLogSize", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null);
             Layout(window);
@@ -349,7 +354,7 @@ internal static class Program
                     gridName + " column headers switch to English, including hidden tabs.");
             }
             var trayMenu = (ContextMenu)typeof(MainWindow).GetField("trayMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
-            Assert(trayMenu.PlacementTarget == window && ((MenuItem)trayMenu.Items[0]).Header as string == "Open MegaProxy", "Tray uses the application's WPF menu and language.");
+            Assert(trayMenu.PlacementTarget == window && ((MenuItem)trayMenu.Items[0]).Header as string == "Open " + AppIdentity.DisplayName, "Tray uses the application's WPF menu and language.");
             typeof(MainWindow).GetMethod("UpdateSpeedResults", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
                 [new SpeedResult("Without profile", Status: "Waiting"), new SpeedResult("Through profile", Status: "Error")]);
             Assert(((DataGrid)window.FindName("SpeedResultsGrid")).Items.Cast<SpeedMetricRow>().Last() is { Metric: "Status", Direct: "Waiting", Profile: "Error" }, "Speed results use English display labels.");
@@ -376,7 +381,7 @@ internal static class Program
             Assert(saved[^1].Language == "ru" && ProfileAppearance.Country("DE").Name == "Германия", "Russian remains an explicit saved translation.");
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
                 Assert(((DataGrid)window.FindName(gridName)).Columns[0].Header as string == (gridName == "SpeedResultsGrid" ? "Параметр" : "Приложение"), "Table headers switch back to Russian.");
-            Assert(((MenuItem)trayMenu.Items[0]).Header as string == Ui.T("Open MegaProxy"), "Tray menu follows language changes.");
+            Assert(((MenuItem)trayMenu.Items[0]).Header as string == Ui.T("Open MegaProxy").Replace("MegaProxy", AppIdentity.DisplayName), "Tray menu follows language changes.");
             var groupedRows = new[]
             {
                 new ConnectionRow("z-system", "example.com:443", "TCP", "System", "0 B", "0 B", 2),

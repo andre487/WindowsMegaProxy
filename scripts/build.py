@@ -2,29 +2,30 @@ import ctypes as ct
 from ctypes import wintypes as wt
 import shutil
 import tempfile
+import argparse
 
-from common import ROOT, cli, dotnet
+from common import ROOT, cli, dotnet, app_name, artifact_root
 
 
-def main():
+def main(dev=False):
     kernel = ct.WinDLL("kernel32", use_last_error=True)
     kernel.CreateMutexW.argtypes = [ct.c_void_p, wt.BOOL, wt.LPCWSTR]
     kernel.CreateMutexW.restype = wt.HANDLE
     kernel.CloseHandle.argtypes = [wt.HANDLE]
-    mutex = kernel.CreateMutexW(None, False, "Local\\WindowsMegaProxy")
+    mutex = kernel.CreateMutexW(None, False, "Local\\" + app_name(dev))
     if not mutex:
         raise RuntimeError("Cannot check whether MegaProxy is running. Close it or use run.cmd.")
     try:
         if ct.get_last_error() == 183:
             raise RuntimeError("MegaProxy is running. Use run.cmd to stop it gracefully and rebuild.")
         for project, output in (("WindowsMegaProxy", "app"), ("WindowsMegaProxy.Service", "service"), ("MegaProxy.TraceProbe", "trace-probe")):
-            destination = (ROOT / f"artifacts/{output}").resolve()
+            destination = (artifact_root(dev) / output).resolve()
             if not destination.is_relative_to((ROOT / "artifacts").resolve()):
                 raise RuntimeError("Publish destination escapes artifacts.")
             destination.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="publish-", dir=destination.parent) as staging:
                 dotnet("publish", str(ROOT / f"src/{project}/{project}.csproj"), "-c", "Release", "-r", "win-x64",
-                       "--self-contained", "false", "-o", staging, "--nologo")
+                       "--self-contained", "false", "-o", staging, "--nologo", f"-p:MegaProxyDev={str(dev).lower()}")
                 # Replace only after a successful publish; discard obsolete bundled runtimes.
                 if destination.exists():
                     shutil.rmtree(destination)
@@ -34,4 +35,6 @@ def main():
 
 
 if __name__ == "__main__":
-    cli(main)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dev", action="store_true")
+    cli(lambda: main(parser.parse_args().dev))

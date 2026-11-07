@@ -11,10 +11,10 @@ namespace WindowsMegaProxy;
 
 public sealed class MachineSettingsStore
 {
-    public static string DefaultDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WindowsMegaProxy");
+    public static string DefaultDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), AppIdentity.Name);
     public string DirectoryPath { get; }
     private string FilePath => Path.Combine(DirectoryPath, "settings.json");
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("WindowsMegaProxy.GlobalSettings.v1");
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes(AppIdentity.Name + ".GlobalSettings.v1");
     private readonly bool machine;
     public bool Initialized => File.Exists(FilePath);
 

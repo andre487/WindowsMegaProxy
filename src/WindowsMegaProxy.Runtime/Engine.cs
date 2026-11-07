@@ -109,7 +109,7 @@ public sealed class Engine : IEngine
     }
 
     private string CoreExecutable(bool http3) => (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(http3 ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
-        ?? Path.Combine(AppContext.BaseDirectory, "dependencies", http3 ? "sing-box-h3" : "sing-box", "sing-box.exe");
+        ?? Path.Combine(AppContext.BaseDirectory, "dependencies", http3 ? "sing-box-h3" : "sing-box", AppIdentity.CoreExecutable);
 
     private async Task StartCoreAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
     {

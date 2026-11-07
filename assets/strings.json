@@ -362,6 +362,7 @@
     "Disable jump certificate verification? This weakens connection security.": "Отключить проверку сертификата jump-сервера? Это снижает безопасность соединения.",
     "Install service…": "Установить службу…",
     "Service unavailable": "Служба недоступна",
+    "Development builds are started with run.cmd.": "Версия для разработки запускается через run.cmd.",
     "MegaProxy — service unavailable": "MegaProxy — служба недоступна",
     "The service restarted. Refresh and try again.": "Служба перезапущена. Дождитесь обновления состояния и повторите попытку.",
     "The connection changed. Refresh and try again.": "Подключение изменилось. Дождитесь обновления состояния и повторите попытку.",

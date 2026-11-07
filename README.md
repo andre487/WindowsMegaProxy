@@ -24,12 +24,13 @@ Requires Windows 10/11 x64 and [uv](https://docs.astral.sh/uv/getting-started/in
 setup.cmd
 build.cmd
 install.cmd
-run.cmd
 ```
 
 Installation requires administrator approval and downloads .NET and network cores from official sources. The interface runs without elevation. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
 
 The service keeps the shared connection running when the interface closes. Run `install.cmd` again after updating service code.
+
+For development, run `stop-prod.cmd`, then `run.cmd`. DEV has separate processes, icons, settings and a manually started service. `run.cmd` refuses to start while production is running, builds DEV and updates its service with administrator approval. Production builds use `build.cmd` and `install.cmd`; `build.cmd --dev` only builds DEV.
 
 SSH key verification requires the Windows OpenSSH Client optional feature.
 

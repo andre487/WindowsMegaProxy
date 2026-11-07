@@ -68,6 +68,12 @@
       "type": "shell",
       "command": ".\\run.cmd",
       "problemMatcher": []
+    },
+    {
+      "label": "Stop production for development",
+      "type": "shell",
+      "command": ".\\stop-prod.cmd",
+      "problemMatcher": []
     }
   ]
 }

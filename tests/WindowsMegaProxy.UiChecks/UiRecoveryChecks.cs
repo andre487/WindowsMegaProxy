@@ -56,7 +56,7 @@ internal static class UiRecoveryChecks
             finally { Wait(window, first.DisposeAsync().AsTask()); }
             Wait(window, Invoke(window, "RefreshServiceAsync"));
             var tray = (System.Windows.Forms.NotifyIcon)Field(window, "tray")!;
-            Assert(tray.Text == "MegaProxy — service unavailable" && !((IEngine)((ConnectionController)Field(window, "connection")!).Engine!).Running,
+            Assert(tray.Text == AppIdentity.DisplayName + " — service unavailable" && !((IEngine)((ConnectionController)Field(window, "connection")!).Engine!).Running,
                 "Service failure invalidates the remote runtime and clears the connected tray indication.");
             Assert(((DataGrid)window.FindName("ConnectionsGrid")).Items.Count == 0 &&
                 !((Button)window.FindName("ConnectButton")).IsEnabled, "Service failure clears stale rows and disables control.");
@@ -68,7 +68,7 @@ internal static class UiRecoveryChecks
                 Wait(window, Invoke(window, "RefreshServiceAsync"));
                 Assert(migrations == 1 && ((Settings)Field(window, "settings")!).ActiveProfile!.Name == "New service profile",
                     "Rebinding loads replacement settings even when its counters overlap the old instance.");
-                Assert(((Button)window.FindName("ConnectButton")).IsEnabled && tray.Text == "MegaProxy — disconnected",
+                Assert(((Button)window.FindName("ConnectButton")).IsEnabled && tray.Text == AppIdentity.DisplayName + " — disconnected",
                     "A successful handshake restores editable controls and a truthful tray status.");
             }
             finally { Wait(window, second.DisposeAsync().AsTask()); }

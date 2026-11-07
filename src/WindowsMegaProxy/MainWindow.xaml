@@ -157,6 +157,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock
+                x:Name="AppTitle"
                 Text="MegaProxy"
                 Style="{DynamicResource TitleTextBlockStyle}"
                 VerticalAlignment="Center" />

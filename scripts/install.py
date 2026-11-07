@@ -7,11 +7,11 @@ import shutil
 import subprocess as sp
 import sys
 import tempfile
-import time
 from ctypes import wintypes as wt
 
-from common import ROOT, cli
+from common import ROOT, cli, app_name, artifact_root
 from dependencies import install_core, runtime_installer
+from service_control import stop_service, service_state, require_production_stopped
 
 
 def run(*args, check=True):
@@ -30,17 +30,18 @@ def known_folder(identifier):
     return Path(path.value)
 
 
-def elevate():
+def elevate(script=None):
     class ShellExecuteInfo(ct.Structure):
         _fields_ = [("cbSize", wt.DWORD), ("fMask", wt.ULONG), ("hwnd", wt.HWND),
                     ("lpVerb", wt.LPCWSTR), ("lpFile", wt.LPCWSTR), ("lpParameters", wt.LPCWSTR),
                     ("lpDirectory", wt.LPCWSTR), ("nShow", ct.c_int), ("hInstApp", wt.HINSTANCE),
                     ("lpIDList", ct.c_void_p), ("lpClass", wt.LPCWSTR), ("hkeyClass", wt.HKEY),
                     ("dwHotKey", wt.DWORD), ("hIcon", wt.HANDLE), ("hProcess", wt.HANDLE)]
-    log = ROOT / ".tools/install.log"
+    script = Path(script or __file__).resolve()
+    log = ROOT / f".tools/{script.stem}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     info = ShellExecuteInfo(cbSize=ct.sizeof(ShellExecuteInfo), fMask=0x40, lpVerb="runas", lpFile=sys.executable,
-        lpParameters=sp.list2cmdline([str(Path(__file__).resolve()), "--elevated"]), lpDirectory=str(ROOT), nShow=0)
+        lpParameters=sp.list2cmdline([str(script), *[arg for arg in sys.argv[1:] if arg != "--elevated"], "--elevated"]), lpDirectory=str(ROOT), nShow=0)
     shell = ct.WinDLL("shell32", use_last_error=True)
     shell.ShellExecuteExW.argtypes = [ct.POINTER(ShellExecuteInfo)]
     if not shell.ShellExecuteExW(ct.byref(info)):
@@ -101,32 +102,31 @@ def secure_directory(path, public=False):
 
 
 def install():
+    dev = "--dev" in sys.argv
+    if dev:
+        require_production_stopped()
+    name = app_name(dev)
+    sources = (artifact_root(dev) / "app", artifact_root(dev) / "service")
+    if not (sources[0] / (name + ".exe")).is_file() or not (sources[1] / (name + ".Service.exe")).is_file():
+        raise RuntimeError("Run build.cmd" + (" --dev" if dev else "") + " before installation.")
     if not ct.windll.shell32.IsUserAnAdmin():
         elevate()
         return
-    target = known_folder(0x26) / "WindowsMegaProxy"
-    data = known_folder(0x23) / "WindowsMegaProxy"
+    target = known_folder(0x26) / name
+    data = known_folder(0x23) / name
     for directory in (target, data):
         if directory.resolve() != directory.absolute():
             raise RuntimeError("The installation path contains a junction or symbolic link.")
         secure_directory(directory, public=directory == target)
-    for source in (ROOT / "artifacts/app", ROOT / "artifacts/service"):
-        if not source.is_dir():
-            raise RuntimeError("Run build.cmd before install.cmd.")
     cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
-    installer = runtime_installer(cache)
-    result = sp.run([str(installer), "/install", "/passive", "/norestart"], check=False)
-    if result.returncode not in (0, 3010):
-        raise RuntimeError(f".NET installer exited with {result.returncode}.")
-    run("sc.exe", "stop", "WindowsMegaProxy", check=False)
-    for _ in range(60):
-        state = run("sc.exe", "query", "WindowsMegaProxy", check=False)
-        if state.returncode == 1060 or "STOPPED" in state.stdout or " 1 " in state.stdout:
-            break
-        time.sleep(0.5)
-    else:
-        raise RuntimeError("The service did not stop. Installation was cancelled.")
-    for source in (ROOT / "artifacts/app", ROOT / "artifacts/service"):
+    runtime_root = known_folder(0x26) / "dotnet/shared/Microsoft.WindowsDesktop.App"
+    if not dev or not runtime_root.exists() or not any(path.is_dir() for path in runtime_root.glob("10.*")):
+        installer = runtime_installer(cache)
+        result = sp.run([str(installer), "/install", "/passive", "/norestart"], check=False)
+        if result.returncode not in (0, 3010):
+            raise RuntimeError(f".NET installer exited with {result.returncode}.")
+    stop_service(name)
+    for source in sources:
         for entry in source.rglob("*"):
             if entry.is_symlink() or entry.is_junction():
                 raise RuntimeError("Application files cannot contain links.")
@@ -139,22 +139,34 @@ def install():
                 shutil.copy2(entry, destination)
     install_core(target / "dependencies/sing-box", cache)
     install_core(target / "dependencies/sing-box-h3", cache, http3=True)
-    binary = f'"{target / "WindowsMegaProxy.Service.exe"}"'
-    if run("sc.exe", "query", "WindowsMegaProxy", check=False).returncode == 1060:
-        run("sc.exe", "create", "WindowsMegaProxy", "binPath=", binary, "start=", "auto", "obj=", "LocalSystem")
+    if dev:
+        for directory in ("sing-box", "sing-box-h3"):
+            (target / "dependencies" / directory / "sing-box.exe").replace(target / "dependencies" / directory / "sing-box-dev.exe")
+        require_production_stopped()
+    binary = f'"{target / (name + ".Service.exe")}"'
+    startup = "demand" if dev else "auto"
+    if service_state(name) is None:
+        run("sc.exe", "create", name, "binPath=", binary, "start=", startup, "obj=", "LocalSystem")
     else:
-        run("sc.exe", "config", "WindowsMegaProxy", "binPath=", binary, "start=", "auto", "obj=", "LocalSystem")
-    run("sc.exe", "failure", "WindowsMegaProxy", "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000")
-    run("sc.exe", "start", "WindowsMegaProxy")
-    user = next(csv.reader([run("whoami.exe", "/user", "/fo", "csv", "/nh").stdout.strip()]))
-    if len(user) == 2 and user[1].startswith("S-1-"):
-        run("schtasks.exe", "/Delete", "/TN", "WindowsMegaProxy-" + user[1], "/F", check=False)
-    print(f"Installed: {target / 'WindowsMegaProxy.exe'}")
+        run("sc.exe", "config", name, "binPath=", binary, "start=", startup, "obj=", "LocalSystem")
+    run("sc.exe", "failure", name, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000")
+    run("sc.exe", "start", name)
+    if not dev:
+        user = next(csv.reader([run("whoami.exe", "/user", "/fo", "csv", "/nh").stdout.strip()]))
+        if len(user) == 2 and user[1].startswith("S-1-"):
+            run("schtasks.exe", "/Delete", "/TN", "WindowsMegaProxy-" + user[1], "/F", check=False)
+    print(f"Installed: {target / (name + '.exe')}")
+
+
+def elevated_cli(main):
+    if "--elevated" in sys.argv:
+        log = ROOT / f".tools/{Path(sys.argv[0]).stem}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("w", encoding="utf-8", buffering=1) as output, redirect_stdout(output), redirect_stderr(output):
+            cli(main)
+    else:
+        cli(main)
 
 
 if __name__ == "__main__":
-    if "--elevated" in sys.argv:
-        with (ROOT / ".tools/install.log").open("w", encoding="utf-8", buffering=1) as output, redirect_stdout(output), redirect_stderr(output):
-            cli(install)
-    else:
-        cli(install)
+    elevated_cli(install)

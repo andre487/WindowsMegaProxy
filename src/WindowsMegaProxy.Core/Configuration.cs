@@ -120,7 +120,7 @@ public static class Configuration
             new JsonObject { ["action"] = "sniff" },
             proxyDefault ? new JsonObject { ["protocol"] = "dns", ["action"] = "hijack-dns" }
                 : new JsonObject { ["protocol"] = "dns", ["action"] = "route", ["outbound"] = "direct" },
-            new JsonObject { ["process_name"] = new JsonArray("sing-box.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe"), ["action"] = "route", ["outbound"] = "direct" }
+            new JsonObject { ["process_name"] = new JsonArray("sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe"), ["action"] = "route", ["outbound"] = "direct" }
         };
         foreach (var rule in settings.Rules)
             rules.Add(BuildRule(rule));
@@ -142,7 +142,7 @@ public static class Configuration
             },
             ["inbounds"] = new JsonArray(new JsonObject
             {
-                ["type"] = "tun", ["tag"] = "tun", ["interface_name"] = "MegaProxy",
+                ["type"] = "tun", ["tag"] = "tun", ["interface_name"] = AppIdentity.DisplayName,
                 ["address"] = new JsonArray("172.29.0.1/30", "fd87:6d65:6761::1/126"),
                 ["mtu"] = 1500, ["auto_route"] = true, ["strict_route"] = proxyDefault,
                 ["dns_mode"] = proxyDefault ? "hijack" : "disabled"

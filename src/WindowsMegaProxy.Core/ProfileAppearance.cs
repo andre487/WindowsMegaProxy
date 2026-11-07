@@ -13,7 +13,7 @@ public sealed record ProfileCountry(string Code, string Name, int PreferredColor
 {
     public string Label => Code.Length == 0 ? Name : $"{Name} ({Code})";
     public string? FlagUri => Code.Length > 0 && ProfileAppearance.Countries.Any(country => country.Code == Code)
-        ? $"pack://application:,,,/WindowsMegaProxy;component/Assets/Flags/{Code}.png" : null;
+        ? $"pack://application:,,,/{AppIdentity.Name};component/Assets/Flags/{Code}.png" : null;
 }
 
 public static class ProfileAppearance

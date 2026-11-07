@@ -13,6 +13,14 @@ ROOT = Path(__file__).resolve().parent.parent
 SDK_VERSION = "10.0.403"
 
 
+def app_name(dev=False):
+    return "WindowsMegaProxy.Dev" if dev else "WindowsMegaProxy"
+
+
+def artifact_root(dev=False):
+    return ROOT / "artifacts/dev" if dev else ROOT / "artifacts"
+
+
 def dotnet_path():
     local = ROOT / ".tools/dotnet/dotnet.exe"
     return str(local) if local.exists() else shutil.which("dotnet")

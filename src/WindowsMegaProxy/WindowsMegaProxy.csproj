@@ -7,6 +7,9 @@
         <NoWarn>$(NoWarn);WFO0003</NoWarn>
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+        <ApplicationIcon Condition="'$(MegaProxyDev)' == 'true'">Assets/dev-app.ico</ApplicationIcon>
+        <AssemblyName Condition="'$(MegaProxyDev)' == 'true'">WindowsMegaProxy.Dev</AssemblyName>
+        <RootNamespace>WindowsMegaProxy</RootNamespace>
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../WindowsMegaProxy.Core/WindowsMegaProxy.Core.csproj" />

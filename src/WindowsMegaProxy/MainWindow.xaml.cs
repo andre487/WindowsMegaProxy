@@ -111,6 +111,8 @@ public partial class MainWindow : Window
         settings = new Settings();
         UiTheme.Apply(settings.Language, settings.Theme, this);
         InitializeComponent();
+        Title = AppTitle.Text = AppIdentity.DisplayName;
+        Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri($"pack://application:,,,/{AppIdentity.Name};component/Assets/{AppIdentity.IconPrefix}app.ico"));
         BuildInformationText.Text = BuildInformation.Display;
         connectionView = new ListCollectionView(connectionRows) { IsLiveSorting = true, IsLiveGrouping = true };
         var grouping = new PropertyGroupDescription(nameof(ConnectionRow.RouteGroup));
@@ -127,7 +129,7 @@ public partial class MainWindow : Window
         trayIcon = LoadIcon("tray.ico");
         lightTrayIcon = LoadIcon("tray-light.ico");
         connectedIcon = LoadIcon("app.ico");
-        trayOpen = new MenuItem { Header = Ui.T("Open MegaProxy") };
+        trayOpen = new MenuItem { Header = BrandLabel("Open MegaProxy") };
         trayOpen.Click += (_, _) => ShowWindow();
         trayConnect = new MenuItem { Header = Ui.T("Connect"), IsEnabled = CanConnect() };
         trayConnect.Click += async (_, _) => await ToggleAsync();
@@ -143,7 +145,7 @@ public partial class MainWindow : Window
             if (PresentationSource.FromVisual(trayMenu) is HwndSource source) SetForegroundWindow(source.Handle);
             trayMenu.Focus();
         };
-        tray = new Forms.NotifyIcon { Icon = DisconnectedIcon(), Text = Ui.T("MegaProxy — disconnected"), Visible = true };
+        tray = new Forms.NotifyIcon { Icon = DisconnectedIcon(), Text = BrandLabel("MegaProxy — disconnected"), Visible = true };
         tray.MouseUp += (_, args) => { if (args.Button == Forms.MouseButtons.Right) trayMenu.IsOpen = true; };
         tray.DoubleClick += (_, _) => ShowWindow();
         SystemEvents.UserPreferenceChanged += ThemeChanged;
@@ -213,6 +215,7 @@ public partial class MainWindow : Window
                 UseShellExecute = true, Verb = "runas", WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
                 WorkingDirectory = Path.GetDirectoryName(installScript)!
             };
+            if (AppIdentity.IsDev) start.Arguments = "--dev";
             using var installer = System.Diagnostics.Process.Start(start) ?? throw new IOException("Could not start the service installer.");
             await installer.WaitForExitAsync();
             if (installer.ExitCode != 0) throw new IOException("Service installation failed. Run install.cmd to see the details.");
@@ -324,7 +327,7 @@ public partial class MainWindow : Window
         previousTrafficTime = default;
         TrafficText.Text = "↑ —  ↓ —";
         ConnectionsHint.Text = StatusText.Text = Ui.T("Service unavailable");
-        tray.Text = Ui.T("MegaProxy — service unavailable");
+        tray.Text = BrandLabel("MegaProxy — service unavailable");
         tray.Icon = DisconnectedIcon();
         diagnosticSucceeded = false; checkedSettings = null; lastDiagnosticResult = null; lastSpeedResults = null;
         SpeedPanel.Visibility = Visibility.Collapsed; SpeedLockedText.Visibility = Visibility.Visible;
@@ -340,10 +343,12 @@ public partial class MainWindow : Window
 
     private static Icon LoadIcon(string name)
     {
-        using var resource = Application.GetResourceStream(new Uri("pack://application:,,,/WindowsMegaProxy;component/Assets/" + name)).Stream;
+        using var resource = Application.GetResourceStream(new Uri($"pack://application:,,,/{AppIdentity.Name};component/Assets/{AppIdentity.IconPrefix}{name}")).Stream;
         using var icon = new Icon(resource);
         return (Icon)icon.Clone();
     }
+
+    private static string BrandLabel(string key) => Ui.T(key).Replace("MegaProxy", AppIdentity.DisplayName, StringComparison.Ordinal);
 
     private Task SaveSettingsAsync() => CommitSettingsAsync(CaptureSettings());
 
@@ -490,9 +495,9 @@ public partial class MainWindow : Window
             bool connected = engine?.Running == true;
             bool unavailable = service is not null && !serviceAvailable;
             StatusText.Text = Ui.T(unavailable ? "Service unavailable" : connected ? "Connected" : "Disconnected");
-            trayOpen.Header = Ui.T("Open MegaProxy");
+            trayOpen.Header = BrandLabel("Open MegaProxy");
             trayExit.Header = Ui.T("Exit");
-            tray.Text = Ui.T(unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
+            tray.Text = BrandLabel(unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
             SetBusy(busy);
         }
         if (languageChanged)
@@ -715,7 +720,8 @@ public partial class MainWindow : Window
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
         foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
-        AutostartBox.IsEnabled = editable && !applyingAutostart;
+        AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
+        if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
         ExportLogButton.IsEnabled = service is null || canEdit;
         ProfilePicker.IsEnabled = editable;
@@ -744,7 +750,7 @@ public partial class MainWindow : Window
     {
         StatusText.Text = value ? Ui.T("Connected") : Ui.T("Disconnected");
         ConnectButton.Content = trayConnect.Header = value ? Ui.T("Disconnect") : Ui.T("Connect");
-        tray.Text = value ? Ui.T("MegaProxy — TUN connected") : Ui.T("MegaProxy — disconnected");
+        tray.Text = BrandLabel(value ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
         tray.Icon = value ? connectedIcon : DisconnectedIcon();
         UpdateProfileSummary();
         WriteLog(value ? "TUN connected." : "TUN disconnected.");
@@ -818,6 +824,7 @@ public partial class MainWindow : Window
 
     private async void AutostartChanged(object sender, RoutedEventArgs e)
     {
+        if (AppIdentity.IsDev) return;
         if (!canEdit || updatingUi || applyingAutostart) return;
         applyingAutostart = true;
         AutostartBox.IsEnabled = false;

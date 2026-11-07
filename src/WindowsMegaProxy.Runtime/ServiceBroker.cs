@@ -37,7 +37,7 @@ public sealed class ServiceBroker : IAsyncDisposable
         this.createEngine = createEngine ?? (() => new Engine(Path.Combine(store.DirectoryPath, "runtime"), allowEnvironmentOverrides: false));
     }
 
-    public bool AutoConnect => settings.LaunchAtSignIn == true && settings.AutoConnect;
+    public bool AutoConnect => !AppIdentity.IsDev && settings.LaunchAtSignIn == true && settings.AutoConnect;
 
     public async Task<ServiceReply> HandleAsync(ClientAccess peer, ServiceRequest request, CancellationToken token)
     {
