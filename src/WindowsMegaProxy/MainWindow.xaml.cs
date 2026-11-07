@@ -105,7 +105,7 @@ public partial class MainWindow : Window
         this.getAutostart = getAutostart ?? (service is null ? () => Task.FromResult(StartupConfiguration.Mode == "login") : async () => (await service.CallAsync(new("status"))).AutoStart);
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
         // Preserve existing log history until the saved limit has been loaded.
-        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
+        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(standalone && !AppIdentity.IsDev ? MachineSettingsStore.DefaultDirectory : SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
         logWriter = new BackgroundLog(log);
         logWriter.Failed += _ => Dispatcher.BeginInvoke(() => { if (!quitting) MessageText.Text = Ui.T("Could not write the log to disk."); });
         settings = new Settings();

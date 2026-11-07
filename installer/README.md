@@ -7,7 +7,7 @@ Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in
 `preview: true`; do not distribute them as trusted updates.
 
 The installer targets Windows 10/11 x64, requires one administrator approval,
-and installs the shared service and UI into Program Files. Both pinned official
+and installs the UI and mode-management helper into Program Files. Both pinned official
 sing-box packages, including libcronet and embedded signed Wintun, are bundled.
 The installer downloads a checksum-verified .NET 10 Desktop Runtime from
 Microsoft only when the required version is missing. SSH support uses the

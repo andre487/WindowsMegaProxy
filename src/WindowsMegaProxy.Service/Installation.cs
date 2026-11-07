@@ -114,9 +114,18 @@ public static class Installation
         if (old.Status == ServiceControllerStatus.Stopped) { old.Start(); old.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30)); }
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         ServiceReply reply;
+        var client = new ServiceClient();
         while (true)
         {
-            try { reply = await new ServiceClient().CallAsync(new("hello"), deadline.Token); break; }
+            try
+            {
+                reply = await client.CallAsync(new("hello"), deadline.Token);
+                if (reply.Testing) { await Task.Delay(200, deadline.Token); continue; }
+                if (reply.Status is not null)
+                    await client.CallAsync(new("stop", InstanceId: reply.InstanceId, Generation: reply.Status.Generation), deadline.Token);
+                reply = await client.CallAsync(new("hello"), deadline.Token);
+                break;
+            }
             catch (IOException) when (!deadline.IsCancellationRequested) { await Task.Delay(200, deadline.Token); }
         }
         if (!reply.CanEdit || reply.Settings is null) throw new IOException("Could not migrate the protected service configuration.");
@@ -160,7 +169,7 @@ public static class Installation
         if (mode != "login")
         {
             try { folder.DeleteTask(taskName, 0); }
-            catch (COMException error) when (error.HResult == unchecked((int)0x80070002)) { }
+            catch (Exception error) when (error.HResult == unchecked((int)0x80070002)) { }
             return;
         }
         string sid = WindowsIdentity.GetCurrent().User!.Value;

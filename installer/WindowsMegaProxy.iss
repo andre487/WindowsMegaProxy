@@ -67,11 +67,22 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 Root: HKLM; Subkey: "SOFTWARE\WindowsMegaProxy"; Flags: uninsdeletekey
 
 [Run]
-Filename: "{code:VersionPath}\WindowsMegaProxy.exe"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{code:VersionPath}\WindowsMegaProxy.exe"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: CanLaunch
 
 [Code]
 var TargetVersion: String;
     ModePage: TInputOptionWizardPage;
+    ModeConfigured, ConfigurationFailed: Boolean;
+
+function CanLaunch: Boolean;
+begin
+  Result := ModeConfigured;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if ConfigurationFailed then Result := 1 else Result := 0;
+end;
 
 function SelectedMode: String;
 begin
@@ -193,9 +204,14 @@ end;
 procedure CurStepChanged(Step: TSetupStep);
 var Code: Integer;
 begin
-  if Step = ssPostInstall then
-    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--configure-mode ' + SelectedMode, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
-      RaiseException('Could not configure the MegaProxy service. Close MegaProxy in all Windows sessions and retry. See the setup log.');
+  if Step = ssPostInstall then begin
+    ConfigurationFailed := True;
+    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--configure-mode ' + SelectedMode, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
+      RaiseException('Could not configure the MegaProxy operating mode. Close MegaProxy in all Windows sessions and retry. See the setup log.');
+    end;
+    ModeConfigured := True;
+    ConfigurationFailed := False;
+  end;
 end;
 
 function InitializeUninstall: Boolean;
