@@ -37,6 +37,7 @@ def row(path, malicious=0):
             "analysis_id": "synthetic-id", "stats": {"malicious": malicious, "suspicious": 0, "undetected": 60}}
 
 
+@patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class VirusTotalTests(unittest.TestCase):
     def test_existing_hash_reports_are_reused_without_an_api_key(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -141,6 +142,7 @@ class VirusTotalTests(unittest.TestCase):
                     client.scan(path)
 
 
+@patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class ReleaseRetryTests(unittest.TestCase):
     def test_github_failures_do_not_log_response_bodies(self):
         with patch.object(release.sp, "run", return_value=Mock(returncode=1, stderr="private-response", stdout="private-response")):
