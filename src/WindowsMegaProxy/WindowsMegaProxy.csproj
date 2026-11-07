@@ -10,6 +10,7 @@
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../WindowsMegaProxy.Core/WindowsMegaProxy.Core.csproj" />
+        <ProjectReference Include="../WindowsMegaProxy.Runtime/WindowsMegaProxy.Runtime.csproj" />
         <Resource Include="Assets/*.ico" />
         <Resource Include="Assets/Flags/*.png" />
         <Content

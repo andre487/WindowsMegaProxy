@@ -1,20 +1,16 @@
-"""Stop this workspace's app gracefully, build, and start it with one UAC prompt."""
+"""Stop this workspace's UI gracefully, build, and start it without elevation."""
 
-from contextlib import redirect_stdout, redirect_stderr
 import os
 import ctypes as ct
 from ctypes import wintypes as wt
 from pathlib import Path
 import subprocess as sp
-import sys
-import uuid
 
 from common import ROOT, cli
 import build
 
 user32 = ct.WinDLL("user32", use_last_error=True)
 kernel32 = ct.WinDLL("kernel32", use_last_error=True)
-shell32 = ct.WinDLL("shell32", use_last_error=True)
 callback_type = ct.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
 user32.EnumWindows.argtypes = [callback_type, wt.LPARAM]
 user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ct.c_int]
@@ -28,38 +24,6 @@ kernel32.QueryFullProcessImageNameW.argtypes = [wt.HANDLE, wt.DWORD, wt.LPWSTR, 
 kernel32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
 kernel32.CloseHandle.argtypes = [wt.HANDLE]
 kernel32.GetExitCodeProcess.argtypes = [wt.HANDLE, ct.POINTER(wt.DWORD)]
-
-
-class ShellExecuteInfo(ct.Structure):
-    _fields_ = [("cbSize", wt.DWORD), ("fMask", wt.ULONG), ("hwnd", wt.HWND),
-                ("lpVerb", wt.LPCWSTR), ("lpFile", wt.LPCWSTR), ("lpParameters", wt.LPCWSTR),
-                ("lpDirectory", wt.LPCWSTR), ("nShow", ct.c_int), ("hInstApp", wt.HINSTANCE),
-                ("lpIDList", ct.c_void_p), ("lpClass", wt.LPCWSTR), ("hkeyClass", wt.HKEY),
-                ("dwHotKey", wt.DWORD), ("hIcon", wt.HANDLE), ("hProcess", wt.HANDLE)]
-
-
-def elevate():
-    log = ROOT / f".tools/run-{uuid.uuid4().hex}.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    info = ShellExecuteInfo(cbSize=ct.sizeof(ShellExecuteInfo), fMask=0x40, lpVerb="runas", lpFile=sys.executable,
-                            lpParameters=sp.list2cmdline([str(Path(__file__).resolve()), "--log", str(log)]),
-                            lpDirectory=str(ROOT), nShow=0)
-    shell32.ShellExecuteExW.argtypes = [ct.POINTER(ShellExecuteInfo)]
-    shell32.ShellExecuteExW.restype = wt.BOOL
-    if not shell32.ShellExecuteExW(ct.byref(info)):
-        raise ct.WinError(ct.get_last_error())
-    try:
-        # Wait for the runner, not its entire process tree (which contains the new GUI).
-        kernel32.WaitForSingleObject(info.hProcess, 0xFFFFFFFF)
-        code = wt.DWORD()
-        if not kernel32.GetExitCodeProcess(info.hProcess, ct.byref(code)):
-            raise ct.WinError(ct.get_last_error())
-        if log.exists():
-            print(log.read_text(encoding="utf-8", errors="replace"), end="")
-        return code.value
-    finally:
-        kernel32.CloseHandle(info.hProcess)
-        log.unlink(missing_ok=True)
 
 
 def workspace_windows():
@@ -114,13 +78,7 @@ def restart():
 
 
 def main():
-    if not shell32.IsUserAnAdmin():
-        raise SystemExit(elevate())
-    if len(sys.argv) == 3 and sys.argv[1] == "--log":
-        with open(sys.argv[2], "w", encoding="utf-8", buffering=1) as log, redirect_stdout(log), redirect_stderr(log):
-            cli(restart)
-    else:
-        restart()
+    restart()
 
 
 if __name__ == "__main__":

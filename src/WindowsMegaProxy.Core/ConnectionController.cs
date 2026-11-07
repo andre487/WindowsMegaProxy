@@ -9,6 +9,7 @@ public enum ConnectionState { Disconnected, Connecting, Connected, Disconnecting
 
 public interface IEngine : IDisposable
 {
+    bool Persistent => false;
     bool Running { get; }
     Settings? AppliedSettings { get; }
     string? AppliedSignature { get; }
@@ -37,6 +38,14 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
     private CancellationTokenSource? connecting, diagnostic;
     private Task connectionTask = Task.CompletedTask, diagnosticTask = Task.CompletedTask, disconnectTask = Task.CompletedTask;
     private bool closing;
+
+    public void Attach(IEngine current)
+    {
+        if (!ReferenceEquals(Engine, current)) Engine?.Dispose();
+        Engine = current;
+        State = current.Running ? ConnectionState.Connected : ConnectionState.Disconnected;
+        Changed?.Invoke();
+    }
 
     public Task ConnectAsync(Settings settings)
     {
@@ -127,6 +136,13 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
     public async Task ShutdownAsync()
     {
         closing = true;
+        if (Engine?.Persistent == true && !IsBusy)
+        {
+            diagnostic?.Cancel();
+            try { await diagnosticTask; } catch (OperationCanceledException) { }
+            Engine.Dispose(); Engine = null;
+            return;
+        }
         await DisconnectAsync();
     }
 }

@@ -13,8 +13,6 @@ using System.Threading.Tasks;
 
 namespace WindowsMegaProxy;
 
-public sealed record SshHostKeyUpdate(string ProfileId, string ProfileName, string Host, int Port, string PreviousFingerprint, string Fingerprint, string PublicKey);
-
 public sealed class Engine : IEngine
 {
     private Process? process;
@@ -22,6 +20,7 @@ public sealed class Engine : IEngine
     private string configPath = "";
     private readonly string stateDirectory;
     private readonly Uri http3ProbeUri;
+    private readonly bool allowEnvironmentOverrides;
     private ProcessJob? job;
     private IDisposable? consoleLease;
     public bool Running => process is { HasExited: false };
@@ -47,8 +46,9 @@ public sealed class Engine : IEngine
     }
     public bool HasProbeProfile => SelectedOutbound != "direct";
 
-    public Engine(string? stateDirectory = null, Uri? http3ProbeUri = null)
+    public Engine(string? stateDirectory = null, Uri? http3ProbeUri = null, bool allowEnvironmentOverrides = true)
     {
+        this.allowEnvironmentOverrides = allowEnvironmentOverrides;
         this.stateDirectory = stateDirectory ?? SettingsStore.DirectoryPath;
         this.http3ProbeUri = http3ProbeUri ?? new Uri("https://example.com/");
     }
@@ -108,7 +108,7 @@ public sealed class Engine : IEngine
         AppliedSignature = Configuration.Signature(AppliedSettings);
     }
 
-    private static string CoreExecutable(bool http3) => Environment.GetEnvironmentVariable(http3 ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE")
+    private string CoreExecutable(bool http3) => (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(http3 ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
         ?? Path.Combine(AppContext.BaseDirectory, "dependencies", http3 ? "sing-box-h3" : "sing-box", "sing-box.exe");
 
     private async Task StartCoreAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
@@ -189,6 +189,8 @@ public sealed class Engine : IEngine
         var root = JsonNode.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false)) ?? throw new IOException("Empty core response.");
         return ConnectionSnapshot.Parse(root, AppliedSettings!, showAll);
     }
+
+    public ProbeAccess ProbeAccess => new(probePort, probeSecret);
 
     public HttpClient CreateProbeClient(bool throughProfile)
     {

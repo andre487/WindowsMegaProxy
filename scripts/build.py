@@ -17,7 +17,7 @@ def main():
     try:
         if ct.get_last_error() == 183:
             raise RuntimeError("MegaProxy is running. Use run.cmd to stop it gracefully and rebuild.")
-        for project, output in (("WindowsMegaProxy", "app"), ("MegaProxy.TraceProbe", "trace-probe")):
+        for project, output in (("WindowsMegaProxy", "app"), ("WindowsMegaProxy.Service", "service"), ("MegaProxy.TraceProbe", "trace-probe")):
             destination = (ROOT / f"artifacts/{output}").resolve()
             if not destination.is_relative_to((ROOT / "artifacts").resolve()):
                 raise RuntimeError("Publish destination escapes artifacts.")

@@ -21,6 +21,10 @@ public sealed record SpeedMetricRow(string Metric, string Direct, string Profile
 
 public partial class MainWindow : Window
 {
+    private readonly ServiceClient? service;
+    private bool canEdit = true, refreshingService;
+    private long serviceRevision;
+    private readonly string? installScript = FindInstallScript();
     private Settings settings;
     private readonly ObservableCollection<RoutingRule> rules;
     private readonly Forms.NotifyIcon tray;
@@ -84,10 +88,16 @@ public partial class MainWindow : Window
     public MainWindow(bool startInTray, Action<Settings>? persistSettings = null, DiagnosticLog? diagnosticLog = null,
         Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null)
     {
+        service = persistSettings is null ? new ServiceClient() : null;
+        canEdit = service is null;
         connection = connectionController ?? new ConnectionController(CreateEngine);
-        settingsWriter = new SettingsWriter(persistSettings ?? SettingsStore.Save);
-        this.setAutostart = setAutostart ?? Autostart.SetAsync;
-        this.getAutostart = getAutostart ?? Autostart.IsEnabledAsync;
+        settingsWriter = new SettingsWriter(persistSettings ?? (value =>
+        {
+            var reply = service!.CallAsync(new("save", Settings: value, Revision: Interlocked.Read(ref serviceRevision))).GetAwaiter().GetResult();
+            Interlocked.Exchange(ref serviceRevision, reply.Revision);
+        }));
+        this.setAutostart = setAutostart ?? (_ => Task.CompletedTask);
+        this.getAutostart = getAutostart ?? (async () => (await service!.CallAsync(new("status"))).AutoStart);
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
         // Preserve existing log history until the saved limit has been loaded.
         log = diagnosticLog ?? new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
@@ -96,6 +106,7 @@ public partial class MainWindow : Window
         settings = new Settings();
         UiTheme.Apply(settings.Language, settings.Theme, this);
         InitializeComponent();
+        BuildInformationText.Text = BuildInformation.Display;
         connectionView = new ListCollectionView(connectionRows) { IsLiveSorting = true, IsLiveGrouping = true };
         var grouping = new PropertyGroupDescription(nameof(ConnectionRow.RouteGroup));
         grouping.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
@@ -133,6 +144,7 @@ public partial class MainWindow : Window
         SystemEvents.UserPreferenceChanged += ThemeChanged;
         timer.Tick += async (_, _) =>
         {
+            await RefreshServiceAsync();
             await RefreshConnectionsAsync();
             await RefreshLogAsync();
         };
@@ -166,21 +178,128 @@ public partial class MainWindow : Window
         });
     }
 
+    private void OpenGitHub(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { ShowError(error); }
+        e.Handled = true;
+    }
+
+    private static string? FindInstallScript()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 4 && directory is not null; i++, directory = directory.Parent)
+        {
+            string script = Path.Combine(directory.FullName, "install.cmd");
+            if (File.Exists(script)) return script;
+        }
+        return null;
+    }
+
+    private async void InstallServiceClick(object sender, RoutedEventArgs e)
+    {
+        if (installScript is null) return;
+        InstallServiceButton.IsEnabled = false;
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo(installScript)
+            {
+                UseShellExecute = true, Verb = "runas", WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+                WorkingDirectory = Path.GetDirectoryName(installScript)!
+            };
+            using var installer = System.Diagnostics.Process.Start(start) ?? throw new IOException("Could not start the service installer.");
+            await installer.WaitForExitAsync();
+            if (installer.ExitCode != 0) throw new IOException("Service installation failed. Run install.cmd to see the details.");
+            await RefreshServiceAsync();
+        }
+        catch (Exception error) { ShowError(error); }
+        finally { InstallServiceButton.IsEnabled = true; }
+    }
+
     private async void WindowLoaded(object sender, RoutedEventArgs e)
     {
         if (startInTray) Hide();
         try
         {
-            var loaded = await TrackFileAsync(Task.Run(SettingsStore.Load));
+            Settings loaded;
+            if (service is null) loaded = await TrackFileAsync(Task.Run(SettingsStore.Load));
+            else
+            {
+                var reply = await service.CallAsync(new("hello"));
+                canEdit = reply.CanEdit;
+                if (!reply.Initialized && canEdit)
+                {
+                    loaded = await Task.Run(SettingsStore.Load);
+                    reply = await service.CallAsync(new("save", Settings: loaded));
+                }
+                loaded = reply.Settings ?? new Settings();
+                serviceRevision = reply.Revision;
+                var remote = (RemoteEngine)CreateEngine();
+                remote.Apply(reply);
+                connection.Attach(remote);
+            }
             if (quitting) return;
             ApplySettings(loaded);
             await analysisTask;
             ObserveLogTask(logWriter.SetLimitAsync(settings.LogSizeMb));
             bool enabled = await getAutostart();
             AutostartBox.IsChecked = enabled;
-            if (settings.AutoConnect) await ToggleAsync();
+            if (canEdit && settings.AutoConnect && engine?.Running != true) await ToggleAsync();
         }
-        catch (Exception error) { ShowError(error); }
+        catch (Exception error)
+        {
+            if (service is not null)
+            {
+                canEdit = false;
+                ApplySettings(new Settings());
+                MessageText.Text = Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
+                WriteLog("The MegaProxy service is unavailable: " + error.GetType().Name);
+                InstallServiceButton.Visibility = installScript is not null && ClientAccess.Current().CanEdit ? Visibility.Visible : Visibility.Collapsed;
+            }
+            else ShowError(error);
+        }
+        finally { SetBusy(busy); }
+    }
+
+    private async Task RefreshServiceAsync()
+    {
+        if (service is null || settingsLoading || refreshingService || busy || quitting) return;
+        refreshingService = true;
+        try
+        {
+            var reply = await service.CallAsync(new("status"));
+            canEdit = reply.CanEdit;
+            InstallServiceButton.Visibility = Visibility.Collapsed;
+            if (MessageText.Text == Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.")) MessageText.Text = "";
+            if ((engine is not RemoteEngine current || reply.Revision != Interlocked.Read(ref serviceRevision) || reply.Status?.Generation != current.Generation) && settingsUpdate.IsCompleted && analysisTask.IsCompleted && !testing)
+            {
+                reply = await service.CallAsync(new("hello"));
+                serviceRevision = reply.Revision;
+                ApplySettings(reply.Settings ?? new Settings());
+                if (engine is not RemoteEngine)
+                {
+                    var attached = (RemoteEngine)CreateEngine();
+                    attached.Apply(reply);
+                    connection.Attach(attached);
+                }
+            }
+            if (engine is RemoteEngine remote)
+            {
+                remote.Apply(reply);
+                if (!testing && (connection.State == ConnectionState.Connected) != remote.Running) connection.Attach(remote);
+            }
+            bool connected = engine?.Running == true;
+            if (StatusText.Text != Ui.T(connected ? "Connected" : "Disconnected")) SetConnected(connected);
+            SetBusy(busy);
+        }
+        catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException)
+        {
+            canEdit = false;
+            StatusText.Text = Ui.T("Service unavailable");
+            MessageText.Text = Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
+            SetBusy(busy);
+        }
+        finally { refreshingService = false; }
     }
 
     private static void SelectTag(ComboBox box, string tag)
@@ -228,6 +347,7 @@ public partial class MainWindow : Window
 
     private Task CommitSettingsAsync(Settings updated)
     {
+        if (!canEdit) throw new UnauthorizedAccessException("Read-only mode");
         long revision = ++settingsRevision;
         ++analysisRevision;
         settingsReady = analysis is not null && SettingsAnalysis.SameNetwork(analysis.Settings, updated);
@@ -362,15 +482,17 @@ public partial class MainWindow : Window
         if (connected && profile?.UsesHttp3 == true)
             ProfileSummary.Text += engine!.UsedHttp3Fallback ? " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP") : engine.Http3Selected ? " · HTTP/3" : "";
         string? error = ConnectionError();
-        ConnectButton.IsEnabled = connected || error is null;
+        ConnectButton.IsEnabled = canEdit && (connected || error is null);
         ConnectButton.ToolTip = connected ? null : error;
         if (!connected && profile is not null && error is not null) ProfileSummary.Text += " · " + error;
     }
 
-    private bool CanConnect() => !settingsLoading && settingsReady && ConnectionError() is null;
+    private bool CanConnect() => canEdit && !settingsLoading && settingsReady && ConnectionError() is null;
 
     private IEngine CreateEngine()
     {
+        if (service is not null)
+            return new RemoteEngine(service, async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true));
         var result = new Engine
         {
             ConfirmSshHostKeyChange = async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true),
@@ -400,11 +522,11 @@ public partial class MainWindow : Window
         WriteLog("Saved the verified SSH server key.");
     }
 
-    private string? ConnectionError() => settingsReady ? analysis?.Error : null;
+    private string? ConnectionError() => canEdit && settingsReady ? analysis?.Error : null;
 
     private async void ProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (updatingUi || quitting || ProfilePicker.SelectedItem is not ProxyProfile profile) return;
+        if (!canEdit || updatingUi || quitting || ProfilePicker.SelectedItem is not ProxyProfile profile) return;
         try
         {
             var updated = CaptureSettings();
@@ -429,6 +551,7 @@ public partial class MainWindow : Window
     }
     private async void EditProfile(ProxyProfile profile, bool isNew)
     {
+        if (!canEdit) return;
         var dialog = new ProfileWindow(profile, settings.Profiles) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Profile is null) return;
         try
@@ -444,6 +567,7 @@ public partial class MainWindow : Window
     }
     private async void DeleteProfileClick(object sender, RoutedEventArgs e)
     {
+        if (!canEdit) return;
         if (ProfilesList.SelectedItem is not ProxyProfile profile) return;
         try
         {
@@ -469,6 +593,7 @@ public partial class MainWindow : Window
 
     private async void ImportClick(object sender, RoutedEventArgs e)
     {
+        if (!canEdit) return;
         if (busy || quitting) return;
         var dialog = new OpenFileDialog { Filter = "MegaProxy JSON|*.json", CheckFileExists = true };
         if (dialog.ShowDialog(this) != true) return;
@@ -494,6 +619,7 @@ public partial class MainWindow : Window
 
     private async void ExportClick(object sender, RoutedEventArgs e)
     {
+        if (!canEdit) return;
         if (quitting) return;
         try
         {
@@ -514,6 +640,7 @@ public partial class MainWindow : Window
 
     private async Task ToggleAsync()
     {
+        if (!canEdit) return;
         if (connection.State == ConnectionState.Connecting) { connection.Cancel(); return; }
         if (busy || quitting || (testing && engine?.Running != true)) return;
 
@@ -549,21 +676,36 @@ public partial class MainWindow : Window
     private void SetBusy(bool value)
     {
         bool connecting = connection.State == ConnectionState.Connecting;
-        ConnectButton.IsEnabled = !quitting && (connecting || !value && (engine?.Running == true || (!testing && CanConnect())));
+        ConnectButton.IsEnabled = canEdit && !quitting && (connecting || !value && (engine?.Running == true || (!testing && CanConnect())));
         ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
         trayConnect.IsEnabled = ConnectButton.IsEnabled;
-        bool editable = !quitting && !settingsLoading;
-        ProfilePanel.IsEnabled = editable; RulesPanel.IsEnabled = editable;
+        bool editable = canEdit && !quitting && !settingsLoading;
+        foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
+            foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        AutostartBox.IsEnabled = editable && !applyingAutostart;
+        ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
+        ExportLogButton.IsEnabled = service is null || canEdit;
         ProfilePicker.IsEnabled = editable;
-        TestConnectionButton.IsEnabled = !value && !testing && (engine?.Running == true || CanConnect());
+        TestConnectionButton.IsEnabled = canEdit && !value && !testing && (engine?.Running == true || CanConnect());
         SpeedOptionsPanel.IsEnabled = !testing;
-        SpeedTestButton.IsEnabled = !value && diagnosticSucceeded && (!testing || speedRunning);
-        ReconnectButton.IsEnabled = !value && !testing && engine?.Running == true && CanConnect();
+        SpeedTestButton.IsEnabled = canEdit && !value && diagnosticSucceeded && (!testing || speedRunning);
+        ReconnectButton.IsEnabled = canEdit && !value && !testing && engine?.Running == true && CanConnect();
         bool changed = engine?.Running == true && (!settingsReady || engine.AppliedSignature != analysis?.Signature);
         ReconnectButton.Content = changed ? Ui.T("Reconnect •") : Ui.T("Reconnect");
         System.Windows.Automation.AutomationProperties.SetName(ReconnectButton,
             changed ? Ui.T("Reconnect and apply changes") : Ui.T("Reconnect"));
         ReconnectButton.ToolTip = changed ? Ui.T("Apply profile and rule changes") : Ui.T("Reconnect using current settings");
+    }
+
+    private static System.Collections.Generic.IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) yield return match;
+            foreach (var descendant in Descendants<T>(child)) yield return descendant;
+        }
     }
 
     private void SetConnected(bool value)
@@ -586,7 +728,7 @@ public partial class MainWindow : Window
 
     private async Task RefreshConnectionsAsync()
     {
-        if (!CanPollConnections()) { previousTrafficTime = default; return; }
+        if (!canEdit || !CanPollConnections()) { previousTrafficTime = default; return; }
         if (polling) return;
         polling = true;
         var current = engine!;
@@ -630,7 +772,7 @@ public partial class MainWindow : Window
 
     private async void SettingsChanged(object? sender, EventArgs e)
     {
-        if (updatingUi || quitting) return;
+        if (!canEdit || updatingUi || quitting) return;
         try
         {
             var updated = CaptureSettings();
@@ -644,7 +786,7 @@ public partial class MainWindow : Window
 
     private async void AutostartChanged(object sender, RoutedEventArgs e)
     {
-        if (updatingUi || applyingAutostart) return;
+        if (!canEdit || updatingUi || applyingAutostart) return;
         applyingAutostart = true;
         AutostartBox.IsEnabled = false;
         bool previous = settings.LaunchAtSignIn == true;
@@ -673,11 +815,12 @@ public partial class MainWindow : Window
             updatingUi = false;
             ShowError(error);
         }
-        finally { applyingAutostart = false; AutostartBox.IsEnabled = true; }
+        finally { applyingAutostart = false; AutostartBox.IsEnabled = canEdit; }
     }
 
     private void AddRuleClick(object sender, RoutedEventArgs e)
     {
+        if (!canEdit) return;
         var dialog = new RuleWindow { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Rule is not null) rules.Add(dialog.Rule);
     }
@@ -686,6 +829,7 @@ public partial class MainWindow : Window
 
     private void EditSelectedRule()
     {
+        if (!canEdit) return;
         if (RulesList.SelectedItem is not RoutingRule rule) return;
         var dialog = new RuleWindow(rule) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Rule is null) return;
@@ -724,7 +868,7 @@ public partial class MainWindow : Window
 
     private async void PreferencesChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (updatingUi || quitting) return;
+        if (!canEdit || updatingUi || quitting) return;
         try { await CommitSettingsAsync(CaptureSettings()); }
         catch (Exception error) { ShowError(error); }
     }
@@ -740,6 +884,7 @@ public partial class MainWindow : Window
 
     private async Task RunConnectionTestAsync()
     {
+        if (!canEdit) return;
         if (busy || testing || quitting) return;
         SetBusy(busy);
         diagnosticSucceeded = false;
@@ -862,6 +1007,7 @@ public partial class MainWindow : Window
 
     private async void SpeedTestClick(object sender, RoutedEventArgs e)
     {
+        if (!canEdit) return;
         if (speedRunning) { connection.Cancel(); return; }
         if (busy || testing || !diagnosticSucceeded || checkedSettings is null) return;
         speedRunning = true;
@@ -972,11 +1118,11 @@ public partial class MainWindow : Window
     {
         if (quitting) return;
         long version = Interlocked.Read(ref logVersion);
-        if (readingLog || !IsVisible || version == displayedLogVersion || !((TabItem)Sections.Items[^1]).IsSelected || LogText.SelectionLength > 0) return;
+        if (readingLog || !IsVisible || (service is null && version == displayedLogVersion) || !((TabItem)Sections.Items[^1]).IsSelected || LogText.SelectionLength > 0) return;
         readingLog = true;
         try
         {
-            string text = await logWriter.ReadAsync(tailOnly: true);
+            string text = service is null ? await logWriter.ReadAsync(tailOnly: true) : canEdit ? (await service.CallAsync(new("log"))).Text ?? "" : "";
             if (!quitting && IsVisible && ((TabItem)Sections.Items[^1]).IsSelected && LogText.SelectionLength == 0)
             {
                 LogAutoScroll.Replace(LogText, text);
@@ -989,12 +1135,14 @@ public partial class MainWindow : Window
 
     private async void ExportLogClick(object sender, RoutedEventArgs e)
     {
+        if (service is not null && !canEdit) return;
         if (quitting) return;
         var dialog = new SaveFileDialog { FileName = "MegaProxy.log", Filter = Ui.T("Text log|*.log"), AddExtension = true };
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            await TrackFileAsync(logWriter.ExportAsync(dialog.FileName));
+            if (service is null) await TrackFileAsync(logWriter.ExportAsync(dialog.FileName));
+            else await TrackFileAsync(service.ExportLogAsync(dialog.FileName));
         }
         catch (Exception error) { ShowError(error); }
     }
@@ -1007,7 +1155,7 @@ public partial class MainWindow : Window
 
     private async void SaveLogSize()
     {
-        if (updatingUi || quitting || !IsLoaded) return;
+        if (!canEdit || updatingUi || quitting || !IsLoaded) return;
         if (!int.TryParse(LogSizeBox.Text, out int size) || size is < 1 or > 100)
         {
             MessageText.Text = Ui.T("Enter a log size between 1 and 100 MiB.");
@@ -1023,11 +1171,12 @@ public partial class MainWindow : Window
         }
         catch (Exception error) { ShowError(error); }
     }
-    private void DeleteRuleClick(object sender, RoutedEventArgs e) { if (RulesList.SelectedItem is RoutingRule rule) rules.Remove(rule); }
+    private void DeleteRuleClick(object sender, RoutedEventArgs e) { if (canEdit && RulesList.SelectedItem is RoutingRule rule) rules.Remove(rule); }
     private void MoveRuleUpClick(object sender, RoutedEventArgs e) => MoveRule(-1);
     private void MoveRuleDownClick(object sender, RoutedEventArgs e) => MoveRule(1);
     private void MoveRule(int offset)
     {
+        if (!canEdit) return;
         int index = RulesList.SelectedIndex;
         if (index < 0 || index + offset < 0 || index + offset >= rules.Count) return;
         rules.Move(index, index + offset); RulesList.SelectedIndex = index + offset;

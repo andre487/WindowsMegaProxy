@@ -567,6 +567,13 @@
             <TabItem Header="{DynamicResource &quot;Settings&quot;}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="640" HorizontalAlignment="Left">
+                        <Button
+                            x:Name="InstallServiceButton"
+                            Content="{DynamicResource &quot;Install service…&quot;}"
+                            HorizontalAlignment="Left"
+                            Margin="0,0,0,16"
+                            Visibility="Collapsed"
+                            Click="InstallServiceClick" />
                         <TextBlock
                             Text="{DynamicResource &quot;Appearance&quot;}"
                             Style="{DynamicResource SubtitleTextBlockStyle}"
@@ -967,6 +974,7 @@
                     </Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                         <Button
+                            x:Name="ExportLogButton"
                             Content="{DynamicResource &quot;Export log…&quot;}"
                             Click="ExportLogClick"
                             Margin="0,0,16,0" />
@@ -991,12 +999,30 @@
             </TabItem>
         </TabControl>
         <Grid Grid.Row="3" Margin="0,12,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <TextBlock
                 x:Name="MessageText"
                 TextWrapping="Wrap"
                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                 AutomationProperties.LiveSetting="Polite"
                 VerticalAlignment="Center" />
+            <TextBlock
+                Grid.Row="1"
+                Margin="0,8,0,0"
+                HorizontalAlignment="Left"
+                TextWrapping="Wrap"
+                FontSize="12"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                <Run x:Name="BuildInformationText" />
+                <Run Text=" · " />
+                <Hyperlink
+                    NavigateUri="https://github.com/andre487/WindowsMegaProxy"
+                    RequestNavigate="OpenGitHub">GitHub</Hyperlink>
+                <Run x:Name="ReadOnlyModeText" />
+            </TextBlock>
         </Grid>
     </Grid>
 </Window>

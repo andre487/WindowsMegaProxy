@@ -58,7 +58,13 @@
       "problemMatcher": []
     },
     {
-      "label": "Run (administrator)",
+      "label": "Install service (administrator approval)",
+      "type": "shell",
+      "command": ".\\install.cmd",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run",
       "type": "shell",
       "command": ".\\run.cmd",
       "problemMatcher": []

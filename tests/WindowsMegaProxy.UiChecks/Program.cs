@@ -35,6 +35,7 @@ internal static class Program
         ControllerChecks.RunAsync().GetAwaiter().GetResult();
         CoreProcessChecks.RunAsync().GetAwaiter().GetResult();
         PerformanceChecks.RunAsync().GetAwaiter().GetResult();
+        ServiceChecks.RunAsync().GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(app.Dispatcher));
         app.Resources.MergedDictionaries.Add(new ResourceDictionary
@@ -73,6 +74,20 @@ internal static class Program
             "Startup cannot edit or overwrite settings before the saved configuration has loaded.");
         try
         {
+            string build = ((System.Windows.Documents.Run)window.FindName("BuildInformationText")).Text;
+            Assert(build.StartsWith("v0.0.1 · ") && build.Length >= 16, "Footer shows the version and source revision.");
+            var access = typeof(MainWindow).GetField("canEdit", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var setBusy = typeof(MainWindow).GetMethod("SetBusy", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            access.SetValue(window, false);
+            ((TabControl)window.FindName("Sections")).IsEnabled = true;
+            setBusy.Invoke(window, [false]);
+            Assert(((System.Windows.Documents.Run)window.FindName("ReadOnlyModeText")).Text == " · Read-only mode", "Read-only label follows the GitHub link.");
+            foreach (string name in new[] { "ConnectButton", "ReconnectButton", "ProfilePicker", "DefaultActionBox", "BypassLanBox", "AutostartBox", "LanguageBox", "TestConnectionButton" })
+                Assert(!((Control)window.FindName(name)).IsEnabled, "Read-only control: " + name);
+            Assert(((DataGrid)window.FindName("RulesList")).IsEnabled, "Read-only rules remain selectable for copying.");
+            access.SetValue(window, true);
+            ((TabControl)window.FindName("Sections")).IsEnabled = false;
+            setBusy.Invoke(window, [false]);
             var fixture = new Settings { DefaultAction = "proxy", Language = "ru" };
             UiTheme.Apply("ru", "auto", window);
             typeof(MainWindow).GetField("settings", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(window, fixture);

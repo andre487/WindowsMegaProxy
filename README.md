@@ -12,6 +12,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 - **Security options:** certificate verification, SSH accept-new with confirmation of changed server keys, password or private-key SSH authentication, TCP TLS and SSH fingerprint presets, and knock-host checks for masked HTTPS proxies.
 - **Portable configuration:** import and export `MegaProxy.json`, preserving other clients' settings. Passwords and private keys are excluded from exports by default. See the [example configuration](examples/MegaProxy.json).
 - **Windows integration:** system tray, startup at sign-in, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
+- **Shared service:** one protected configuration for the machine; administrator accounts can edit without repeated UAC prompts, other users have a read-only interface.
 - **Appearance:** English and Russian, automatic/light/dark themes and Windows display scaling.
 - **Logs:** local rotating logs, configurable size and export. Log entries are always in English.
 
@@ -21,10 +22,14 @@ Requires Windows 10/11 x64 and [uv](https://docs.astral.sh/uv/getting-started/in
 
 ```cmd
 setup.cmd
+build.cmd
+install.cmd
 run.cmd
 ```
 
-Add or import a profile, configure routing rules and connect. Administrator access is required. VS Code tasks are included; Visual Studio is not required.
+Installation requires administrator approval and downloads .NET and network cores from official sources. The interface runs without elevation. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
+
+The service keeps the shared connection running when the interface closes. Run `install.cmd` again after updating service code.
 
 SSH key verification requires the Windows OpenSSH Client optional feature.
 

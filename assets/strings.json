@@ -359,5 +359,9 @@
     "Jump password": "Пароль jump-сервера",
     "Use the same credentials for both proxies": "Использовать одинаковые учётные данные для обоих прокси",
     "Allow an invalid jump certificate": "Разрешить недействительный сертификат jump-сервера",
-    "Disable jump certificate verification? This weakens connection security.": "Отключить проверку сертификата jump-сервера? Это снижает безопасность соединения."
+    "Disable jump certificate verification? This weakens connection security.": "Отключить проверку сертификата jump-сервера? Это снижает безопасность соединения.",
+    "Install service…": "Установить службу…",
+    "Service unavailable": "Служба недоступна",
+    "The MegaProxy service is unavailable. Run install.cmd to install or repair it.": "Служба MegaProxy недоступна. Запустите install.cmd для её установки или восстановления.",
+    "Global settings changed in another window. Review the latest settings and try again.": "Глобальные настройки изменились в другом окне. Проверьте актуальные настройки и повторите попытку."
 }

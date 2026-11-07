@@ -1,4 +1,5 @@
 import hashlib
+import ctypes as ct
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,9 +11,41 @@ from PIL import Image
 from artwork import preferred_color
 from common import download, extract
 from dependencies import asset
+from install import secure_directory
 
 
 class ToolsChecks(unittest.TestCase):
+    def test_installer_rejects_untrusted_existing_directory_owner(self):
+        api, kernel = unittest.mock.MagicMock(), unittest.mock.MagicMock()
+        api.GetNamedSecurityInfoW.return_value = 0
+        untrusted_sid = ct.create_unicode_buffer("S-1-5-21-100-200-300-1001")
+
+        def owner_text(_, output):
+            ct.cast(output, ct.POINTER(ct.c_wchar_p))[0] = ct.cast(untrusted_sid, ct.c_wchar_p)
+            return 1
+
+        api.ConvertSidToStringSidW.side_effect = owner_text
+        with tempfile.TemporaryDirectory() as work, patch("ctypes.WinDLL", side_effect=[api, kernel]):
+            with self.assertRaisesRegex(RuntimeError, "untrusted owner"):
+                secure_directory(Path(work))
+        api.SetFileSecurityW.assert_not_called()
+
+    def test_installer_sets_an_exact_protected_acl(self):
+        api, kernel = unittest.mock.MagicMock(), unittest.mock.MagicMock()
+        api.GetNamedSecurityInfoW.return_value = 0
+        trusted_sid = ct.create_unicode_buffer("S-1-5-18")
+
+        def owner_text(_, output):
+            ct.cast(output, ct.POINTER(ct.c_wchar_p))[0] = ct.cast(trusted_sid, ct.c_wchar_p)
+            return 1
+
+        api.ConvertSidToStringSidW.side_effect = owner_text
+        with tempfile.TemporaryDirectory() as work, patch("ctypes.WinDLL", side_effect=[api, kernel]):
+            secure_directory(Path(work), public=False)
+        sddl = api.ConvertStringSecurityDescriptorToSecurityDescriptorW.call_args.args[0]
+        self.assertEqual(sddl, "O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
+        self.assertEqual(api.SetFileSecurityW.call_args.args[1], 0x80000005)
+
     def test_archive_cannot_escape_destination(self):
         with tempfile.TemporaryDirectory() as work:
             archive = Path(work) / "bad.zip"
