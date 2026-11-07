@@ -1,17 +1,18 @@
-"""Install the shared service and UI; elevation is needed only for installation."""
+"""Developer installation using the same protected mode helper as native setup."""
+import argparse
 import ctypes as ct
-import csv
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
-import shutil
 import subprocess as sp
 import sys
 import tempfile
+import time
+import re
 from ctypes import wintypes as wt
 
 from common import ROOT, cli, app_name, artifact_root
-from dependencies import install_core, runtime_installer
-from service_control import stop_service, service_state, require_production_stopped
+from dependencies import install_core, runtime_installer, release
+from package import merge
 
 
 def run(*args, check=True):
@@ -102,59 +103,45 @@ def secure_directory(path, public=False):
 
 
 def install():
-    dev = "--dev" in sys.argv
-    if dev:
-        require_production_stopped()
-    name = app_name(dev)
-    sources = (artifact_root(dev) / "app", artifact_root(dev) / "service")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("manual", "login", "service"), default="manual")
+    parser.add_argument("--elevated", action="store_true")
+    parser.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
+    options = parser.parse_args()
+    if options.dev:
+        raise RuntimeError("DEV runs without installation. Use run.cmd; uninstall-dev.cmd removes its old service.")
+    name = app_name()
+    sources = (artifact_root() / "app", artifact_root() / "service")
     if not (sources[0] / (name + ".exe")).is_file() or not (sources[1] / (name + ".Service.exe")).is_file():
-        raise RuntimeError("Run build.cmd" + (" --dev" if dev else "") + " before installation.")
+        raise RuntimeError("Run build.cmd before installation.")
     if not ct.windll.shell32.IsUserAnAdmin():
         elevate()
         return
-    target = known_folder(0x26) / name
-    data = known_folder(0x23) / name
-    for directory in (target, data):
-        if directory.resolve() != directory.absolute():
-            raise RuntimeError("The installation path contains a junction or symbolic link.")
-        secure_directory(directory, public=directory == target)
     cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
     runtime_root = known_folder(0x26) / "dotnet/shared/Microsoft.WindowsDesktop.App"
-    if not dev or not runtime_root.exists() or not any(path.is_dir() for path in runtime_root.glob("10.*")):
+    minimum = tuple(map(int, release()["windowsdesktop"]["version"].split(".")))
+    installed = any(path.is_dir() and re.fullmatch(r"10\.\d+\.\d+", path.name) and tuple(map(int, path.name.split("."))) >= minimum
+                    for path in runtime_root.glob("10.*"))
+    if not installed:
         installer = runtime_installer(cache)
         result = sp.run([str(installer), "/install", "/passive", "/norestart"], check=False)
         if result.returncode not in (0, 3010):
             raise RuntimeError(f".NET installer exited with {result.returncode}.")
-    stop_service(name)
+        if result.returncode == 3010:
+            raise RuntimeError("Restart Windows before continuing installation.")
+    root = known_folder(0x26) / name
+    target = root / "versions" / f"local-{time.time_ns()}"
+    for directory in (root, root / "versions", target):
+        if directory.resolve() != directory.absolute():
+            raise RuntimeError("The installation path contains a junction or symbolic link.")
+        secure_directory(directory, public=True)
     for source in sources:
-        for entry in source.rglob("*"):
-            if entry.is_symlink() or entry.is_junction():
-                raise RuntimeError("Application files cannot contain links.")
-            destination = target / entry.relative_to(source)
-            if not destination.resolve().is_relative_to(target.resolve()):
-                raise RuntimeError("Installation file escapes the application directory.")
-            if entry.is_dir():
-                destination.mkdir(exist_ok=True)
-            else:
-                shutil.copy2(entry, destination)
+        if any(entry.is_symlink() or entry.is_junction() for entry in source.rglob("*")):
+            raise RuntimeError("Application files cannot contain links.")
+        merge(source, target)
     install_core(target / "dependencies/sing-box", cache)
     install_core(target / "dependencies/sing-box-h3", cache, http3=True)
-    if dev:
-        for directory in ("sing-box", "sing-box-h3"):
-            (target / "dependencies" / directory / "sing-box.exe").replace(target / "dependencies" / directory / "sing-box-dev.exe")
-        require_production_stopped()
-    binary = f'"{target / (name + ".Service.exe")}"'
-    startup = "demand" if dev else "auto"
-    if service_state(name) is None:
-        run("sc.exe", "create", name, "binPath=", binary, "start=", startup, "obj=", "LocalSystem")
-    else:
-        run("sc.exe", "config", name, "binPath=", binary, "start=", startup, "obj=", "LocalSystem")
-    run("sc.exe", "failure", name, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000")
-    run("sc.exe", "start", name)
-    if not dev:
-        user = next(csv.reader([run("whoami.exe", "/user", "/fo", "csv", "/nh").stdout.strip()]))
-        if len(user) == 2 and user[1].startswith("S-1-"):
-            run("schtasks.exe", "/Delete", "/TN", "WindowsMegaProxy-" + user[1], "/F", check=False)
+    run(str(target / (name + ".Service.exe")), "--configure-mode", options.mode)
     print(f"Installed: {target / (name + '.exe')}")
 
 

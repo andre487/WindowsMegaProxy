@@ -16,9 +16,34 @@ from service_control import require_production_stopped, stop_service
 import run as dev_runner
 import stop_prod
 import uninstall_dev
+import install as installer
 
 
 class ToolsChecks(unittest.TestCase):
+    def test_console_installer_uses_mode_helper_in_version_directory(self):
+        for mode in ("manual", "login", "service"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                for directory, executable in (("app", "WindowsMegaProxy.exe"), ("service", "WindowsMegaProxy.Service.exe")):
+                    (root / directory).mkdir()
+                    (root / directory / executable).write_bytes(b"fixture")
+                (root / "Program Files/dotnet/shared/Microsoft.WindowsDesktop.App/10.0.99").mkdir(parents=True)
+                with patch("sys.argv", ["install.py", "--mode", mode]), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
+                     patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
+                     patch("install.release", return_value={"windowsdesktop": {"version": "10.0.14"}}), \
+                     patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
+                     patch("install.install_core"), patch("install.run") as configure, patch("builtins.print"):
+                    installer.install()
+                command = configure.call_args.args
+                self.assertIn("versions", Path(command[0]).parts)
+                self.assertEqual(command[1:], ("--configure-mode", mode))
+
+    def test_console_installer_rejects_dev_before_elevation(self):
+        with patch("sys.argv", ["install.py", "--dev"]), patch("install.elevate") as elevate:
+            with self.assertRaisesRegex(RuntimeError, "without installation"):
+                installer.install()
+        elevate.assert_not_called()
+
     def test_dev_removal_rejects_redirected_program_files_target(self):
         with patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
              patch("uninstall_dev.known_folder", return_value=Path("C:/elsewhere/../Program Files")), \

@@ -28,7 +28,11 @@ build.cmd
 install.cmd
 ```
 
-Installation requires administrator approval and downloads .NET and network cores from official sources. The interface runs without elevation. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
+Installation requires administrator approval and downloads .NET and network cores from official sources. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
+
+`install.cmd` defaults to manual launch; use `install.cmd --mode login` or
+`install.cmd --mode service` for the other modes. Standalone hosts run elevated;
+the interface in service mode can run without elevation.
 
 Choose an operating mode in the native installer or application settings. Manual and sign-in modes require administrator privileges and stop interception when you exit the application. Service mode keeps the shared connection running when the interface closes. Changing mode restarts the application and preserves its configuration.
 
