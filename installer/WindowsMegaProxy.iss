@@ -11,13 +11,15 @@ DisableDirPage=yes
 UsePreviousAppDir=no
 DefaultGroupName=MegaProxy
 PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
+UsePreviousPrivileges=no
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0.17763
 OutputDir={#ReleaseDirectory}
 OutputBaseFilename=WindowsMegaProxy-{#AppVersion}-win-x64-setup
 SetupIconFile={#RepositoryRoot}\src\WindowsMegaProxy\Assets\app.ico
-UninstallDisplayIcon={code:VersionPath}\WindowsMegaProxy.exe
+UninstallDisplayIcon={code:LaunchPath}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -52,27 +54,89 @@ english.ServiceMode=Windows service (continues after closing the interface)
 russian.ServiceMode=Служба Windows (работает после закрытия интерфейса)
 
 [Dirs]
-Name: "{app}"; Permissions: admins-full system-full users-readexec
-Name: "{app}\versions"; Permissions: admins-full system-full users-readexec
+Name: "{app}"; Permissions: admins-full system-full users-readexec; Check: IsAdminInstallMode
+Name: "{app}\versions"; Permissions: admins-full system-full users-readexec; Check: IsAdminInstallMode
+Name: "{code:ProtectedUserBase}"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
+Name: "{code:ProtectedUserRoot}"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
+Name: "{code:ProtectedUserRoot}\versions"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
 
 [Files]
-Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion; Check: IsUserInstall
 
 [Icons]
-Name: "{autoprograms}\MegaProxy"; Filename: "{code:VersionPath}\WindowsMegaProxy.exe"
-Name: "{autodesktop}\MegaProxy"; Filename: "{code:VersionPath}\WindowsMegaProxy.exe"; Tasks: desktopicon
+Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"
+Name: "{autodesktop}\MegaProxy"; Filename: "{code:LaunchPath}"; Tasks: desktopicon
 
 [Registry]
-Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueName: "WindowsMegaProxy"; Flags: uninsdeletevalue
-Root: HKLM; Subkey: "SOFTWARE\WindowsMegaProxy"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueName: "WindowsMegaProxy"; Flags: uninsdeletevalue; Check: IsAdminInstallMode
+Root: HKLM; Subkey: "SOFTWARE\WindowsMegaProxy"; Flags: uninsdeletekey; Check: IsAdminInstallMode
+Root: HKCU; Subkey: "SOFTWARE\WindowsMegaProxy\UserInstallation"; Flags: uninsdeletekey; Check: IsUserInstall
+
+[UninstallDelete]
+Type: files; Name: "{code:VersionPath}\user-installation.sid"; Check: IsUserInstall
+Type: dirifempty; Name: "{code:VersionPath}"; Check: IsUserInstall
 
 [Run]
-Filename: "{code:VersionPath}\WindowsMegaProxy.exe"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: CanLaunch
+Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: CanLaunch
 
 [Code]
 var TargetVersion: String;
+    OwnerSid: String;
     ModePage: TInputOptionWizardPage;
     ModeConfigured, ConfigurationFailed: Boolean;
+
+function IsUserInstall: Boolean;
+begin
+  Result := not IsAdminInstallMode;
+end;
+
+function CurrentSid: String;
+var Code, Start, I: Integer; Output: TExecOutput; Line: String;
+begin
+  if OwnerSid = '' then begin
+    if not ExecAndCaptureOutput(ExpandConstant('{sys}\whoami.exe'), '/user /fo csv /nh', '', SW_HIDE, ewWaitUntilTerminated, Code, Output) or
+      (Code <> 0) or Output.Error or (GetArrayLength(Output.StdOut) <> 1) then RaiseException('Could not identify the Windows user.');
+    Line := Output.StdOut[0];
+    Start := Pos('S-1-', Line);
+    if Start = 0 then RaiseException('Could not identify the Windows user SID.');
+    I := Start;
+    while (I <= Length(Line)) and (((Line[I] >= '0') and (Line[I] <= '9')) or (Line[I] = '-') or (Line[I] = 'S')) do I := I + 1;
+    OwnerSid := Copy(Line, Start, I - Start);
+  end;
+  Result := OwnerSid;
+end;
+
+function InitializeSetup: Boolean;
+var Code, I: Integer; Arguments, ExpectedSid: String;
+begin
+  Result := True;
+  if IsAdminInstallMode then Exit;
+  ExpectedSid := ExpandConstant('{param:OWNER|}');
+  if (ExpectedSid <> '') and (ExpectedSid <> CurrentSid) then
+    RaiseException('Current-user installation requires elevation by the same administrator account. Choose installation for all users instead.');
+  if not IsAdmin then begin
+    Arguments := '/CURRENTUSER /OWNER=' + CurrentSid;
+    for I := 1 to ParamCount do
+      if (CompareText(ParamStr(I), '/CURRENTUSER') <> 0) and (CompareText(ParamStr(I), '/ALLUSERS') <> 0) then
+        Arguments := Arguments + ' "' + ParamStr(I) + '"';
+    if not ShellExec('runas', ExpandConstant('{srcexe}'), Arguments, '', SW_SHOWNORMAL, ewNoWait, Code) then
+      RaiseException('Administrator approval is required to install the protected network runtime.');
+    Result := False;
+  end;
+end;
+
+function ProtectedUserBase(Param: String): String;
+begin
+  Result := ExpandConstant('{commonpf}\WindowsMegaProxy.Users');
+end;
+
+function ProtectedUserRoot(Param: String): String;
+begin
+  Result := ProtectedUserBase('') + '\' + CurrentSid;
+end;
+
+function LaunchPath(Param: String): String; forward;
 
 function CanLaunch: Boolean;
 begin
@@ -96,6 +160,7 @@ begin
   end;
   if (Result <> 'manual') and (Result <> 'login') and (Result <> 'service') then
     RaiseException('Unknown operating mode. Expected manual, login or service.');
+  if IsUserInstall and (Result = 'service') then RaiseException('Windows service mode is not available in a current-user installation.');
 end;
 
 procedure InitializeWizard;
@@ -105,9 +170,12 @@ begin
     CustomMessage('OperatingMode'), CustomMessage('ModeDescription'), True, False);
   ModePage.Add(CustomMessage('ManualMode'));
   ModePage.Add(CustomMessage('LoginMode'));
-  ModePage.Add(CustomMessage('ServiceMode'));
+  if IsAdminInstallMode then ModePage.Add(CustomMessage('ServiceMode'));
   ModePage.SelectedValueIndex := 0;
-  if RegQueryStringValue(HKLM64, 'SOFTWARE\WindowsMegaProxy', 'Mode', Mode) then begin
+  if IsUserInstall then begin
+    if RegQueryStringValue(HKCU64, 'SOFTWARE\WindowsMegaProxy\UserInstallation', 'Mode', Mode) and (Mode = 'login') then
+      ModePage.SelectedValueIndex := 1;
+  end else if RegQueryStringValue(HKLM64, 'SOFTWARE\WindowsMegaProxy', 'Mode', Mode) then begin
     if Mode = 'login' then ModePage.SelectedValueIndex := 1;
     if Mode = 'service' then ModePage.SelectedValueIndex := 2;
   end else if RegKeyExists(HKLM64, 'SYSTEM\CurrentControlSet\Services\WindowsMegaProxy') then
@@ -117,8 +185,17 @@ end;
 function VersionPath(Param: String): String;
 begin
   if TargetVersion = '' then
-    TargetVersion := ExpandConstant('{app}\versions\{#VersionDirectory}-') + GetDateTimeString('yyyymmddhhnnss', '-', ':');
+    if IsAdminInstallMode then
+      TargetVersion := ExpandConstant('{app}\versions\{#VersionDirectory}-') + GetDateTimeString('yyyymmddhhnnss', '-', ':')
+    else
+      TargetVersion := ProtectedUserRoot('') + '\versions\{#VersionDirectory}-' + GetDateTimeString('yyyymmddhhnnss', '-', ':');
   Result := TargetVersion;
+end;
+
+function LaunchPath(Param: String): String;
+begin
+  if IsAdminInstallMode then Result := VersionPath('') + '\WindowsMegaProxy.exe'
+  else Result := ExpandConstant('{app}\WindowsMegaProxy.Launcher.exe');
 end;
 
 type
@@ -150,7 +227,7 @@ begin
       if (Pos('10.', Names[I]) = 1) and StrToVersion(Names[I], Version) and
         (ComparePackedVersion(Version, Minimum) >= 0) then Result := True;
   if Result then Exit;
-  Directory := ExpandConstant('{autopf}\dotnet\shared\Microsoft.WindowsDesktop.App');
+  Directory := ExpandConstant('{commonpf}\dotnet\shared\Microsoft.WindowsDesktop.App');
   if FindFirst(Directory + '\*', Entry) then begin
     try
       repeat
@@ -202,11 +279,12 @@ begin
 end;
 
 procedure CurStepChanged(Step: TSetupStep);
-var Code: Integer;
+var Code: Integer; Command: String;
 begin
   if Step = ssPostInstall then begin
     ConfigurationFailed := True;
-    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--configure-mode ' + SelectedMode, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
+    if IsAdminInstallMode then Command := '--configure-mode ' else Command := '--configure-user ';
+    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', Command + SelectedMode, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
       RaiseException('Could not configure the MegaProxy operating mode. Close MegaProxy in all Windows sessions and retry. See the setup log.');
     end;
     ModeConfigured := True;
@@ -218,6 +296,14 @@ function InitializeUninstall: Boolean;
 var Manager, Service: THandle; Status: TServiceStatus; Attempt, Code: Integer; ImagePath, Executable: String;
 begin
   Result := False;
+  if IsUserInstall then begin
+    if not RegQueryStringValue(HKCU64, 'SOFTWARE\WindowsMegaProxy\UserInstallation', 'HelperPath', Executable) then Exit;
+    { Never execute a user-writable helper path with the uninstaller's elevated token. }
+    if Pos(Lowercase(ProtectedUserRoot('') + '\versions\'), Lowercase(Executable)) <> 1 then Exit;
+    if Pos('\..', Executable) <> 0 then Exit;
+    Result := ExecAndLogOutput(Executable, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) and (Code = 0);
+    Exit;
+  end;
   if not RegQueryStringValue(HKLM64, 'SOFTWARE\WindowsMegaProxy', 'HelperPath', ImagePath) then
     RegQueryStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Services\WindowsMegaProxy', 'ImagePath', ImagePath);
   if ImagePath <> '' then begin

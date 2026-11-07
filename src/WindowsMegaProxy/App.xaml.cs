@@ -19,6 +19,7 @@ public partial class App : Application
         {
             try
             {
+                if (UserInstallation.IsUser) { UserInstallation.Launch(); Shutdown(); return; }
                 var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas" };
                 foreach (string argument in e.Args) start.ArgumentList.Add(argument);
                 Process.Start(start)?.Dispose();

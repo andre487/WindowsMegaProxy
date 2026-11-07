@@ -37,6 +37,24 @@ internal static class InstallationChecks
         using (StartupConfiguration.ClaimRuntime(leaseName)) { }
         File.Delete(leaseName);
         const string programFiles = @"C:\Program Files";
+        const string sid = "S-1-5-21-100-200-300-1001";
+        if (UserInstallation.ValidateMode("manual") != "manual" || UserInstallation.ValidateMode("login") != "login")
+            throw new Exception("User installations must support manual and sign-in launch.");
+        foreach (string invalid in new[] { "service", "", "automatic" })
+        {
+            try { UserInstallation.ValidateMode(invalid); }
+            catch (ArgumentException) { continue; }
+            throw new Exception("A user installation accepted an unsupported operating mode.");
+        }
+        string userRoot = UserInstallation.ProtectedRoot(programFiles, sid);
+        if (UserInstallation.ValidateDirectory(Path.Combine(userRoot, "versions", "test"), programFiles, sid) != userRoot)
+            throw new Exception("User runtimes must use their own protected version directory.");
+        foreach (string invalid in new[] { userRoot, userRoot + @"\versions", userRoot + @"\versions\test\child", @"C:\Users\Test\AppData\Local\MegaProxy\versions\test", userRoot + @"\versions\..\elsewhere", userRoot.Replace(sid, "S-1-5-21-100-200-300-1002") + @"\versions\test" })
+        {
+            try { UserInstallation.ValidateDirectory(invalid, programFiles, sid); }
+            catch (IOException) { continue; }
+            throw new Exception("A user runtime accepted an unprotected or different user's directory.");
+        }
         string root = Path.Combine(programFiles, AppIdentity.Name);
         if (StartupConfiguration.RegistryPath != @"SOFTWARE\" + AppIdentity.Name) throw new Exception("Startup settings must be isolated by channel.");
         string valid = Path.Combine(root, "versions", "0.0.1-test");

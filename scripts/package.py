@@ -119,6 +119,10 @@ def main():
             if not source.is_dir():
                 raise RuntimeError("Production publish outputs are missing; run build.cmd.")
             merge(source, payload)
+        launcher = ROOT / "artifacts/launcher"
+        if not (launcher / "WindowsMegaProxy.Launcher.exe").is_file():
+            raise RuntimeError("The current-user launcher is missing; run build.cmd.")
+        merge(launcher, payload / "launcher")
         for name in ("WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe"):
             if not (payload / name).is_file():
                 raise ValueError("Production executable missing from payload.")

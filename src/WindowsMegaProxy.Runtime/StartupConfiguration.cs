@@ -40,6 +40,11 @@ public static class StartupConfiguration
     {
         get
         {
+            if (UserInstallation.IsUser)
+            {
+                using var personal = Registry.CurrentUser.OpenSubKey(UserInstallation.RegistryPath);
+                return UserInstallation.ValidateMode(personal?.GetValue("Mode") as string ?? "manual");
+            }
             using var key = Registry.LocalMachine.OpenSubKey(RegistryPath);
             if (key?.GetValue("Mode") is string value) return Validate(value);
             using var legacy = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name);
@@ -49,6 +54,7 @@ public static class StartupConfiguration
 
     public static Settings LoadLocal()
     {
+        if (UserInstallation.IsUser) return SettingsStore.Load();
         var store = new MachineSettingsStore();
         if (AppIdentity.IsDev && File.Exists(Path.Combine(SettingsStore.DirectoryPath, "settings.json")) &&
             (!store.Initialized || System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(store.DirectoryPath, "settings.json")))?["scope"]?.GetValue<string>() != "machine"))
@@ -61,8 +67,11 @@ public static class StartupConfiguration
 
     public static void SaveLocal(Settings settings)
     {
+        if (UserInstallation.IsUser) { SettingsStore.Save(settings); return; }
         new MachineSettingsStore().Save(settings);
     }
+
+    public static string LocalDirectory => UserInstallation.IsUser ? SettingsStore.DirectoryPath : MachineSettingsStore.DefaultDirectory;
 
     public static IDisposable ClaimRuntime(string? path = null)
     {

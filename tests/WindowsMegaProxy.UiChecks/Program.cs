@@ -21,6 +21,22 @@ internal static class Program
     private static void Main(string[] args)
     {
         InstallationChecks.Run();
+        if (args.Length == 2 && args[0] == "--user-settings-check")
+        {
+            if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new Exception("Installed settings fixtures require a disposable CI runner.");
+            if (args[1] == "seed")
+            {
+                var profile = ProxyProfile.Create("Personal preservation check");
+                profile.Proxy["host"] = "personal.invalid";
+                profile.Proxy["password"] = "personal-synthetic-secret";
+                SettingsStore.PrepareDirectory();
+                SettingsStore.Save(new Settings { Profiles = [profile], AutoConnect = false });
+            }
+            var personal = SettingsStore.Load();
+            if (personal.Profiles.Count != 1 || personal.Profiles[0].Name != "Personal preservation check" || personal.Profiles[0].Proxy["password"]?.ToString() != "personal-synthetic-secret")
+                throw new Exception("Personal settings were not preserved.");
+            return;
+        }
         if (args.Length == 2 && args[0] == "--installed-settings-check")
         {
             if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new Exception("Installed settings fixtures require a disposable CI runner.");

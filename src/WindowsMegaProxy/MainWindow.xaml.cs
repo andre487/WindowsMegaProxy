@@ -107,7 +107,7 @@ public partial class MainWindow : Window
         this.getAutostart = getAutostart ?? (service is null ? () => Task.FromResult(StartupConfiguration.Mode == "login") : async () => (await service.CallAsync(new("status"))).AutoStart);
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
         // Preserve existing log history until the saved limit has been loaded.
-        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(standalone ? MachineSettingsStore.DefaultDirectory : SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
+        log = diagnosticLog ?? new DiagnosticLog(Path.Combine(standalone ? StartupConfiguration.LocalDirectory : SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
         logWriter = new BackgroundLog(log);
         logWriter.Failed += _ => Dispatcher.BeginInvoke(() => { if (!quitting) MessageText.Text = Ui.T("Could not write the log to disk."); });
         settings = new Settings();
@@ -165,6 +165,7 @@ public partial class MainWindow : Window
         AutoConnectBox.Click += SettingsChanged;
         AutostartBox.Click += AutostartChanged;
         OperatingModeBox.SelectedValue = StartupConfiguration.Mode;
+        if (UserInstallation.IsUser) OperatingModeBox.Items.RemoveAt(2);
         OperatingModeBox.SelectionChanged += OperatingModeChanged;
         LogSizeBox.SelectionChanged += (_, _) => Dispatcher.BeginInvoke(() => SaveLogSize());
         LanguageBox.SelectionChanged += PreferencesChanged;
@@ -545,7 +546,7 @@ public partial class MainWindow : Window
     {
         if (service is not null)
             return new RemoteEngine(service, async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true));
-        var result = new Engine(AppIdentity.IsDev ? null : Path.Combine(MachineSettingsStore.DefaultDirectory, "runtime"), allowEnvironmentOverrides: AppIdentity.IsDev)
+        var result = new Engine(AppIdentity.IsDev && !UserInstallation.IsUser ? null : Path.Combine(StartupConfiguration.LocalDirectory, "runtime"), allowEnvironmentOverrides: AppIdentity.IsDev && !UserInstallation.IsUser)
         {
             ConfirmSshHostKeyChange = async update => await Dispatcher.InvokeAsync(() => new SshHostKeyWindow(update) { Owner = this }.ShowDialog() == true),
             SaveSshHostKey = SaveSshHostKey

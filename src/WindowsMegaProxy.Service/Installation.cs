@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.Win32;
 using WindowsMegaProxy;
 
-public static class Installation
+public static partial class Installation
 {
     public static string InstallRoot(string directory, string programFiles)
     {
@@ -28,6 +28,7 @@ public static class Installation
         try
         {
             string command = args[0];
+            if (command == "--configure-user" || UserInstallation.IsUser) return RunUser(args);
             if (AppIdentity.IsDev && command == "--migrate-dev-settings")
             {
                 if (!StartupConfiguration.IsElevated) throw new UnauthorizedAccessException("Migration requires administrator approval.");
@@ -46,7 +47,7 @@ public static class Installation
                 throw new UnauthorizedAccessException("Installation requires administrator approval.");
             string root = InstallRoot(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
             foreach (string path in new[] { root, Path.Combine(root, "versions"), AppContext.BaseDirectory }) CheckDirectory(path);
-            CloseClients();
+            CloseClients(root);
             if (command == "--prepare-uninstall") { ConfigureLogin("manual"); return 0; }
             ProtectDataDirectory(MachineSettingsStore.DefaultDirectory);
             bool previouslyRunning;
@@ -236,13 +237,15 @@ public static class Installation
         directory.SetAccessControl(security);
     }
 
-    private static void CloseClients()
+    private static void CloseClients(string root, bool currentSession = false)
     {
         foreach (var process in Process.GetProcessesByName(AppIdentity.Name))
         using (process)
         {
             try
             {
+                if (currentSession && process.SessionId != Process.GetCurrentProcess().SessionId ||
+                    process.MainModule?.FileName?.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) != true) continue;
                 EnumWindows((window, _) =>
                 {
                     GetWindowThreadProcessId(window, out uint pid);

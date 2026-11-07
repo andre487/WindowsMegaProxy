@@ -18,7 +18,7 @@ def main(dev=False, app_only=False):
     try:
         if ct.get_last_error() == 183:
             raise RuntimeError("MegaProxy is running. Use run.cmd to stop it gracefully and rebuild.")
-        for project, output in (("WindowsMegaProxy", "app"), ("WindowsMegaProxy.Service", "service"), ("MegaProxy.TraceProbe", "trace-probe")):
+        for project, output in (("WindowsMegaProxy", "app"), ("WindowsMegaProxy.Service", "service"), ("MegaProxy.TraceProbe", "trace-probe"), ("WindowsMegaProxy.Launcher", "launcher")):
             if app_only and output != "app":
                 continue
             destination = (artifact_root(dev) / output).resolve()
