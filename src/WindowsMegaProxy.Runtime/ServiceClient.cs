@@ -11,15 +11,26 @@ namespace WindowsMegaProxy;
 public sealed class ServiceClient(string pipeName = ServiceProtocol.PipeName, string? expectedOwner = null)
 {
     public bool CanEdit { get; private set; }
+    public string? InstanceId { get; private set; }
+    public async Task<ServiceReply> InitializeAsync(Func<Task<Settings>> loadLegacy, CancellationToken token = default)
+    {
+        var reply = await CallAsync(new("hello"), token).ConfigureAwait(false);
+        if (!reply.Initialized && reply.CanEdit)
+            reply = await CallAsync(new("save", Settings: await loadLegacy().ConfigureAwait(false), Revision: reply.Revision, InstanceId: reply.InstanceId), token).ConfigureAwait(false);
+        return reply;
+    }
     public async Task<ServiceReply> CallAsync(ServiceRequest request, CancellationToken token = default)
     {
+        request = request with { InstanceId = request.InstanceId ?? InstanceId };
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(120));
         using var pipe = await ConnectAsync(deadline.Token).ConfigureAwait(false);
         await ServiceProtocol.WriteAsync(pipe, request, deadline.Token).ConfigureAwait(false);
         var reply = await ServiceProtocol.ReadAsync<ServiceReply>(pipe, deadline.Token).ConfigureAwait(false);
         CanEdit = reply.CanEdit;
+        if (request.Operation == "hello") InstanceId = reply.InstanceId;
         if (reply.HostKey is not null) throw new ServiceHostKeyException(reply.HostKey);
+        if (reply.ErrorCode == "stateChanged") throw new ServiceStateChangedException(reply.Error ?? "The service state changed. Refresh and try again.");
         if (reply.Error is not null) throw new IOException(reply.Error);
         return reply;
     }
@@ -67,6 +78,8 @@ public sealed class ServiceClient(string pipeName = ServiceProtocol.PipeName, st
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 }
+
+public sealed class ServiceStateChangedException(string message) : IOException(message);
 
 public sealed class ServiceHostKeyException(SshHostKeyUpdate update) : IOException("The SSH server key changed.")
 {

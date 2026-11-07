@@ -23,6 +23,9 @@ public partial class MainWindow : Window
 {
     private readonly ServiceClient? service;
     private bool canEdit = true, refreshingService;
+    private bool serviceAvailable, serviceTesting;
+    private string? serviceInstance;
+    private readonly Func<Task<Settings>> loadLegacy;
     private long serviceRevision;
     private readonly string? installScript = FindInstallScript();
     private Settings settings;
@@ -86,9 +89,11 @@ public partial class MainWindow : Window
     }
 
     public MainWindow(bool startInTray, Action<Settings>? persistSettings = null, DiagnosticLog? diagnosticLog = null,
-        Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null)
+        Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null,
+        ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null)
     {
-        service = persistSettings is null ? new ServiceClient() : null;
+        service = serviceClient ?? (persistSettings is null ? new ServiceClient() : null);
+        this.loadLegacy = loadLegacy ?? (() => Task.Run(SettingsStore.Load));
         canEdit = service is null;
         connection = connectionController ?? new ConnectionController(CreateEngine);
         settingsWriter = new SettingsWriter(persistSettings ?? (value =>
@@ -173,6 +178,7 @@ public partial class MainWindow : Window
             SetConnected(false);
             MessageText.Text = Ui.T("The core exited unexpectedly. Connections are no longer protected by TUN.");
             tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("The core exited. TUN is disconnected."), Forms.ToolTipIcon.Warning);
+            if (service is not null) { connection.Cancel(); if (engine is not null) connection.Attach(engine); return; }
             try { await connection.DisconnectAsync(); }
             catch (Exception error) { ShowError(error); }
         });
@@ -225,13 +231,9 @@ public partial class MainWindow : Window
             if (service is null) loaded = await TrackFileAsync(Task.Run(SettingsStore.Load));
             else
             {
-                var reply = await service.CallAsync(new("hello"));
+                var reply = await service.InitializeAsync(this.loadLegacy);
                 canEdit = reply.CanEdit;
-                if (!reply.Initialized && canEdit)
-                {
-                    loaded = await Task.Run(SettingsStore.Load);
-                    reply = await service.CallAsync(new("save", Settings: loaded));
-                }
+                serviceAvailable = true; serviceTesting = reply.Testing; serviceInstance = reply.InstanceId;
                 loaded = reply.Settings ?? new Settings();
                 serviceRevision = reply.Revision;
                 var remote = (RemoteEngine)CreateEngine();
@@ -244,14 +246,14 @@ public partial class MainWindow : Window
             ObserveLogTask(logWriter.SetLimitAsync(settings.LogSizeMb));
             bool enabled = await getAutostart();
             AutostartBox.IsChecked = enabled;
-            if (canEdit && settings.AutoConnect && engine?.Running != true) await ToggleAsync();
+            if (canEdit && !serviceTesting && settings.AutoConnect && engine?.Running != true) await ToggleAsync();
         }
         catch (Exception error)
         {
             if (service is not null)
             {
-                canEdit = false;
                 ApplySettings(new Settings());
+                LoseServiceConnection();
                 MessageText.Text = Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
                 WriteLog("The MegaProxy service is unavailable: " + error.GetType().Name);
                 InstallServiceButton.Visibility = installScript is not null && ClientAccess.Current().CanEdit ? Visibility.Visible : Visibility.Collapsed;
@@ -268,21 +270,32 @@ public partial class MainWindow : Window
         try
         {
             var reply = await service.CallAsync(new("status"));
+            if (quitting) return;
+            bool firstBinding = serviceInstance is null;
+            bool rebind = !serviceAvailable || reply.InstanceId != serviceInstance || engine is not RemoteEngine;
+            bool reload = rebind || reply.Revision != Interlocked.Read(ref serviceRevision) || engine is RemoteEngine current && reply.Status?.Generation != current.Generation;
+            if (rebind) LoseServiceConnection();
+            if (reload)
+            {
+                if (!settingsUpdate.IsCompleted || !analysisTask.IsCompleted || testing)
+                {
+                    return;
+                }
+                canEdit = false; SetBusy(busy);
+                reply = await service.InitializeAsync(loadLegacy);
+                if (quitting) return;
+                serviceRevision = reply.Revision;
+                ApplySettings(reply.Settings ?? new Settings());
+                await analysisTask;
+                if (quitting) return;
+                var attached = (RemoteEngine)CreateEngine();
+                attached.Apply(reply);
+                connection.Attach(attached);
+            }
+            serviceInstance = reply.InstanceId; serviceAvailable = true; serviceTesting = reply.Testing;
             canEdit = reply.CanEdit;
             InstallServiceButton.Visibility = Visibility.Collapsed;
             if (MessageText.Text == Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.")) MessageText.Text = "";
-            if ((engine is not RemoteEngine current || reply.Revision != Interlocked.Read(ref serviceRevision) || reply.Status?.Generation != current.Generation) && settingsUpdate.IsCompleted && analysisTask.IsCompleted && !testing)
-            {
-                reply = await service.CallAsync(new("hello"));
-                serviceRevision = reply.Revision;
-                ApplySettings(reply.Settings ?? new Settings());
-                if (engine is not RemoteEngine)
-                {
-                    var attached = (RemoteEngine)CreateEngine();
-                    attached.Apply(reply);
-                    connection.Attach(attached);
-                }
-            }
             if (engine is RemoteEngine remote)
             {
                 remote.Apply(reply);
@@ -291,15 +304,33 @@ public partial class MainWindow : Window
             bool connected = engine?.Running == true;
             if (StatusText.Text != Ui.T(connected ? "Connected" : "Disconnected")) SetConnected(connected);
             SetBusy(busy);
+            if (firstBinding && canEdit && !serviceTesting && settings.AutoConnect && engine?.Running != true) await ToggleAsync();
         }
-        catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException or Win32Exception)
         {
-            canEdit = false;
-            StatusText.Text = Ui.T("Service unavailable");
+            LoseServiceConnection();
             MessageText.Text = Ui.T("The MegaProxy service is unavailable. Run install.cmd to install or repair it.");
             SetBusy(busy);
         }
         finally { refreshingService = false; }
+    }
+
+    private void LoseServiceConnection()
+    {
+        serviceAvailable = false; serviceTesting = false; canEdit = false;
+        connection.Cancel();
+        if (engine is RemoteEngine remote) { remote.Invalidate(); if (!busy) connection.Attach(remote); }
+        connectionRows.Clear();
+        previousTrafficTime = default;
+        TrafficText.Text = "↑ —  ↓ —";
+        ConnectionsHint.Text = StatusText.Text = Ui.T("Service unavailable");
+        tray.Text = Ui.T("MegaProxy — service unavailable");
+        tray.Icon = DisconnectedIcon();
+        diagnosticSucceeded = false; checkedSettings = null; lastDiagnosticResult = null; lastSpeedResults = null;
+        SpeedPanel.Visibility = Visibility.Collapsed; SpeedLockedText.Visibility = Visibility.Visible;
+        DiagnosticDetailsPanel.Visibility = Visibility.Collapsed;
+        TestStatusText.Text = Ui.T("Service unavailable");
+        SetBusy(busy);
     }
 
     private static void SelectTag(ComboBox box, string tag)
@@ -457,10 +488,11 @@ public partial class MainWindow : Window
         if (tray is not null)
         {
             bool connected = engine?.Running == true;
-            StatusText.Text = Ui.T(connected ? "Connected" : "Disconnected");
+            bool unavailable = service is not null && !serviceAvailable;
+            StatusText.Text = Ui.T(unavailable ? "Service unavailable" : connected ? "Connected" : "Disconnected");
             trayOpen.Header = Ui.T("Open MegaProxy");
             trayExit.Header = Ui.T("Exit");
-            tray.Text = Ui.T(connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
+            tray.Text = Ui.T(unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
             SetBusy(busy);
         }
         if (languageChanged)
@@ -487,7 +519,7 @@ public partial class MainWindow : Window
         if (!connected && profile is not null && error is not null) ProfileSummary.Text += " · " + error;
     }
 
-    private bool CanConnect() => canEdit && !settingsLoading && settingsReady && ConnectionError() is null;
+    private bool CanConnect() => canEdit && !serviceTesting && !settingsLoading && settingsReady && ConnectionError() is null;
 
     private IEngine CreateEngine()
     {
@@ -640,7 +672,7 @@ public partial class MainWindow : Window
 
     private async Task ToggleAsync()
     {
-        if (!canEdit) return;
+        if (!canEdit || serviceTesting) return;
         if (connection.State == ConnectionState.Connecting) { connection.Cancel(); return; }
         if (busy || quitting || (testing && engine?.Running != true)) return;
 
@@ -884,7 +916,7 @@ public partial class MainWindow : Window
 
     private async Task RunConnectionTestAsync()
     {
-        if (!canEdit) return;
+        if (!canEdit || serviceTesting) return;
         if (busy || testing || quitting) return;
         SetBusy(busy);
         diagnosticSucceeded = false;
@@ -929,6 +961,7 @@ public partial class MainWindow : Window
                         details = details with { Http3 = http3 };
                         if (http3.Length > 0) { AppendDiagnosticEntry(http3); WriteLog(http3); }
                     }
+                    token.ThrowIfCancellationRequested();
                     if (!quitting)
                     {
                         CompleteDiagnostics(details, target.AppliedSettings!);

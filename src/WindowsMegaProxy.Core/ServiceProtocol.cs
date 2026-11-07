@@ -12,15 +12,16 @@ public sealed record ServiceLogChunk(byte[] Data, bool Done = false, string? Err
 public sealed record ServiceStatus(bool Running, Settings? AppliedSettings, string? AppliedSignature, bool Http3Selected,
     bool UsedHttp3Fallback, string SelectedOutbound, bool HasProbeProfile, long Generation = 0);
 public sealed record ServiceRequest(string Operation, Settings? Settings = null, bool TestOnly = false, bool ShowAll = false,
-    string? Lease = null, SshHostKeyUpdate? HostKey = null, long? Revision = null);
+    string? Lease = null, SshHostKeyUpdate? HostKey = null, long? Revision = null, string? InstanceId = null, long? Generation = null);
 public sealed record ServiceReply(bool CanEdit, Settings? Settings = null, ServiceStatus? Status = null,
     ConnectionSnapshot? Connections = null, string? Text = null, string? Error = null, SshHostKeyUpdate? HostKey = null,
-    string? Lease = null, ProbeAccess? Probe = null, bool Initialized = true, bool AutoStart = false, long Revision = 0);
+    string? Lease = null, ProbeAccess? Probe = null, bool Initialized = true, bool AutoStart = false, long Revision = 0,
+    string? InstanceId = null, string? ErrorCode = null, bool Testing = false);
 
 public static class ServiceProtocol
 {
     public const string Name = "WindowsMegaProxy";
-    public const string PipeName = "WindowsMegaProxy.Control.v1";
+    public const string PipeName = "WindowsMegaProxy.Control.v2";
     public const int MaximumFrameBytes = 16 * 1024 * 1024;
     public static readonly JsonSerializerOptions Options = new() { UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow };
 

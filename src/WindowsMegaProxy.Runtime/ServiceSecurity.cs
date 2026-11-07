@@ -6,7 +6,7 @@ using System.Security.Principal;
 
 namespace WindowsMegaProxy;
 
-public sealed record ClientAccess(string Sid, bool CanEdit)
+public sealed record ClientAccess(string Sid, bool CanEdit, Func<bool>? IsAlive = null, Func<ClientLifetime>? Watch = null)
 {
     public static bool MayEdit(bool administrator, bool system, bool restricted, bool lowIntegrity, bool appContainer, bool network) =>
         (administrator || system) && !restricted && !lowIntegrity && !appContainer && !network;

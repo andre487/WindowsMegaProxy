@@ -15,6 +15,9 @@ public sealed class ServiceBroker : IAsyncDisposable
     private readonly SemaphoreSlim configuration = new(1), network = new(1);
     private readonly Func<bool, Task> setAutostart;
     private readonly BackgroundLog log;
+    public string InstanceId { get; } = Guid.NewGuid().ToString("N");
+    private Func<bool>? leaseOwnerAlive;
+    private ClientLifetime? ownerLifetime;
     private ProbeAccess? probe;
     private Settings settings;
     private long revision;
@@ -50,6 +53,7 @@ public sealed class ServiceBroker : IAsyncDisposable
             finally { configuration.Release(); }
         }
         if (!peer.CanEdit) return new(false, Error: "Read-only mode");
+        if (request.InstanceId != InstanceId) throw new ServiceStateChangedException("The service restarted. Refresh and try again.");
         switch (request.Operation)
         {
             case "save":
@@ -57,7 +61,7 @@ public sealed class ServiceBroker : IAsyncDisposable
                 await configuration.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
-                    if (request.Revision is { } expected && expected != revision)
+                    if (request.Revision != revision)
                         throw new IOException("Global settings changed in another window. Review the latest settings and try again.");
                     var next = PortableConfiguration.Copy(request.Settings);
                     PortableConfiguration.ValidateSettings(next);
@@ -107,7 +111,16 @@ public sealed class ServiceBroker : IAsyncDisposable
                                 throw new ServiceHostKeyException(update);
                             };
                         }
-                        try { await engine.StartAsync(PortableConfiguration.Copy(settings), request.TestOnly, token).ConfigureAwait(false); }
+                        try
+                        {
+                            if (request.TestOnly)
+                            {
+                                var owner = ownerLifetime = peer.Watch?.Invoke();
+                                leaseOwnerAlive = owner is null ? peer.IsAlive : () => owner.IsAlive;
+                                if (leaseOwnerAlive?.Invoke() == false) throw new IOException("The diagnostic client exited.");
+                            }
+                            await engine.StartAsync(PortableConfiguration.Copy(settings), request.TestOnly, token).ConfigureAwait(false);
+                        }
                         catch { await StopAsync().ConfigureAwait(false); throw; }
                         if (request.TestOnly)
                         {
@@ -120,8 +133,10 @@ public sealed class ServiceBroker : IAsyncDisposable
                         log.Write(request.TestOnly ? "Service connection test started." : "Service TUN connected.");
                         return Reply(peer) with { Lease = lease };
                     }
-                    if (lease is not null && (request.Lease != lease || peer.Sid != leaseOwner))
-                        throw new UnauthorizedAccessException("This connection test belongs to another client.");
+                    if (request.Generation != status.Generation)
+                        throw new ServiceStateChangedException("The connection changed. Refresh and try again.");
+                    if (request.Lease != lease || lease is not null && peer.Sid != leaseOwner)
+                        throw new ServiceStateChangedException("The connection test changed. Refresh and try again.");
                     if (lease is not null) leaseDeadline = DateTimeOffset.UtcNow.AddMinutes(6);
                     switch (request.Operation)
                     {
@@ -148,7 +163,8 @@ public sealed class ServiceBroker : IAsyncDisposable
             Settings: includeSettings ? peer.CanEdit ? PortableConfiguration.Copy(settings) : ServiceView.PublicSettings(settings) : null,
             Status: visible ? peer.CanEdit ? current : ServiceView.PublicStatus(current) : new(false, null, null, false, false, "direct", false),
             Probe: peer.CanEdit && visible && current.Running ? probe : null,
-            Initialized: store.Initialized, AutoStart: settings.LaunchAtSignIn == true, Revision: Interlocked.Read(ref revision));
+            Initialized: store.Initialized, AutoStart: settings.LaunchAtSignIn == true, Revision: Interlocked.Read(ref revision),
+            InstanceId: InstanceId, Testing: lease is not null);
     }
 
     private async Task SaveKeyAsync(SshHostKeyUpdate update, CancellationToken token)
@@ -181,7 +197,7 @@ public sealed class ServiceBroker : IAsyncDisposable
         status = status with { Running = false };
         probe = null;
         try { if (engine is not null) await engine.StopAsync().ConfigureAwait(false); }
-        finally { engine?.Dispose(); engine = null; lease = leaseOwner = null; UpdateStatus(); if (running) log.Write("Service core stopped."); }
+        finally { engine?.Dispose(); engine = null; lease = leaseOwner = null; leaseOwnerAlive = null; ownerLifetime?.Dispose(); ownerLifetime = null; UpdateStatus(); if (running) log.Write("Service core stopped."); }
     }
 
     public async Task ExportLogAsync(ClientAccess peer, Stream output, CancellationToken token)
@@ -201,11 +217,11 @@ public sealed class ServiceBroker : IAsyncDisposable
         finally { File.Delete(snapshot); }
     }
 
-    private Task ExpireLeaseAsync() => lease is not null && DateTimeOffset.UtcNow >= leaseDeadline ? StopAsync() : Task.CompletedTask;
+    private Task ExpireLeaseAsync() => lease is not null && (DateTimeOffset.UtcNow >= leaseDeadline || leaseOwnerAlive?.Invoke() == false) ? StopAsync() : Task.CompletedTask;
 
     public async Task MaintainAsync(CancellationToken token)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
         {
             if (!await network.WaitAsync(0, token).ConfigureAwait(false)) continue;

@@ -78,6 +78,8 @@ public sealed class ServicePipeServer(ServiceBroker broker, string pipeName = Se
                     return peer.CanEdit ? ServiceProtocol.MaximumFrameBytes : 64 * 1024;
                 }).ConfigureAwait(false);
                 deadline.CancelAfter(TimeSpan.FromSeconds(110));
+                if (request.Operation == "start" && request.TestOnly && peer!.CanEdit)
+                    peer = peer with { Watch = () => ClientLifetime.Open(pipe) };
                 if (request.Operation == "exportLog")
                 {
                     if (!peer!.CanEdit)
@@ -92,6 +94,7 @@ public sealed class ServicePipeServer(ServiceBroker broker, string pipeName = Se
                 {
                     try { reply = await broker.HandleAsync(peer!, request, deadline.Token).ConfigureAwait(false); }
                     catch (ServiceHostKeyException key) { reply = new(peer!.CanEdit, HostKey: key.Update); }
+                    catch (ServiceStateChangedException error) { reply = new(peer!.CanEdit, Error: error.Message, ErrorCode: "stateChanged"); }
                     catch (Exception error) when (error is not OperationCanceledException)
                     { reply = new(peer!.CanEdit, Error: peer.CanEdit ? DiagnosticLog.Redact(error.Message) : "Read-only mode"); }
                 }

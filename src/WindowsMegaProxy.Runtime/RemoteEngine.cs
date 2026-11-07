@@ -15,32 +15,40 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
     public bool Persistent => true;
     public bool Running => status.Running;
     public long Generation => status.Generation;
+    public string? InstanceId { get; private set; }
     public Settings? AppliedSettings => status.AppliedSettings;
     public string? AppliedSignature => status.AppliedSignature;
     public bool Http3Selected => status.Http3Selected;
     public bool UsedHttp3Fallback => status.UsedHttp3Fallback;
     public string SelectedOutbound => status.SelectedOutbound;
     public bool HasProbeProfile => status.HasProbeProfile;
-    public event Action? Exited;
+    // Polling reconciles remote state; observing a stop must not issue another stop.
+    public event Action? Exited { add { } remove { } }
     public event Action<string>? Log;
 
     public void Apply(ServiceReply reply)
     {
-        bool running = Running;
-        if (reply.Status is not null) status = reply.Status with { AppliedSettings = reply.Status.AppliedSettings ?? (reply.Status.Running ? status.AppliedSettings : null) };
+        if (reply.Status is not null) status = reply.Status with { AppliedSettings = reply.Status.AppliedSettings ?? (reply.InstanceId == InstanceId && reply.Status.Running ? status.AppliedSettings : null) };
+        InstanceId = reply.InstanceId;
         probe = reply.Probe;
-        if (running && !Running) Exited?.Invoke();
+    }
+
+    public void Invalidate()
+    {
+        status = status with { Running = false, AppliedSettings = null };
+        probe = null;
     }
 
     public async Task StartAsync(Settings settings, bool testOnly = false, CancellationToken cancellationToken = default)
     {
         ServiceReply reply;
-        try { reply = await client.CallAsync(new("start", TestOnly: testOnly), cancellationToken).ConfigureAwait(false); }
+        string instance = client.InstanceId ?? (await client.CallAsync(new("hello"), cancellationToken).ConfigureAwait(false)).InstanceId!;
+        try { reply = await client.CallAsync(new("start", TestOnly: testOnly, InstanceId: instance), cancellationToken).ConfigureAwait(false); }
         catch (ServiceHostKeyException key)
         {
             if (!await confirmKey(key.Update).ConfigureAwait(false)) throw new OperationCanceledException("SSH key change was not accepted.");
-            await client.CallAsync(new("acceptHostKey", HostKey: key.Update), cancellationToken).ConfigureAwait(false);
-            reply = await client.CallAsync(new("start", TestOnly: testOnly), cancellationToken).ConfigureAwait(false);
+            await client.CallAsync(new("acceptHostKey", HostKey: key.Update, InstanceId: instance), cancellationToken).ConfigureAwait(false);
+            reply = await client.CallAsync(new("start", TestOnly: testOnly, InstanceId: instance), cancellationToken).ConfigureAwait(false);
         }
         lease = reply.Lease;
         borrowed = testOnly && lease is null;
@@ -50,14 +58,15 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
 
     public async Task StopAsync()
     {
-        if (borrowed) return;
-        Apply(await client.CallAsync(new("stop", Lease: lease)).ConfigureAwait(false));
-        lease = null;
+        if (borrowed || !Running || InstanceId is null) return;
+        try { Apply(await client.CallAsync(new("stop", Lease: lease, InstanceId: InstanceId, Generation: Generation)).ConfigureAwait(false)); }
+        catch (ServiceStateChangedException) { Invalidate(); }
+        finally { lease = null; }
     }
 
     public async Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)
     {
-        var reply = await client.CallAsync(new("connections", ShowAll: showAll, Lease: lease)).ConfigureAwait(false);
+        var reply = await client.CallAsync(new("connections", ShowAll: showAll, Lease: lease, InstanceId: InstanceId, Generation: Generation)).ConfigureAwait(false);
         Apply(reply);
         var snapshot = reply.Connections ?? new([], 0, 0, 0);
         return snapshot with { Rows = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Select(snapshot.Rows, row =>
@@ -78,6 +87,6 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
     }
 
     public async Task<string> CheckHttp3Async(CancellationToken token) =>
-        (await client.CallAsync(new("http3", Lease: lease), token).ConfigureAwait(false)).Text ?? "";
+        (await client.CallAsync(new("http3", Lease: lease, InstanceId: InstanceId, Generation: Generation), token).ConfigureAwait(false)).Text ?? "";
     public void Dispose() { }
 }

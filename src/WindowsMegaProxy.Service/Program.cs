@@ -41,7 +41,7 @@ internal sealed class Program : ServiceBase
             if (broker.AutoConnect)
                 startup = Task.Run(async () =>
                 {
-                    try { await broker.HandleAsync(new("S-1-5-18", true), new("start"), stopping.Token); }
+                    try { await broker.HandleAsync(new("S-1-5-18", true), new("start", InstanceId: broker.InstanceId), stopping.Token); }
                     catch (Exception error) { EventLog.WriteEntry(ServiceName, DiagnosticLog.Redact(error.Message), EventLogEntryType.Error); }
                 });
             try { await server.RunAsync(stopping.Token); }

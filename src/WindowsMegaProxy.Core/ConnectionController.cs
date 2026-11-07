@@ -41,11 +41,14 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
 
     public void Attach(IEngine current)
     {
-        if (!ReferenceEquals(Engine, current)) Engine?.Dispose();
+        if (!ReferenceEquals(Engine, current)) { Engine?.Dispose(); Observe(current); }
         Engine = current;
         State = current.Running ? ConnectionState.Connected : ConnectionState.Disconnected;
         Changed?.Invoke();
     }
+
+    private void Observe(IEngine current) => current.Exited += () =>
+    { if (Engine == current && State == ConnectionState.Connected && !closing) UnexpectedExit?.Invoke(); };
 
     public Task ConnectAsync(Settings settings)
     {
@@ -64,7 +67,7 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
         {
             if (Engine is not null) { await Task.Run(Engine.StopAsync); Engine.Dispose(); Engine = null; }
             var current = Engine = createEngine();
-            current.Exited += () => { if (Engine == current && State == ConnectionState.Connected && !closing) UnexpectedExit?.Invoke(); };
+            Observe(current);
             await Task.Run(() => current.StartAsync(settings, cancellationToken: token), token);
             token.ThrowIfCancellationRequested();
             State = ConnectionState.Connected;
@@ -139,7 +142,7 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
         if (Engine?.Persistent == true && !IsBusy)
         {
             diagnostic?.Cancel();
-            try { await diagnosticTask; } catch (OperationCanceledException) { }
+            try { await diagnosticTask; } catch (Exception) { /* The diagnostic caller reports the failure. */ }
             Engine.Dispose(); Engine = null;
             return;
         }

@@ -21,6 +21,16 @@ internal static class Program
     private static void Main(string[] args)
     {
         if (CoreProcessChecks.RunFixture(args)) return;
+        if (RecoveryChecks.RunFixture(args)) return;
+        if (args.Contains("--ui-recovery-check"))
+        {
+            var recoveryApp = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(recoveryApp.Dispatcher));
+            recoveryApp.Resources.MergedDictionaries.Add(new ResourceDictionary
+            { Source = new Uri("pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml") });
+            UiRecoveryChecks.Run();
+            return;
+        }
         System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
         if (args.Length == 2 && args[0] == "--ssh-check") { SshChecks.RunAsync(args[1]).GetAwaiter().GetResult(); return; }
         if (args.Contains("--http3-check")) { Http3Checks.RunAsync().GetAwaiter().GetResult(); return; }
@@ -36,6 +46,8 @@ internal static class Program
         CoreProcessChecks.RunAsync().GetAwaiter().GetResult();
         PerformanceChecks.RunAsync().GetAwaiter().GetResult();
         ServiceChecks.RunAsync().GetAwaiter().GetResult();
+        RecoveryChecks.RunAsync().GetAwaiter().GetResult();
+        UiRecoveryChecks.RunIsolatedAsync().GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(app.Dispatcher));
         app.Resources.MergedDictionaries.Add(new ResourceDictionary

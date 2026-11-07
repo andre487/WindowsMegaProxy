@@ -71,23 +71,23 @@ internal static class ServiceChecks
             Assert(!JsonSerializer.Serialize(filtered).Contains("do-not-disclose"), "Filtered " + type + " profiles stay valid and contain no credentials.");
         }
         Assert(!serialized.Contains("do-not-disclose") && visible.Settings?.Profiles.Count == 1, "Read-only views preserve profile names but omit all secrets.");
-        await broker.HandleAsync(admin, new("start"), default);
+        var started = await broker.HandleAsync(admin, new("start", InstanceId: broker.InstanceId), default);
         visible = await broker.HandleAsync(reader, new("status"), default);
         Assert(visible.Status?.Running == true && visible.Status.AppliedSignature is null && visible.Probe is null,
             "Read-only status cannot leak configuration signatures or diagnostic credentials.");
-        await broker.HandleAsync(admin, new("stop"), default);
-        var test = await broker.HandleAsync(admin, new("start", TestOnly: true), default);
+        await broker.HandleAsync(admin, new("stop", InstanceId: broker.InstanceId, Generation: started.Status!.Generation), default);
+        var test = await broker.HandleAsync(admin, new("start", TestOnly: true, InstanceId: broker.InstanceId), default);
         Assert(test.Lease is not null, "Temporary diagnostics receive a lease.");
         bool deniedLease = false;
-        try { await broker.HandleAsync(admin, new("stop", Lease: "wrong"), default); }
-        catch (UnauthorizedAccessException) { deniedLease = true; }
+        try { await broker.HandleAsync(admin, new("stop", Lease: "wrong", InstanceId: broker.InstanceId, Generation: test.Status!.Generation), default); }
+        catch (ServiceStateChangedException) { deniedLease = true; }
         Assert(deniedLease && fake.Running, "A wrong lease cannot stop another test.");
-        await broker.HandleAsync(admin, new("stop", Lease: test.Lease), default);
+        await broker.HandleAsync(admin, new("stop", Lease: test.Lease, InstanceId: broker.InstanceId, Generation: test.Status!.Generation), default);
         var updated = config.Copy(); updated.Theme = "dark";
-        var saved = await broker.HandleAsync(admin, new("save", Settings: updated, Revision: 0), default);
+        var saved = await broker.HandleAsync(admin, new("save", Settings: updated, Revision: 0, InstanceId: broker.InstanceId), default);
         Assert(saved.Revision == 1 && saved.Settings!.Theme == "dark", "Global settings have a shared revision.");
         bool stale = false;
-        try { await broker.HandleAsync(admin, new("save", Settings: config, Revision: 0), default); }
+        try { await broker.HandleAsync(admin, new("save", Settings: config, Revision: 0, InstanceId: broker.InstanceId), default); }
         catch (IOException) { stale = true; }
         Assert(stale && store.Load().Theme == "dark", "A stale client cannot overwrite another administrator's settings.");
 
