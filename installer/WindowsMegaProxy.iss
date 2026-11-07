@@ -166,7 +166,7 @@ begin
       Exit;
     end;
   end;
-  Manager := OpenSCManager('', '', 1);
+  Manager := OpenSCManager('', 'ServicesActive', 1);
   if Manager = 0 then Exit;
   try
     Service := OpenService(Manager, 'WindowsMegaProxy', $10024);
