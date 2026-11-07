@@ -8,14 +8,6 @@ on:
         description: Version (X.Y.Z)
         required: true
         type: string
-      notes_en:
-        description: English release notes (Markdown)
-        required: true
-        type: string
-      notes_ru:
-        description: Russian release notes (Markdown)
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -28,11 +20,12 @@ jobs:
   prepare:
     if: github.ref == 'refs/heads/main'
     runs-on: windows-2025
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: main
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -41,7 +34,7 @@ jobs:
         shell: cmd
         env:
           GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_RELEASE_MODEL: ${{ vars.OPENAI_RELEASE_MODEL || secrets.OPENAI_RELEASE_MODEL || 'gpt-5-mini' }}
           RELEASE_VERSION: ${{ inputs.version }}
-          RELEASE_NOTES_EN: ${{ inputs.notes_en }}
-          RELEASE_NOTES_RU: ${{ inputs.notes_ru }}
         run: scripts\tools.cmd scripts\prepare_release.py

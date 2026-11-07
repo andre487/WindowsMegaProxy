@@ -60,11 +60,10 @@ usage controls. Use a user-owned project key for local development; a dedicated
 project service account is preferable for CI. An organization Admin API key or
 a ChatGPT browser-session token is not needed.
 
-**Current status:** release notes are supplied manually to `Prepare release`.
-AI generation is not connected, so `OPENAI_API_KEY` is currently unused by our
-scripts and workflows. This file prepares the credential for that integration;
-uploading it alone does not enable generation. A future model setting is ordinary
-configuration, not a secret.
+`Prepare release` uses `OPENAI_API_KEY` to generate English/Russian notes
+from changes since the last complete published release. With no release it
+generates first-release notes. The optional Actions variable `OPENAI_RELEASE_MODEL`
+selects the model (default: `gpt-5-mini`); this setting is not a secret.
 
 See [official OpenAI guidance on API keys and service accounts](https://developers.openai.com/api/docs/guides/api-keys).
 
@@ -105,8 +104,8 @@ try {
 ```
 
 For local release preparation, load `release-bot-token.txt` into `GH_TOKEN` in
-the same way; `prepare_release.py` also requires version and English/Russian notes
-in the environment. Future AI generation will use `OPENAI_API_KEY` similarly.
+the same way; `prepare_release.py` also requires `RELEASE_VERSION` and
+`OPENAI_API_KEY` in the environment. Notes are generated automatically.
 Do not use `setx` to persist credentials for all future processes.
 
 ## Upload to GitHub Actions
@@ -123,6 +122,6 @@ Get-Content -LiteralPath "$secretDir\update-signing-key.txt" -Raw | gh secret se
 Get-Content -LiteralPath "$secretDir\virus-total.txt" -Raw | gh secret set VIRUSTOTAL_API_KEY --repo andre487/WindowsMegaProxy
 ```
 
-When AI generation is connected, upload its CI service-account key as
+Upload the CI service-account key for note generation as
 `OPENAI_API_KEY` using the same stdin pattern. Never add secret files to a
 release, Git commit, build artifact, issue, screenshot or log.

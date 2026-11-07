@@ -45,10 +45,16 @@ configuration migration.
 
 ## Release
 
-The `Prepare release` action accepts a version and English/Russian notes and
-opens a PR. Set `RELEASE_BOT_TOKEN` to a fine-grained token with repository
+The `Prepare release` action accepts only a version. It generates English/Russian
+notes through OpenAI and opens a reviewable PR. The baseline is the latest published
+stable release with the complete package, manifest and VirusTotal asset set; empty
+or partial releases are skipped. With no usable release, notes describe the first
+release using the complete repository diff. Large diffs are summarized in bounded
+parts before note generation, without truncating the evidence. Set `RELEASE_BOT_TOKEN` to a fine-grained token with repository
 contents and pull-request write access; a bot token lets the new PR trigger CI.
-Preparation does not merge, tag or publish automatically.
+Set `OPENAI_API_KEY`; optionally set the Actions variable `OPENAI_RELEASE_MODEL`
+(default: `gpt-5-mini`, with a same-named secret also supported). Generated notes
+are reviewed in the PR. Preparation does not merge, tag or publish automatically.
 
 1. Update both versions in `Directory.Build.props` (production and `-dev`) and
    commit English/Russian notes as `release-notes/vX.Y.Z.md` in a reviewed PR.
