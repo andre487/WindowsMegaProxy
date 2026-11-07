@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <UseWPF>true</UseWPF>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/WindowsMegaProxy/WindowsMegaProxy.csproj" />
+        <ProjectReference Include="../../src/WindowsMegaProxy.Service/WindowsMegaProxy.Service.csproj" />
+    </ItemGroup>
+</Project>

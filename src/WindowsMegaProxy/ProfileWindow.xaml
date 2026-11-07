@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:WindowsMegaProxy"
+    x:Class="WindowsMegaProxy.ProfileWindow"
+    Title="{DynamicResource &quot;Connection profile&quot;}"
+    Width="540"
+    Height="590"
+    MinHeight="450"
+    ResizeMode="CanResize"
+    WindowStartupLocation="CenterOwner"
+    FontFamily="Segoe UI Variable, Segoe UI"
+    FontWeight="Normal"
+    FontSize="14">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <Label
+                    Content="{DynamicResource &quot;Name&quot;}"
+                    Target="{Binding ElementName=NameBox}"
+                    Padding="0"
+                    Margin="0,0,0,4" />
+                <TextBox x:Name="NameBox" Margin="0,0,0,16" />
+                <Label
+                    Content="{DynamicResource &quot;Profile country&quot;}"
+                    Target="{Binding ElementName=CountryBox}"
+                    Padding="0"
+                    Margin="0,0,0,4" />
+                <ComboBox
+                    x:Name="CountryBox"
+                    SelectionChanged="CountryChanged"
+                    TextSearch.TextPath="Name"
+                    Margin="0,0,0,16">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{Binding FlagUri}" Width="24" Height="18" Margin="0,0,8,0" />
+                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Label
+                    Content="{DynamicResource &quot;Profile color&quot;}"
+                    Target="{Binding ElementName=ColorBox}"
+                    Padding="0"
+                    Margin="0,0,0,4" />
+                <ComboBox x:Name="ColorBox" SelectionChanged="ColorChanged" Margin="0,0,0,16">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border
+                                    Background="{Binding Hex}"
+                                    Width="14"
+                                    Height="14"
+                                    CornerRadius="7"
+                                    Margin="0,0,8,0"
+                                    BorderBrush="{DynamicResource TextFillColorSecondaryBrush}"
+                                    BorderThickness="1" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <StackPanel x:Name="ConnectionFields">
+                    <Label
+                        Content="{DynamicResource &quot;Server type&quot;}"
+                        Target="{Binding ElementName=TypeBox}"
+                        Padding="0"
+                        Margin="0,0,0,4" />
+                    <ComboBox x:Name="TypeBox" SelectionChanged="TypeChanged" Margin="0,0,0,16">
+                        <ComboBoxItem Content="HTTPS" Tag="HTTPS" />
+                        <ComboBoxItem Content="HTTPS Jump" Tag="HTTPS_JUMP" />
+                        <ComboBoxItem Content="SOCKS5" Tag="SOCKS5" />
+                        <ComboBoxItem Content="SSH" Tag="SSH" />
+                        <ComboBoxItem Content="MASQUE α (HTTP/3)" Tag="MASQUE" />
+                    </ComboBox>
+                    <CheckBox
+                        x:Name="PreferHttp3Box"
+                        Content="{DynamicResource &quot;Prefer HTTP/3&quot;}"
+                        Margin="0,0,0,8" />
+                    <TextBlock
+                        x:Name="Http3HelpText"
+                        Text="{DynamicResource &quot;HTTP/3 requires UDP and server support. MASQUE requires HTTP/3; HTTPS can fall back to the stable TCP core.&quot;}"
+                        TextWrapping="Wrap"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Margin="0,0,0,16" />
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="100" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,16,0">
+                            <Label
+                                Content="{DynamicResource &quot;Server&quot;}"
+                                Target="{Binding ElementName=HostBox}"
+                                Padding="0"
+                                Margin="0,0,0,4" />
+                            <TextBox x:Name="HostBox" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <Label
+                                Content="{DynamicResource &quot;Port&quot;}"
+                                Target="{Binding ElementName=PortBox}"
+                                Padding="0"
+                                Margin="0,0,0,4" />
+                            <TextBox x:Name="PortBox" />
+                        </StackPanel>
+                    </Grid>
+                    <Label
+                        Content="{DynamicResource &quot;Username&quot;}"
+                        Target="{Binding ElementName=UsernameBox}"
+                        Padding="0"
+                        Margin="0,0,0,4" />
+                    <TextBox x:Name="UsernameBox" Margin="0,0,0,16" />
+                    <Label
+                        Content="{DynamicResource &quot;Password&quot;}"
+                        Target="{Binding ElementName=PasswordBox}"
+                        Padding="0"
+                        Margin="0,0,0,4" />
+                    <PasswordBox x:Name="PasswordBox" Margin="0,0,0,16" />
+                    <StackPanel x:Name="JumpFields">
+                        <Label
+                            Content="{DynamicResource &quot;Jump server&quot;}"
+                            Target="{Binding ElementName=JumpHostBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <TextBox x:Name="JumpHostBox" Margin="0,0,0,12" />
+                        <Label
+                            Content="{DynamicResource &quot;Jump port&quot;}"
+                            Target="{Binding ElementName=JumpPortBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <TextBox x:Name="JumpPortBox" Margin="0,0,0,12" />
+                        <CheckBox
+                            x:Name="SameJumpAuthenticationBox"
+                            Content="{DynamicResource &quot;Use the same credentials for both proxies&quot;}"
+                            Click="SameJumpAuthenticationChanged"
+                            Margin="0,0,0,12" />
+                        <StackPanel x:Name="JumpCredentials">
+                            <Label
+                                Content="{DynamicResource &quot;Jump username&quot;}"
+                                Target="{Binding ElementName=JumpUsernameBox}"
+                                Padding="0"
+                                Margin="0,0,0,4" />
+                            <TextBox x:Name="JumpUsernameBox" Margin="0,0,0,12" />
+                            <Label
+                                Content="{DynamicResource &quot;Jump password&quot;}"
+                                Target="{Binding ElementName=JumpPasswordBox}"
+                                Padding="0"
+                                Margin="0,0,0,4" />
+                            <PasswordBox x:Name="JumpPasswordBox" Margin="0,0,0,12" />
+                        </StackPanel>
+                        <CheckBox
+                            x:Name="JumpInvalidCertificateBox"
+                            Content="{DynamicResource &quot;Allow an invalid jump certificate&quot;}"
+                            Margin="0,0,0,16" />
+                    </StackPanel>
+                    <StackPanel x:Name="SshFields">
+                        <Label
+                            Content="{DynamicResource &quot;SSH fingerprint&quot;}"
+                            Target="{Binding ElementName=SshProfileBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <ComboBox x:Name="SshProfileBox" Margin="0,0,0,16">
+                            <ComboBoxItem Content="OpenSSH / Termux (default)" Tag="DEFAULT" />
+                            <ComboBoxItem Content="OpenSSH / Termux" Tag="OPENSSH_TERMUX" />
+                            <ComboBoxItem Content="ConnectBot" Tag="CONNECTBOT" />
+                            <ComboBoxItem Content="JuiceSSH" Tag="JUICESSH" />
+                            <ComboBoxItem Content="Termius" Tag="TERMIUS_ANDROID" />
+                        </ComboBox>
+                        <Label
+                            Content="{DynamicResource &quot;Private key (optional, unencrypted OpenSSH or PEM)&quot;}"
+                            Target="{Binding ElementName=PrivateKeyBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <TextBox
+                            x:Name="PrivateKeyBox"
+                            AcceptsReturn="True"
+                            Height="100"
+                            TextWrapping="NoWrap"
+                            VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollBarVisibility="Auto"
+                            FontFamily="Consolas" />
+                        <Button
+                            Content="{DynamicResource &quot;Load private key…&quot;}"
+                            Click="LoadPrivateKeyClick"
+                            HorizontalAlignment="Left"
+                            Margin="0,6,0,16" />
+                        <Label
+                            Content="{DynamicResource &quot;Server public key&quot;}"
+                            Target="{Binding ElementName=SshHostKeyBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <TextBox
+                            x:Name="SshHostKeyBox"
+                            TextChanged="SshHostKeyChanged"
+                            HorizontalScrollBarVisibility="Auto"
+                            FontFamily="Consolas" />
+                        <TextBox
+                            x:Name="SshFingerprintText"
+                            IsReadOnly="True"
+                            BorderThickness="0"
+                            Background="Transparent"
+                            TextWrapping="Wrap"
+                            Margin="0,4,0,0"
+                            AutomationProperties.Name="{DynamicResource &quot;Trusted SSH server fingerprint&quot;}" />
+                        <Button
+                            x:Name="ReadSshHostKeyButton"
+                            Content="{DynamicResource &quot;Read server key&quot;}"
+                            Click="ReadSshHostKeyClick"
+                            HorizontalAlignment="Left"
+                            Margin="0,6,0,8" />
+                        <TextBlock
+                            Text="{DynamicResource &quot;Accept-new: the first server key is saved automatically when connecting. A changed key requires confirmation. SSH supports TCP only.&quot;}"
+                            TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Margin="0,0,0,12" />
+                        <CheckBox
+                            x:Name="AcceptAnyHostKeyBox"
+                            Content="{DynamicResource &quot;Accept any SSH server key (insecure)&quot;}"
+                            Margin="0,0,0,16" />
+                    </StackPanel>
+                    <CheckBox
+                        x:Name="InvalidCertificateBox"
+                        Content="{DynamicResource &quot;Allow an invalid proxy certificate&quot;}"
+                        Margin="0,0,0,16" />
+                </StackPanel>
+                <StackPanel x:Name="AuthProbeHostPanel" Margin="0,0,0,16">
+                    <Label
+                        Content="{DynamicResource &quot;Authentication check host (knock host)&quot;}"
+                        Target="{Binding ElementName=AuthProbeHostBox}"
+                        Padding="0"
+                        Margin="0,0,0,4" />
+                    <TextBox x:Name="AuthProbeHostBox" />
+                    <TextBlock
+                        Text="{DynamicResource &quot;Optional. For HTTPS: the server's knock host reveals masked authentication failures.&quot;}"
+                        TextWrapping="Wrap"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Margin="0,4,0,0" />
+                </StackPanel>
+                <TextBlock
+                    x:Name="SupportText"
+                    TextWrapping="Wrap"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock
+                    x:Name="ErrorText"
+                    TextWrapping="Wrap"
+                    Margin="0,12,0,0"
+                    AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+            <Button
+                Content="{DynamicResource &quot;Save&quot;}"
+                Click="SaveClick"
+                IsDefault="True"
+                Margin="0,0,8,0" />
+            <Button Content="{DynamicResource &quot;Cancel&quot;}" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

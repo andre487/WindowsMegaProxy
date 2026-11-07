@@ -1,0 +1,97 @@
+name: CI
+run-name: CI · ${{ github.event.pull_request.title || github.ref_name }}
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-tests:
+    name: Windows tests and checks
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: cmd
+    env:
+      UV_PYTHON: '3.13'
+      UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}\.tools\python
+      UV_CACHE_DIR: ${{ github.workspace }}\.tools\uv-cache
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Download development dependencies
+        run: setup.cmd
+
+      - name: Test Python tools
+        run: tools-test.cmd
+
+      - name: Test configuration, diagnostics and TraceProbe
+        run: test.cmd
+
+      - name: Test Windows interface
+        run: ui-test.cmd
+
+      - name: Test HTTP/3 and HTTPS Jump on local servers
+        run: h3-test.cmd
+
+      - name: Test SSH on a local server
+        run: ssh-test.cmd
+
+      - name: Publish framework-dependent applications
+        run: build.cmd
+
+      - name: Compile preview installer and verify update packages
+        run: build-installer.cmd --preview --skip-build
+
+      - name: Verify checksums with the release publishing tool
+        shell: bash
+        working-directory: artifacts/release-preview
+        run: sha256sum --check SHA256SUMS
+
+      - name: Upload preview installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-installer-preview
+          path: artifacts/release-preview/*
+          retention-days: 7
+
+      - name: Test DEV identity, resources and isolation
+        run: scripts\dotnet.cmd run --project tests\WindowsMegaProxy.UiChecks -c Release -p:MegaProxyDev=true
+
+      - name: Publish DEV without touching installed services
+        run: build.cmd --dev
+
+      - name: Test installer on disposable runner without activating TUN
+        run: scripts\tools.cmd scripts\installer_smoke.py
+
+      - name: Test all DEV modes and complete startup cleanup
+        run: scripts\tools.cmd scripts\dev_mode_smoke.py
+
+      - name: Upload test reports and interface screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-test-results
+          path: |
+            artifacts/**/result.txt
+            artifacts/**/failure.txt
+            artifacts/ui-checks/*.png
+            artifacts/ui-checks-dev/*.png
+            artifacts/installer-checks/*.log
+          if-no-files-found: warn
+          retention-days: 7

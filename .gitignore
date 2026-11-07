@@ -20,6 +20,7 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+*_wpftmp.csproj
 [Ll]og/
 [Ll]ogs/
 
@@ -46,6 +47,10 @@ CodeCoverage/
 
 # MSBuild Binary and Structured Log
 *.binlog
+.tools/
+__pycache__/
+tools/sing-box/
+.vs/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/
@@ -55,3 +60,6 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Python tooling environment
+scripts/.venv/

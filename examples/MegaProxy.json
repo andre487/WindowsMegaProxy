@@ -1,0 +1,48 @@
+{
+    "schema": "net.megaproxy487.config",
+    "version": 8,
+    "passwordsIncluded": false,
+    "privateKeysIncluded": false,
+    "activeProfileId": "https-example",
+    "profiles": [
+        {
+            "id": "https-example",
+            "name": "Example HTTPS",
+            "proxy": {
+                "type": "HTTPS",
+                "host": "proxy.example.com",
+                "port": 443,
+                "preferHttp3": false
+            }
+        },
+        {
+            "id": "socks-example",
+            "name": "Example SOCKS5",
+            "proxy": {
+                "type": "SOCKS5",
+                "host": "socks.example.com",
+                "port": 1080
+            }
+        }
+    ],
+    "windows": {
+        "version": 1,
+        "defaultAction": "system",
+        "bypassLocalNetworks": true,
+        "autoConnect": false,
+        "launchAtSignIn": false,
+        "showAllConnections": false,
+        "language": "en",
+        "theme": "auto",
+        "logSizeMb": 5,
+        "rules": [
+            {
+                "source": "exe",
+                "path": "C:\\Apps\\MegaProxy.TraceProbe.exe",
+                "destination": "",
+                "action": "proxy"
+            }
+        ],
+        "tlsFingerprint": "default"
+    }
+}

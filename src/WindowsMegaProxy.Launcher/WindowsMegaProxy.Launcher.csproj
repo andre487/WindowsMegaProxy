@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <ApplicationIcon>../WindowsMegaProxy/Assets/app.ico</ApplicationIcon>
+        <ApplicationIcon Condition="'$(MegaProxyDev)' == 'true'">../WindowsMegaProxy/Assets/dev-app.ico</ApplicationIcon>
+        <AssemblyName Condition="'$(MegaProxyDev)' == 'true'">WindowsMegaProxy.Dev.Launcher</AssemblyName>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="../WindowsMegaProxy.Core/AppIdentity.cs" Link="AppIdentity.cs" />
+    </ItemGroup>
+</Project>

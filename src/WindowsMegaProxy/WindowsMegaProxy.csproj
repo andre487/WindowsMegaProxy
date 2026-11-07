@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <UseWPF>true</UseWPF>
+        <UseWindowsForms>true</UseWindowsForms>
+        <!-- WPF owns startup; WinForms is used only for NotifyIcon. DPI is set by the process manifest. -->
+        <NoWarn>$(NoWarn);WFO0003</NoWarn>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+        <ApplicationIcon Condition="'$(MegaProxyDev)' == 'true'">Assets/dev-app.ico</ApplicationIcon>
+        <AssemblyName Condition="'$(MegaProxyDev)' == 'true'">WindowsMegaProxy.Dev</AssemblyName>
+        <RootNamespace>WindowsMegaProxy</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../WindowsMegaProxy.Core/WindowsMegaProxy.Core.csproj" />
+        <ProjectReference Include="../WindowsMegaProxy.Runtime/WindowsMegaProxy.Runtime.csproj" />
+        <Resource Include="Assets/*.ico" />
+        <Resource Include="Assets/Flags/*.png" />
+        <Content
+            Include="../../assets/flags/LICENSE"
+            Link="Notices/flag-icons-LICENSE.txt"
+            CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+</Project>

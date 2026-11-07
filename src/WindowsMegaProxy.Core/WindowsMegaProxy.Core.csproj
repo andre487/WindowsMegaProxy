@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <EmbeddedResource Include="../../assets/strings.json" LogicalName="WindowsMegaProxy.Strings.json" />
+        <EmbeddedResource
+            Include="../../assets/profile-colors.json"
+            LogicalName="WindowsMegaProxy.ProfileColors.json" />
+        <EmbeddedResource
+            Include="../../assets/flags/countries.json"
+            LogicalName="WindowsMegaProxy.Countries.json" />
+    </ItemGroup>
+</Project>

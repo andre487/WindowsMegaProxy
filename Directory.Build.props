@@ -1,0 +1,17 @@
+<Project>
+    <PropertyGroup>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <Version>0.0.1</Version>
+        <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
+        <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(MegaProxyDev)' == 'true'">
+        <DefineConstants>$(DefineConstants);MEGAPROXY_DEV</DefineConstants>
+        <BaseIntermediateOutputPath>obj/dev/</BaseIntermediateOutputPath>
+        <BaseOutputPath>bin/dev/</BaseOutputPath>
+        <Version>0.0.1-dev</Version>
+    </PropertyGroup>
+</Project>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <AssemblyName Condition="'$(MegaProxyDev)' == 'true'">WindowsMegaProxy.Dev.Service</AssemblyName>
+        <ApplicationIcon>../WindowsMegaProxy/Assets/app.ico</ApplicationIcon>
+        <ApplicationIcon Condition="'$(MegaProxyDev)' == 'true'">../WindowsMegaProxy/Assets/dev-app.ico</ApplicationIcon>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../WindowsMegaProxy.Runtime/WindowsMegaProxy.Runtime.csproj" />
+    </ItemGroup>
+</Project>

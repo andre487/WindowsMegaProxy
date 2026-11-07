@@ -1,0 +1,1287 @@
+[
+    {
+        "code": "AD",
+        "name": "Andorra",
+        "preferredColor": 0
+    },
+    {
+        "code": "AE",
+        "name": "United Arab Emirates",
+        "preferredColor": 0
+    },
+    {
+        "code": "AF",
+        "name": "Afghanistan",
+        "preferredColor": 8
+    },
+    {
+        "code": "AG",
+        "name": "Antigua and Barbuda",
+        "preferredColor": 0
+    },
+    {
+        "code": "AI",
+        "name": "Anguilla",
+        "preferredColor": 4
+    },
+    {
+        "code": "AL",
+        "name": "Albania",
+        "preferredColor": 0
+    },
+    {
+        "code": "AM",
+        "name": "Armenia",
+        "preferredColor": 0
+    },
+    {
+        "code": "AO",
+        "name": "Angola",
+        "preferredColor": 0
+    },
+    {
+        "code": "AQ",
+        "name": "Antarctica",
+        "preferredColor": 5
+    },
+    {
+        "code": "AR",
+        "name": "Argentina",
+        "preferredColor": 3
+    },
+    {
+        "code": "AS",
+        "name": "American Samoa",
+        "preferredColor": 4
+    },
+    {
+        "code": "AT",
+        "name": "Austria",
+        "preferredColor": 0
+    },
+    {
+        "code": "AU",
+        "name": "Australia",
+        "preferredColor": 4
+    },
+    {
+        "code": "AW",
+        "name": "Aruba",
+        "preferredColor": 5
+    },
+    {
+        "code": "AX",
+        "name": "Aland Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "AZ",
+        "name": "Azerbaijan",
+        "preferredColor": 5
+    },
+    {
+        "code": "BA",
+        "name": "Bosnia and Herzegovina",
+        "preferredColor": 4
+    },
+    {
+        "code": "BB",
+        "name": "Barbados",
+        "preferredColor": 4
+    },
+    {
+        "code": "BD",
+        "name": "Bangladesh",
+        "preferredColor": 6
+    },
+    {
+        "code": "BE",
+        "name": "Belgium",
+        "preferredColor": 0
+    },
+    {
+        "code": "BF",
+        "name": "Burkina Faso",
+        "preferredColor": 8
+    },
+    {
+        "code": "BG",
+        "name": "Bulgaria",
+        "preferredColor": 0
+    },
+    {
+        "code": "BH",
+        "name": "Bahrain",
+        "preferredColor": 0
+    },
+    {
+        "code": "BI",
+        "name": "Burundi",
+        "preferredColor": 0
+    },
+    {
+        "code": "BJ",
+        "name": "Benin",
+        "preferredColor": 8
+    },
+    {
+        "code": "BL",
+        "name": "Saint Barthélemy",
+        "preferredColor": 0
+    },
+    {
+        "code": "BM",
+        "name": "Bermuda",
+        "preferredColor": 0
+    },
+    {
+        "code": "BN",
+        "name": "Brunei Darussalam",
+        "preferredColor": 9
+    },
+    {
+        "code": "BO",
+        "name": "Bolivia",
+        "preferredColor": 0
+    },
+    {
+        "code": "BQ",
+        "name": "Bonaire, Sint Eustatius and Saba",
+        "preferredColor": 0
+    },
+    {
+        "code": "BR",
+        "name": "Brazil",
+        "preferredColor": 8
+    },
+    {
+        "code": "BS",
+        "name": "Bahamas",
+        "preferredColor": 5
+    },
+    {
+        "code": "BT",
+        "name": "Bhutan",
+        "preferredColor": 9
+    },
+    {
+        "code": "BV",
+        "name": "Bouvet Island",
+        "preferredColor": 0
+    },
+    {
+        "code": "BW",
+        "name": "Botswana",
+        "preferredColor": 5
+    },
+    {
+        "code": "BY",
+        "name": "Belarus",
+        "preferredColor": 0
+    },
+    {
+        "code": "BZ",
+        "name": "Belize",
+        "preferredColor": 4
+    },
+    {
+        "code": "CA",
+        "name": "Canada",
+        "preferredColor": 0
+    },
+    {
+        "code": "CC",
+        "name": "Cocos (Keeling) Islands",
+        "preferredColor": 7
+    },
+    {
+        "code": "CD",
+        "name": "Democratic Republic of the Congo",
+        "preferredColor": 5
+    },
+    {
+        "code": "CF",
+        "name": "Central African Republic",
+        "preferredColor": 9
+    },
+    {
+        "code": "CG",
+        "name": "Republic of the Congo",
+        "preferredColor": 9
+    },
+    {
+        "code": "CH",
+        "name": "Switzerland",
+        "preferredColor": 0
+    },
+    {
+        "code": "CI",
+        "name": "Côte d'Ivoire",
+        "preferredColor": 8
+    },
+    {
+        "code": "CK",
+        "name": "Cook Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "CL",
+        "name": "Chile",
+        "preferredColor": 0
+    },
+    {
+        "code": "CM",
+        "name": "Cameroon",
+        "preferredColor": 9
+    },
+    {
+        "code": "CN",
+        "name": "China",
+        "preferredColor": 0
+    },
+    {
+        "code": "CO",
+        "name": "Colombia",
+        "preferredColor": 9
+    },
+    {
+        "code": "CP",
+        "name": "Clipperton Island",
+        "preferredColor": 0
+    },
+    {
+        "code": "CR",
+        "name": "Costa Rica",
+        "preferredColor": 0
+    },
+    {
+        "code": "CU",
+        "name": "Cuba",
+        "preferredColor": 4
+    },
+    {
+        "code": "CV",
+        "name": "Cabo Verde",
+        "preferredColor": 4
+    },
+    {
+        "code": "CW",
+        "name": "Curaçao",
+        "preferredColor": 4
+    },
+    {
+        "code": "CX",
+        "name": "Christmas Island",
+        "preferredColor": 4
+    },
+    {
+        "code": "CY",
+        "name": "Cyprus",
+        "preferredColor": 10
+    },
+    {
+        "code": "CZ",
+        "name": "Czech Republic",
+        "preferredColor": 0
+    },
+    {
+        "code": "DE",
+        "name": "Germany",
+        "preferredColor": 0
+    },
+    {
+        "code": "DG",
+        "name": "Diego Garcia",
+        "preferredColor": 4
+    },
+    {
+        "code": "DJ",
+        "name": "Djibouti",
+        "preferredColor": 3
+    },
+    {
+        "code": "DK",
+        "name": "Denmark",
+        "preferredColor": 0
+    },
+    {
+        "code": "DM",
+        "name": "Dominica",
+        "preferredColor": 7
+    },
+    {
+        "code": "DO",
+        "name": "Dominican Republic",
+        "preferredColor": 0
+    },
+    {
+        "code": "DZ",
+        "name": "Algeria",
+        "preferredColor": 7
+    },
+    {
+        "code": "EC",
+        "name": "Ecuador",
+        "preferredColor": 9
+    },
+    {
+        "code": "EE",
+        "name": "Estonia",
+        "preferredColor": 5
+    },
+    {
+        "code": "EG",
+        "name": "Egypt",
+        "preferredColor": 0
+    },
+    {
+        "code": "EH",
+        "name": "Western Sahara",
+        "preferredColor": 0
+    },
+    {
+        "code": "ER",
+        "name": "Eritrea",
+        "preferredColor": 0
+    },
+    {
+        "code": "ES",
+        "name": "Spain",
+        "preferredColor": 0
+    },
+    {
+        "code": "ET",
+        "name": "Ethiopia",
+        "preferredColor": 0
+    },
+    {
+        "code": "EU",
+        "name": "Europe",
+        "preferredColor": 4
+    },
+    {
+        "code": "FI",
+        "name": "Finland",
+        "preferredColor": 4
+    },
+    {
+        "code": "FJ",
+        "name": "Fiji",
+        "preferredColor": 3
+    },
+    {
+        "code": "FK",
+        "name": "Falkland Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "FM",
+        "name": "Federated States of Micronesia",
+        "preferredColor": 3
+    },
+    {
+        "code": "FO",
+        "name": "Faroe Islands",
+        "preferredColor": 0
+    },
+    {
+        "code": "FR",
+        "name": "France",
+        "preferredColor": 0
+    },
+    {
+        "code": "GA",
+        "name": "Gabon",
+        "preferredColor": 5
+    },
+    {
+        "code": "GB",
+        "name": "United Kingdom",
+        "preferredColor": 0
+    },
+    {
+        "code": "GD",
+        "name": "Grenada",
+        "preferredColor": 0
+    },
+    {
+        "code": "GE",
+        "name": "Georgia",
+        "preferredColor": 0
+    },
+    {
+        "code": "GF",
+        "name": "French Guiana",
+        "preferredColor": 0
+    },
+    {
+        "code": "GG",
+        "name": "Guernsey",
+        "preferredColor": 0
+    },
+    {
+        "code": "GH",
+        "name": "Ghana",
+        "preferredColor": 7
+    },
+    {
+        "code": "GI",
+        "name": "Gibraltar",
+        "preferredColor": 0
+    },
+    {
+        "code": "GL",
+        "name": "Greenland",
+        "preferredColor": 0
+    },
+    {
+        "code": "GM",
+        "name": "Gambia",
+        "preferredColor": 4
+    },
+    {
+        "code": "GN",
+        "name": "Guinea",
+        "preferredColor": 0
+    },
+    {
+        "code": "GP",
+        "name": "Guadeloupe",
+        "preferredColor": 0
+    },
+    {
+        "code": "GQ",
+        "name": "Equatorial Guinea",
+        "preferredColor": 8
+    },
+    {
+        "code": "GR",
+        "name": "Greece",
+        "preferredColor": 4
+    },
+    {
+        "code": "GS",
+        "name": "South Georgia and the South Sandwich Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "GT",
+        "name": "Guatemala",
+        "preferredColor": 3
+    },
+    {
+        "code": "GU",
+        "name": "Guam",
+        "preferredColor": 2
+    },
+    {
+        "code": "GW",
+        "name": "Guinea-Bissau",
+        "preferredColor": 8
+    },
+    {
+        "code": "GY",
+        "name": "Guyana",
+        "preferredColor": 8
+    },
+    {
+        "code": "HK",
+        "name": "Hong Kong",
+        "preferredColor": 0
+    },
+    {
+        "code": "HM",
+        "name": "Heard Island and McDonald Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "HN",
+        "name": "Honduras",
+        "preferredColor": 5
+    },
+    {
+        "code": "HR",
+        "name": "Croatia",
+        "preferredColor": 0
+    },
+    {
+        "code": "HT",
+        "name": "Haiti",
+        "preferredColor": 0
+    },
+    {
+        "code": "HU",
+        "name": "Hungary",
+        "preferredColor": 0
+    },
+    {
+        "code": "IC",
+        "name": "Canary Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "ID",
+        "name": "Indonesia",
+        "preferredColor": 0
+    },
+    {
+        "code": "IE",
+        "name": "Ireland",
+        "preferredColor": 8
+    },
+    {
+        "code": "IL",
+        "name": "Israel",
+        "preferredColor": 4
+    },
+    {
+        "code": "IM",
+        "name": "Isle of Man",
+        "preferredColor": 0
+    },
+    {
+        "code": "IN",
+        "name": "India",
+        "preferredColor": 7
+    },
+    {
+        "code": "IO",
+        "name": "British Indian Ocean Territory",
+        "preferredColor": 4
+    },
+    {
+        "code": "IQ",
+        "name": "Iraq",
+        "preferredColor": 0
+    },
+    {
+        "code": "IR",
+        "name": "Iran",
+        "preferredColor": 0
+    },
+    {
+        "code": "IS",
+        "name": "Iceland",
+        "preferredColor": 4
+    },
+    {
+        "code": "IT",
+        "name": "Italy",
+        "preferredColor": 0
+    },
+    {
+        "code": "JE",
+        "name": "Jersey",
+        "preferredColor": 0
+    },
+    {
+        "code": "JM",
+        "name": "Jamaica",
+        "preferredColor": 9
+    },
+    {
+        "code": "JO",
+        "name": "Jordan",
+        "preferredColor": 0
+    },
+    {
+        "code": "JP",
+        "name": "Japan",
+        "preferredColor": 0
+    },
+    {
+        "code": "KE",
+        "name": "Kenya",
+        "preferredColor": 0
+    },
+    {
+        "code": "KG",
+        "name": "Kyrgyzstan",
+        "preferredColor": 0
+    },
+    {
+        "code": "KH",
+        "name": "Cambodia",
+        "preferredColor": 4
+    },
+    {
+        "code": "KI",
+        "name": "Kiribati",
+        "preferredColor": 0
+    },
+    {
+        "code": "KM",
+        "name": "Comoros",
+        "preferredColor": 8
+    },
+    {
+        "code": "KN",
+        "name": "Saint Kitts and Nevis",
+        "preferredColor": 0
+    },
+    {
+        "code": "KP",
+        "name": "North Korea",
+        "preferredColor": 0
+    },
+    {
+        "code": "KR",
+        "name": "South Korea",
+        "preferredColor": 0
+    },
+    {
+        "code": "KW",
+        "name": "Kuwait",
+        "preferredColor": 0
+    },
+    {
+        "code": "KY",
+        "name": "Cayman Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "KZ",
+        "name": "Kazakhstan",
+        "preferredColor": 5
+    },
+    {
+        "code": "LA",
+        "name": "Laos",
+        "preferredColor": 0
+    },
+    {
+        "code": "LB",
+        "name": "Lebanon",
+        "preferredColor": 0
+    },
+    {
+        "code": "LC",
+        "name": "Saint Lucia",
+        "preferredColor": 3
+    },
+    {
+        "code": "LI",
+        "name": "Liechtenstein",
+        "preferredColor": 0
+    },
+    {
+        "code": "LK",
+        "name": "Sri Lanka",
+        "preferredColor": 11
+    },
+    {
+        "code": "LR",
+        "name": "Liberia",
+        "preferredColor": 0
+    },
+    {
+        "code": "LS",
+        "name": "Lesotho",
+        "preferredColor": 4
+    },
+    {
+        "code": "LT",
+        "name": "Lithuania",
+        "preferredColor": 0
+    },
+    {
+        "code": "LU",
+        "name": "Luxembourg",
+        "preferredColor": 0
+    },
+    {
+        "code": "LV",
+        "name": "Latvia",
+        "preferredColor": 11
+    },
+    {
+        "code": "LY",
+        "name": "Libya",
+        "preferredColor": 0
+    },
+    {
+        "code": "MA",
+        "name": "Morocco",
+        "preferredColor": 0
+    },
+    {
+        "code": "MC",
+        "name": "Monaco",
+        "preferredColor": 0
+    },
+    {
+        "code": "MD",
+        "name": "Moldova",
+        "preferredColor": 0
+    },
+    {
+        "code": "ME",
+        "name": "Montenegro",
+        "preferredColor": 0
+    },
+    {
+        "code": "MF",
+        "name": "Saint Martin",
+        "preferredColor": 0
+    },
+    {
+        "code": "MG",
+        "name": "Madagascar",
+        "preferredColor": 0
+    },
+    {
+        "code": "MH",
+        "name": "Marshall Islands",
+        "preferredColor": 2
+    },
+    {
+        "code": "MK",
+        "name": "North Macedonia",
+        "preferredColor": 0
+    },
+    {
+        "code": "ML",
+        "name": "Mali",
+        "preferredColor": 0
+    },
+    {
+        "code": "MM",
+        "name": "Myanmar",
+        "preferredColor": 9
+    },
+    {
+        "code": "MN",
+        "name": "Mongolia",
+        "preferredColor": 0
+    },
+    {
+        "code": "MO",
+        "name": "Macau",
+        "preferredColor": 6
+    },
+    {
+        "code": "MP",
+        "name": "Northern Mariana Islands",
+        "preferredColor": 5
+    },
+    {
+        "code": "MQ",
+        "name": "Martinique",
+        "preferredColor": 6
+    },
+    {
+        "code": "MR",
+        "name": "Mauritania",
+        "preferredColor": 7
+    },
+    {
+        "code": "MS",
+        "name": "Montserrat",
+        "preferredColor": 4
+    },
+    {
+        "code": "MT",
+        "name": "Malta",
+        "preferredColor": 0
+    },
+    {
+        "code": "MU",
+        "name": "Mauritius",
+        "preferredColor": 0
+    },
+    {
+        "code": "MV",
+        "name": "Maldives",
+        "preferredColor": 0
+    },
+    {
+        "code": "MW",
+        "name": "Malawi",
+        "preferredColor": 0
+    },
+    {
+        "code": "MX",
+        "name": "Mexico",
+        "preferredColor": 0
+    },
+    {
+        "code": "MY",
+        "name": "Malaysia",
+        "preferredColor": 0
+    },
+    {
+        "code": "MZ",
+        "name": "Mozambique",
+        "preferredColor": 9
+    },
+    {
+        "code": "NA",
+        "name": "Namibia",
+        "preferredColor": 0
+    },
+    {
+        "code": "NC",
+        "name": "New Caledonia",
+        "preferredColor": 8
+    },
+    {
+        "code": "NE",
+        "name": "Niger",
+        "preferredColor": 10
+    },
+    {
+        "code": "NF",
+        "name": "Norfolk Island",
+        "preferredColor": 7
+    },
+    {
+        "code": "NG",
+        "name": "Nigeria",
+        "preferredColor": 6
+    },
+    {
+        "code": "NI",
+        "name": "Nicaragua",
+        "preferredColor": 5
+    },
+    {
+        "code": "NL",
+        "name": "Netherlands",
+        "preferredColor": 0
+    },
+    {
+        "code": "NO",
+        "name": "Norway",
+        "preferredColor": 0
+    },
+    {
+        "code": "NP",
+        "name": "Nepal",
+        "preferredColor": 0
+    },
+    {
+        "code": "NR",
+        "name": "Nauru",
+        "preferredColor": 4
+    },
+    {
+        "code": "NU",
+        "name": "Niue",
+        "preferredColor": 9
+    },
+    {
+        "code": "NZ",
+        "name": "New Zealand",
+        "preferredColor": 4
+    },
+    {
+        "code": "OM",
+        "name": "Oman",
+        "preferredColor": 0
+    },
+    {
+        "code": "PA",
+        "name": "Panama",
+        "preferredColor": 4
+    },
+    {
+        "code": "PC",
+        "name": "Pacific Community",
+        "preferredColor": 4
+    },
+    {
+        "code": "PE",
+        "name": "Peru",
+        "preferredColor": 0
+    },
+    {
+        "code": "PF",
+        "name": "French Polynesia",
+        "preferredColor": 0
+    },
+    {
+        "code": "PG",
+        "name": "Papua New Guinea",
+        "preferredColor": 0
+    },
+    {
+        "code": "PH",
+        "name": "Philippines",
+        "preferredColor": 0
+    },
+    {
+        "code": "PK",
+        "name": "Pakistan",
+        "preferredColor": 7
+    },
+    {
+        "code": "PL",
+        "name": "Poland",
+        "preferredColor": 0
+    },
+    {
+        "code": "PM",
+        "name": "Saint Pierre and Miquelon",
+        "preferredColor": 0
+    },
+    {
+        "code": "PN",
+        "name": "Pitcairn",
+        "preferredColor": 4
+    },
+    {
+        "code": "PR",
+        "name": "Puerto Rico",
+        "preferredColor": 0
+    },
+    {
+        "code": "PS",
+        "name": "State of Palestine",
+        "preferredColor": 8
+    },
+    {
+        "code": "PT",
+        "name": "Portugal",
+        "preferredColor": 0
+    },
+    {
+        "code": "PW",
+        "name": "Palau",
+        "preferredColor": 3
+    },
+    {
+        "code": "PY",
+        "name": "Paraguay",
+        "preferredColor": 0
+    },
+    {
+        "code": "QA",
+        "name": "Qatar",
+        "preferredColor": 11
+    },
+    {
+        "code": "RE",
+        "name": "Réunion",
+        "preferredColor": 0
+    },
+    {
+        "code": "RO",
+        "name": "Romania",
+        "preferredColor": 0
+    },
+    {
+        "code": "RS",
+        "name": "Serbia",
+        "preferredColor": 0
+    },
+    {
+        "code": "RU",
+        "name": "Russia",
+        "preferredColor": 0
+    },
+    {
+        "code": "RW",
+        "name": "Rwanda",
+        "preferredColor": 5
+    },
+    {
+        "code": "SA",
+        "name": "Saudi Arabia",
+        "preferredColor": 7
+    },
+    {
+        "code": "SB",
+        "name": "Solomon Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "SC",
+        "name": "Seychelles",
+        "preferredColor": 0
+    },
+    {
+        "code": "SD",
+        "name": "Sudan",
+        "preferredColor": 0
+    },
+    {
+        "code": "SE",
+        "name": "Sweden",
+        "preferredColor": 4
+    },
+    {
+        "code": "SG",
+        "name": "Singapore",
+        "preferredColor": 0
+    },
+    {
+        "code": "SH",
+        "name": "Saint Helena, Ascension and Tristan da Cunha",
+        "preferredColor": 0
+    },
+    {
+        "code": "SI",
+        "name": "Slovenia",
+        "preferredColor": 0
+    },
+    {
+        "code": "SJ",
+        "name": "Svalbard and Jan Mayen",
+        "preferredColor": 0
+    },
+    {
+        "code": "SK",
+        "name": "Slovakia",
+        "preferredColor": 0
+    },
+    {
+        "code": "SL",
+        "name": "Sierra Leone",
+        "preferredColor": 4
+    },
+    {
+        "code": "SM",
+        "name": "San Marino",
+        "preferredColor": 5
+    },
+    {
+        "code": "SN",
+        "name": "Senegal",
+        "preferredColor": 7
+    },
+    {
+        "code": "SO",
+        "name": "Somalia",
+        "preferredColor": 3
+    },
+    {
+        "code": "SR",
+        "name": "Suriname",
+        "preferredColor": 7
+    },
+    {
+        "code": "SS",
+        "name": "South Sudan",
+        "preferredColor": 4
+    },
+    {
+        "code": "ST",
+        "name": "Sao Tome and Principe",
+        "preferredColor": 8
+    },
+    {
+        "code": "SV",
+        "name": "El Salvador",
+        "preferredColor": 4
+    },
+    {
+        "code": "SX",
+        "name": "Sint Maarten",
+        "preferredColor": 0
+    },
+    {
+        "code": "SY",
+        "name": "Syria",
+        "preferredColor": 7
+    },
+    {
+        "code": "SZ",
+        "name": "Eswatini",
+        "preferredColor": 2
+    },
+    {
+        "code": "TC",
+        "name": "Turks and Caicos Islands",
+        "preferredColor": 4
+    },
+    {
+        "code": "TD",
+        "name": "Chad",
+        "preferredColor": 0
+    },
+    {
+        "code": "TF",
+        "name": "French Southern Territories",
+        "preferredColor": 4
+    },
+    {
+        "code": "TG",
+        "name": "Togo",
+        "preferredColor": 7
+    },
+    {
+        "code": "TH",
+        "name": "Thailand",
+        "preferredColor": 0
+    },
+    {
+        "code": "TJ",
+        "name": "Tajikistan",
+        "preferredColor": 0
+    },
+    {
+        "code": "TK",
+        "name": "Tokelau",
+        "preferredColor": 4
+    },
+    {
+        "code": "TL",
+        "name": "Timor-Leste",
+        "preferredColor": 0
+    },
+    {
+        "code": "TM",
+        "name": "Turkmenistan",
+        "preferredColor": 7
+    },
+    {
+        "code": "TN",
+        "name": "Tunisia",
+        "preferredColor": 0
+    },
+    {
+        "code": "TO",
+        "name": "Tonga",
+        "preferredColor": 0
+    },
+    {
+        "code": "TR",
+        "name": "Türkiye",
+        "preferredColor": 0
+    },
+    {
+        "code": "TT",
+        "name": "Trinidad and Tobago",
+        "preferredColor": 0
+    },
+    {
+        "code": "TV",
+        "name": "Tuvalu",
+        "preferredColor": 5
+    },
+    {
+        "code": "TW",
+        "name": "Taiwan",
+        "preferredColor": 0
+    },
+    {
+        "code": "TZ",
+        "name": "Tanzania",
+        "preferredColor": 8
+    },
+    {
+        "code": "UA",
+        "name": "Ukraine",
+        "preferredColor": 5
+    },
+    {
+        "code": "UG",
+        "name": "Uganda",
+        "preferredColor": 9
+    },
+    {
+        "code": "UM",
+        "name": "United States Minor Outlying Islands",
+        "preferredColor": 0
+    },
+    {
+        "code": "UN",
+        "name": "United Nations",
+        "preferredColor": 3
+    },
+    {
+        "code": "US",
+        "name": "United States of America",
+        "preferredColor": 0
+    },
+    {
+        "code": "UY",
+        "name": "Uruguay",
+        "preferredColor": 4
+    },
+    {
+        "code": "UZ",
+        "name": "Uzbekistan",
+        "preferredColor": 8
+    },
+    {
+        "code": "VA",
+        "name": "Holy See",
+        "preferredColor": 9
+    },
+    {
+        "code": "VC",
+        "name": "Saint Vincent and the Grenadines",
+        "preferredColor": 9
+    },
+    {
+        "code": "VE",
+        "name": "Venezuela",
+        "preferredColor": 0
+    },
+    {
+        "code": "VG",
+        "name": "Virgin Islands (British)",
+        "preferredColor": 4
+    },
+    {
+        "code": "VI",
+        "name": "Virgin Islands (U.S.)",
+        "preferredColor": 9
+    },
+    {
+        "code": "VN",
+        "name": "Vietnam",
+        "preferredColor": 0
+    },
+    {
+        "code": "VU",
+        "name": "Vanuatu",
+        "preferredColor": 0
+    },
+    {
+        "code": "WF",
+        "name": "Wallis and Futuna",
+        "preferredColor": 0
+    },
+    {
+        "code": "WS",
+        "name": "Samoa",
+        "preferredColor": 0
+    },
+    {
+        "code": "XK",
+        "name": "Kosovo",
+        "preferredColor": 4
+    },
+    {
+        "code": "XX",
+        "name": "Unknown",
+        "preferredColor": -1
+    },
+    {
+        "code": "YE",
+        "name": "Yemen",
+        "preferredColor": 0
+    },
+    {
+        "code": "YT",
+        "name": "Mayotte",
+        "preferredColor": 0
+    },
+    {
+        "code": "ZA",
+        "name": "South Africa",
+        "preferredColor": 7
+    },
+    {
+        "code": "ZM",
+        "name": "Zambia",
+        "preferredColor": 7
+    },
+    {
+        "code": "ZW",
+        "name": "Zimbabwe",
+        "preferredColor": 7
+    }
+]
