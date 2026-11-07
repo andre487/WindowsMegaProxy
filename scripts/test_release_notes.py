@@ -76,6 +76,25 @@ class ReleaseNotesTests(unittest.TestCase):
             notes.NoRedirect().redirect_request(None, None, 302, "", {}, "https://evil.test")
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "synthetic-key"})
+    def test_detailed_summary_above_twenty_thousand_characters_is_preserved(self):
+        summary = "factual detail " * 2000
+        result = {"status": "completed", "output": [{"type": "message", "content": [{"type": "output_text", "text": json.dumps({"summary": summary})}]}]}
+        opener = Mock()
+        opener.open.return_value = io.BytesIO(json.dumps(result).encode())
+        with patch.object(notes.urllib.request, "build_opener", return_value=opener):
+            self.assertEqual(notes.request_notes("diff", summarize=True), {"summary": summary})
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "synthetic-key"})
+    def test_malformed_summary_and_oversized_notes_have_distinct_redacted_errors(self):
+        for summarize, value, expected in [(True, {"en": "unexpected"}, "release summary JSON"),
+                                           (False, {"en": "x" * 20001, "ru": "ok"}, "bilingual release notes exceeds")]:
+            result = {"status": "completed", "output": [{"type": "message", "content": [{"type": "output_text", "text": json.dumps(value)}]}]}
+            opener = Mock()
+            opener.open.return_value = io.BytesIO(json.dumps(result).encode())
+            with patch.object(notes.urllib.request, "build_opener", return_value=opener), self.assertRaisesRegex(RuntimeError, expected):
+                notes.request_notes("diff", summarize=summarize)
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "synthetic-key"})
     def test_api_errors_are_redacted_and_incomplete_generations_are_rejected(self):
         opener = Mock()
         with patch.object(notes.urllib.request, "build_opener", return_value=opener):

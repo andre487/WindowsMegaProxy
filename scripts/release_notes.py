@@ -152,8 +152,17 @@ def request_notes(context, summarize=False):
         text = "".join(part["text"] for item in result["output"] if item.get("type") == "message"
                        for part in item.get("content", []) if part.get("type") == "output_text")
         notes = json.loads(text)
-        if set(notes) != ({"summary"} if summarize else {"en", "ru"}) or any(not isinstance(value, str) or not value.strip() or len(value) > 20000 for value in notes.values()):
+        if not isinstance(notes, dict) or set(notes) != ({"summary"} if summarize else {"en", "ru"}):
+            raise ValueError()
+        if any(not isinstance(value, str) or not value.strip() for value in notes.values()):
             raise ValueError()
     except (KeyError, TypeError, ValueError):
-        raise RuntimeError("OpenAI returned invalid bilingual release notes.") from None
+        kind = "release summary" if summarize else "bilingual release notes"
+        raise RuntimeError(f"OpenAI returned invalid {kind} JSON.") from None
+    # Summaries can exceed the prompt's target; the next reduction round bounds combined context.
+    limit = CONTEXT_LIMIT if summarize else 20000
+    if any(len(value) > limit for value in notes.values()):
+        kind = "release summary" if summarize else "bilingual release notes"
+        lengths = ", ".join(f"{name}={len(value)}" for name, value in notes.items())
+        raise RuntimeError(f"OpenAI {kind} exceeds {limit} characters ({lengths}).")
     return notes
