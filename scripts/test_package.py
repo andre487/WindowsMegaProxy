@@ -45,9 +45,11 @@ class PackageTests(unittest.TestCase):
             (root / "Directory.Build.props").write_text("<Project>\n  <Version>0.0.1</Version>\n  <Version>0.0.1-dev</Version>\n</Project>\n")
             notes = "Keep `code`, $() and Markdown literally."
             with patch.object(prepare_release, "ROOT", root), patch.object(prepare_release, "version", return_value="0.0.1"), \
+                 patch.object(prepare_release, "generate_notes", return_value=(notes, "Описание")) as generate, \
                  patch.object(prepare_release.sp, "run") as run, patch.object(prepare_release.sp, "check_output", return_value=""), \
-                 patch.dict("os.environ", GH_TOKEN="test", RELEASE_VERSION="0.0.2", RELEASE_NOTES_EN=notes, RELEASE_NOTES_RU="Описание"):
+                 patch.dict("os.environ", GH_TOKEN="test", RELEASE_VERSION="0.0.2"):
                 prepare_release.main()
+            generate.assert_called_once_with("0.0.2")
             text = (root / "Directory.Build.props").read_text()
             self.assertIn("<Version>0.0.2</Version>", text)
             self.assertIn("<Version>0.0.2-dev</Version>", text)

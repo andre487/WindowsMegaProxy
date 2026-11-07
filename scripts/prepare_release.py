@@ -3,9 +3,11 @@ import os
 import re
 import subprocess as sp
 import tempfile
+from pathlib import Path
 
 from common import ROOT, cli
 from package import version
+from release_notes import generate_notes
 
 
 def main():
@@ -19,11 +21,9 @@ def main():
     current = version()
     if tuple(map(int, target.split("."))) < tuple(map(int, current.split("."))):
         raise ValueError("Release version cannot go backwards.")
-    english, russian = (os.environ.get(name, "").strip() for name in ("RELEASE_NOTES_EN", "RELEASE_NOTES_RU"))
-    if not english or not russian:
-        raise ValueError("English and Russian release notes are required.")
     if sp.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip():
         raise RuntimeError("Release preparation requires a clean checkout.")
+    english, russian = generate_notes(target)
     tag = "v" + target
     branch = "prepare-release/" + tag
     sp.run(["git", "switch", "-c", branch], cwd=ROOT, check=True)
@@ -40,7 +40,6 @@ def main():
     sp.run(["gh", "auth", "setup-git"], cwd=ROOT, check=True)
     sp.run(["git", "push", "origin", branch], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory() as temporary:
-        from pathlib import Path
         body = Path(temporary) / "body.md"
         body.write_text(f"Prepare {tag}. After CI and review, merge and tag the main commit `{tag}` to publish.\n\n" + notes.read_text(encoding="utf-8"), encoding="utf-8")
         sp.run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", tag, "--body-file", str(body)], cwd=ROOT, check=True)
