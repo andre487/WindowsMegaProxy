@@ -433,5 +433,13 @@
     "Manual launch (administrator)": "Ручной запуск (администратор)",
     "At Windows sign-in (administrator)": "При входе в Windows (администратор)",
     "Windows service": "Служба Windows",
-    "Changing the operating mode restarts MegaProxy and may require administrator approval.": "Изменение режима перезапускает MegaProxy и может потребовать подтверждения прав администратора."
+    "Changing the operating mode restarts MegaProxy and may require administrator approval.": "Изменение режима перезапускает MegaProxy и может потребовать подтверждения прав администратора.",
+    "Back": "Назад",
+    "Language and theme": "Язык и тема",
+    "Operating mode and automatic connection": "Режим работы и автоматическое подключение",
+    "TLS fingerprints": "Отпечатки TLS",
+    "TCP browser identity and HTTP/3 fingerprint": "Отпечатки браузеров для TCP и отпечаток HTTP/3",
+    "Configuration sources and automatic updates": "Источники конфигурации и автоматическое обновление",
+    "Backup profiles and connection recovery": "Резервные профили и восстановление подключения",
+    "Local log storage and rotation": "Хранение и ротация локального журнала"
 }

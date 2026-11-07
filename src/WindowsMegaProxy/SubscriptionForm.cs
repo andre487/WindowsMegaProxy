@@ -3,12 +3,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace WindowsMegaProxy;
 
-public sealed class SubscriptionWindow : Window
+public sealed class SubscriptionForm : UserControl
 {
     private readonly TextBox url = new(), backups = new() { AcceptsReturn = true, Height = 84, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly TextBox username = new(), interval = new() { Text = "60" };
@@ -17,16 +16,15 @@ public sealed class SubscriptionWindow : Window
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 8) };
     private readonly DispatcherTimer debounce = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly Func<SubscriptionDefinition?, Task> save;
-    private bool saving, closing, closingRequested;
-    private int revision;
+    private bool saving, removed;
+    private int revision, savedRevision;
+    public event Action? Removed;
 
-    public SubscriptionWindow(Settings settings, Func<SubscriptionDefinition?, Task> save, Func<Task<Settings>> refresh)
+    public SubscriptionForm(Settings settings, Func<SubscriptionDefinition?, Task> save, Func<Task<Settings>> refresh)
     {
         this.save = save;
-        Title = Ui.T("Configuration subscription"); Width = 560; Height = 700; MinHeight = 400;
-        FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"); FontSize = 14; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var panel = new StackPanel { Margin = new Thickness(24) };
-        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var panel = new StackPanel();
+        Content = panel;
         Add(panel, "HTTPS URL", url); Add(panel, "Backup HTTPS URLs (one per line, up to 7)", backups);
         panel.Children.Add(new TextBlock { Text = Ui.T("Trust every source. All sources receive the same credentials and may update profiles, settings and source URLs. Redirects are rejected."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 12) });
         panel.Children.Add(auth); Add(panel, "Username", username); Add(panel, "Password", password);
@@ -62,20 +60,17 @@ public sealed class SubscriptionWindow : Window
         {
             debounce.Stop();
             while (saving) await Task.Delay(20);
-            try { await save(null); closing = true; Close(); }
+            try { await save(null); removed = true; Removed?.Invoke(); }
             catch (Exception) { status.Text = Ui.T("Could not save subscription settings."); }
         };
-        Closing += async (_, args) =>
-        {
-            if (closing) return;
-            args.Cancel = true; debounce.Stop();
-            if (closingRequested) return;
-            closingRequested = true;
-            while (saving) await Task.Delay(20);
-            if (url.Text.Length > 0) await SaveAsync();
-            closing = true; _ = Dispatcher.BeginInvoke((Action)Close);
-        };
-        Closed += (_, _) => debounce.Stop();
+    }
+
+    public async Task FlushAsync()
+    {
+        debounce.Stop();
+        while (saving) await Task.Delay(20);
+        if (!removed && revision != savedRevision && url.Text.Length > 0) await SaveAsync();
+        debounce.Stop();
     }
 
     private void Changed() { revision++; debounce.Stop(); debounce.Start(); }
@@ -91,6 +86,7 @@ public sealed class SubscriptionWindow : Window
                 auth.IsChecked == true ? username.Text : null, auth.IsChecked == true ? password.Password : null, minutes, enabled.IsChecked == true);
             _ = SubscriptionDefinition.Parse(definition.ToJson());
             await save(definition);
+            savedRevision = expected;
             status.Text = Ui.T("Subscription settings saved.");
             return expected == revision;
         }

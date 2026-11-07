@@ -18,6 +18,16 @@
     Closing="WindowClosing"
     Loaded="WindowLoaded">
     <Window.Resources>
+        <Style x:Key="SettingsCategoryStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="20,16" />
+            <Setter Property="MinHeight" Value="76" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
         <Style x:Key="DiagnosticCardStyle" TargetType="Border">
             <Setter Property="Padding" Value="16" />
             <Setter Property="Margin" Value="0,0,0,16" />
@@ -607,147 +617,498 @@
                     </WrapPanel>
                 </Grid>
             </TabItem>
-            <TabItem Header="{DynamicResource &quot;Settings&quot;}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="640" HorizontalAlignment="Left">
+            <TabItem
+                x:Name="SettingsTab"
+                Header="{DynamicResource &quot;Settings&quot;}"
+                PreviewKeyDown="SettingsNavigationKeyDown">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <WrapPanel
+                        Margin="0,0,0,20"
+                        VerticalAlignment="Center">
                         <Button
-                            x:Name="InstallServiceButton"
-                            Content="{DynamicResource &quot;Install service…&quot;}"
-                            HorizontalAlignment="Left"
-                            Margin="0,0,0,16"
-                            Visibility="Collapsed"
-                            Click="InstallServiceClick" />
-                        <TextBlock
-                            Text="{DynamicResource &quot;Configuration&quot;}"
-                            Style="{DynamicResource SubtitleTextBlockStyle}"
-                            Margin="0,0,0,16" />
+                            x:Name="SettingsBackButton"
+                            Content="&#xE72B;"
+                            FontFamily="Segoe MDL2 Assets"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Margin="0,0,12,0"
+                            IsEnabled="False"
+                            Click="SettingsBackClick"
+                            AutomationProperties.Name="{DynamicResource &quot;Back&quot;}"
+                            ToolTip="{DynamicResource &quot;Back&quot;}" />
                         <Button
-                            x:Name="SubscriptionButton"
-                            Content="{DynamicResource &quot;Configuration subscription&quot;}"
-                            Click="SubscriptionClick"
-                            HorizontalAlignment="Left"
-                            Margin="0,0,0,16" />
-                        <Button
-                            x:Name="FailoverButton"
-                            Content="{DynamicResource &quot;Failover&quot;}"
-                            Click="FailoverClick"
-                            HorizontalAlignment="Left"
-                            Margin="0,0,0,16" />
-                        <TextBlock
-                            Text="{DynamicResource &quot;Appearance&quot;}"
-                            Style="{DynamicResource SubtitleTextBlockStyle}"
-                            Margin="0,0,0,16" />
-                        <WrapPanel Margin="0,0,0,24">
-                            <StackPanel Width="180" Margin="0,0,16,0">
-                                <Label
-                                    Content="{DynamicResource &quot;Language&quot;}"
-                                    Target="{Binding ElementName=LanguageBox}"
-                                    Padding="0"
-                                    Margin="0,0,0,4" />
-                                <ComboBox x:Name="LanguageBox" HorizontalAlignment="Stretch">
-                                    <ComboBoxItem Content="English" Tag="en" />
-                                    <ComboBoxItem Content="Русский" Tag="ru" />
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Width="180">
-                                <Label
-                                    Content="{DynamicResource &quot;Theme&quot;}"
-                                    Target="{Binding ElementName=ThemeBox}"
-                                    Padding="0"
-                                    Margin="0,0,0,4" />
-                                <ComboBox x:Name="ThemeBox" HorizontalAlignment="Stretch">
-                                    <ComboBoxItem
-                                        Content="{DynamicResource &quot;Automatic&quot;}"
-                                        Tag="auto" />
-                                    <ComboBoxItem Content="{DynamicResource &quot;Light&quot;}" Tag="light" />
-                                    <ComboBoxItem Content="{DynamicResource &quot;Dark&quot;}" Tag="dark" />
-                                </ComboBox>
-                            </StackPanel>
-                        </WrapPanel>
-                        <Label
-                            Content="{DynamicResource &quot;TCP TLS fingerprint&quot;}"
-                            Target="{Binding ElementName=TlsFingerprintBox}"
+                            x:Name="SettingsRootButton"
+                            Content="{DynamicResource &quot;Settings&quot;}"
+                            FontSize="24"
+                            FontWeight="SemiBold"
                             Padding="0"
-                            Margin="0,0,0,4" />
-                        <ComboBox
-                            x:Name="TlsFingerprintBox"
-                            HorizontalAlignment="Left"
-                            Width="220"
-                            Margin="0,0,0,12">
-                            <ComboBoxItem x:Name="DefaultFingerprintItem" Tag="default" />
-                            <ComboBoxItem Content="Chrome" Tag="chrome" />
-                            <ComboBoxItem Content="Firefox" Tag="firefox" />
-                            <ComboBoxItem Content="Edge" Tag="edge" />
-                            <ComboBoxItem Content="Safari" Tag="safari" />
-                            <ComboBoxItem Content="iOS" Tag="ios" />
-                            <ComboBoxItem Content="Android" Tag="android" />
-                            <ComboBoxItem Content="{DynamicResource &quot;Randomized&quot;}" Tag="randomized" />
-                            <ComboBoxItem Content="{DynamicResource &quot;Native TLS&quot;}" Tag="native" />
-                        </ComboBox>
-                        <TextBlock Text="{DynamicResource &quot;HTTP/3 fingerprint&quot;}" Margin="0,0,0,4" />
-                        <TextBlock Text="Native sing-box QUIC" Margin="0,0,0,4" />
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="SettingsBackClick" />
                         <TextBlock
-                            Text="{DynamicResource &quot;Browser fingerprints apply to HTTPS over TCP. HTTP/3 uses the native QUIC fingerprint; browser QUIC presets are unavailable in this core.&quot;}"
+                            x:Name="SettingsBreadcrumbSeparator"
+                            Text="&#xE76C;"
+                            FontFamily="Segoe MDL2 Assets"
+                            Margin="16,0"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed" />
+                        <TextBlock
+                            x:Name="SettingsPageTitle"
+                            FontSize="24"
+                            FontWeight="SemiBold"
+                            VerticalAlignment="Center"
                             TextWrapping="Wrap"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Margin="0,0,0,20" />
-                        <TextBlock
-                            Text="{DynamicResource &quot;Application startup&quot;}"
-                            Style="{DynamicResource SubtitleTextBlockStyle}"
-                            Margin="0,0,0,16" />
-                        <CheckBox
-                            x:Name="AutostartBox"
-                            Visibility="Collapsed"
-                            Content="{DynamicResource &quot;Start in the system tray when signing in to Windows&quot;}"
-                            Margin="0,0,0,16" />
-                        <TextBlock Text="{DynamicResource &quot;Operating mode&quot;}" Margin="0,0,0,4" />
-                        <ComboBox
-                            x:Name="OperatingModeBox"
-                            SelectedValuePath="Tag"
-                            Margin="0,0,0,8"
-                            AutomationProperties.Name="{DynamicResource &quot;Operating mode&quot;}">
-                            <ComboBoxItem Content="{DynamicResource &quot;Manual launch (administrator)&quot;}" Tag="manual" />
-                            <ComboBoxItem Content="{DynamicResource &quot;At Windows sign-in (administrator)&quot;}" Tag="login" />
-                            <ComboBoxItem Content="{DynamicResource &quot;Windows service&quot;}" Tag="service" />
-                        </ComboBox>
-                        <TextBlock
-                            Text="{DynamicResource &quot;Changing the operating mode restarts MegaProxy and may require administrator approval.&quot;}"
-                            TextWrapping="Wrap"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Margin="0,0,0,16" />
-                        <CheckBox
-                            x:Name="AutoConnectBox"
-                            Content="{DynamicResource &quot;Connect when the application starts&quot;}"
-                            Margin="0,0,0,16" />
-                        <TextBlock
-                            Text="{DynamicResource &quot;Log&quot;}"
-                            Style="{DynamicResource SubtitleTextBlockStyle}"
-                            Margin="0,8,0,12" />
-                        <StackPanel Orientation="Horizontal">
-                            <Label
-                                Content="{DynamicResource &quot;Total size, MiB:&quot;}"
-                                Target="{Binding ElementName=LogSizeBox}"
-                                Padding="0"
-                                VerticalAlignment="Center"
-                                Margin="0,0,12,0" />
-                            <ComboBox
-                                x:Name="LogSizeBox"
-                                Width="100"
-                                IsEditable="True"
-                                IsTextSearchEnabled="False"
-                                AutomationProperties.Name="{DynamicResource &quot;Log size in MiB&quot;}"
-                                LostKeyboardFocus="LogSizeChanged"
-                                KeyDown="LogSizeKeyDown">
-                                <ComboBoxItem Content="1" />
-                                <ComboBoxItem Content="5" />
-                                <ComboBoxItem Content="10" />
-                                <ComboBoxItem Content="25" />
-                                <ComboBoxItem Content="50" />
-                                <ComboBoxItem Content="100" />
-                            </ComboBox>
+                            Visibility="Collapsed" />
+                    </WrapPanel>
+                    <ScrollViewer
+                        x:Name="SettingsScroll"
+                        Grid.Row="1"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel
+                            MaxWidth="960"
+                            HorizontalAlignment="Stretch">
+                            <Button
+                                x:Name="InstallServiceButton"
+                                Content="{DynamicResource &quot;Install service…&quot;}"
+                                Visibility="Collapsed"
+                                Click="InstallServiceClick" />
+                            <StackPanel x:Name="SettingsCategories">
+                                <Button
+                                    x:Name="AppearanceCategoryButton"
+                                    Tag="appearance"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;Appearance&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE790;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Appearance&quot;}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Language and theme&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
+                                <Button
+                                    x:Name="StartupCategoryButton"
+                                    Tag="startup"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;Application startup&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE7E8;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Application startup&quot;}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Operating mode and automatic connection&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
+                                <Button
+                                    x:Name="FingerprintsCategoryButton"
+                                    Tag="fingerprints"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;TLS fingerprints&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE72E;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;TLS fingerprints&quot;}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;TCP browser identity and HTTP/3 fingerprint&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
+                                <Button
+                                    x:Name="SubscriptionCategoryButton"
+                                    Tag="subscription"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;Configuration subscription&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE895;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Configuration subscription&quot;}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Configuration sources and automatic updates&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
+                                <Button
+                                    x:Name="FailoverCategoryButton"
+                                    Tag="failover"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;Failover&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE8AB;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Failover&quot;}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Backup profiles and connection recovery&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
+                                <Button
+                                    x:Name="LogCategoryButton"
+                                    Tag="log"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;Log&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE9D9;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Log&quot;}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Local log storage and rotation&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                            <Grid
+                                x:Name="SettingsForms"
+                                Visibility="Collapsed">
+                                <Border
+                                    x:Name="AppearanceSettings"
+                                    Style="{StaticResource DiagnosticCardStyle}"
+                                    Visibility="Collapsed">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="220" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Label
+                                            Content="{DynamicResource &quot;Language&quot;}"
+                                            Target="{Binding ElementName=LanguageBox}"
+                                            Padding="0"
+                                            VerticalAlignment="Center"
+                                            Grid.Row="0"
+                                            Margin="0,0,16,16" />
+                                        <ComboBox
+                                            x:Name="LanguageBox"
+                                            HorizontalAlignment="Stretch"
+                                            Grid.Row="0"
+                                            Grid.Column="1"
+                                            Margin="0,0,0,16">
+                                            <ComboBoxItem
+                                                Content="English"
+                                                Tag="en" />
+                                            <ComboBoxItem
+                                                Content="Русский"
+                                                Tag="ru" />
+                                        </ComboBox>
+                                        <Label
+                                            Content="{DynamicResource &quot;Theme&quot;}"
+                                            Target="{Binding ElementName=ThemeBox}"
+                                            Padding="0"
+                                            VerticalAlignment="Center"
+                                            Grid.Row="1"
+                                            Margin="0,0,16,0" />
+                                        <ComboBox
+                                            x:Name="ThemeBox"
+                                            HorizontalAlignment="Stretch"
+                                            Grid.Row="1"
+                                            Grid.Column="1"
+                                            Margin="0">
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;Automatic&quot;}"
+                                                Tag="auto" />
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;Light&quot;}"
+                                                Tag="light" />
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;Dark&quot;}"
+                                                Tag="dark" />
+                                        </ComboBox>
+                                    </Grid>
+                                </Border>
+                                <Border
+                                    x:Name="FingerprintSettings"
+                                    Style="{StaticResource DiagnosticCardStyle}"
+                                    Visibility="Collapsed">
+                                    <StackPanel>
+                                        <Label
+                                            Content="{DynamicResource &quot;TCP TLS fingerprint&quot;}"
+                                            Target="{Binding ElementName=TlsFingerprintBox}"
+                                            Padding="0"
+                                            Margin="0,0,0,4" />
+                                        <ComboBox
+                                            x:Name="TlsFingerprintBox"
+                                            HorizontalAlignment="Left"
+                                            Width="220"
+                                            Margin="0,0,0,12">
+                                            <ComboBoxItem
+                                                x:Name="DefaultFingerprintItem"
+                                                Tag="default" />
+                                            <ComboBoxItem
+                                                Content="Chrome"
+                                                Tag="chrome" />
+                                            <ComboBoxItem
+                                                Content="Firefox"
+                                                Tag="firefox" />
+                                            <ComboBoxItem
+                                                Content="Edge"
+                                                Tag="edge" />
+                                            <ComboBoxItem
+                                                Content="Safari"
+                                                Tag="safari" />
+                                            <ComboBoxItem
+                                                Content="iOS"
+                                                Tag="ios" />
+                                            <ComboBoxItem
+                                                Content="Android"
+                                                Tag="android" />
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;Randomized&quot;}"
+                                                Tag="randomized" />
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;Native TLS&quot;}"
+                                                Tag="native" />
+                                        </ComboBox>
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;HTTP/3 fingerprint&quot;}"
+                                            Margin="0,0,0,4" />
+                                        <TextBlock
+                                            Text="Native sing-box QUIC"
+                                            Margin="0,0,0,4" />
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Browser fingerprints apply to HTTPS over TCP. HTTP/3 uses the native QUIC fingerprint; browser QUIC presets are unavailable in this core.&quot;}"
+                                            TextWrapping="Wrap"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Margin="0,0,0,20" />
+                                    </StackPanel>
+                                </Border>
+                                <Border
+                                    x:Name="StartupSettings"
+                                    Style="{StaticResource DiagnosticCardStyle}"
+                                    Visibility="Collapsed">
+                                    <StackPanel>
+                                        <CheckBox
+                                            x:Name="AutostartBox"
+                                            Visibility="Collapsed"
+                                            Content="{DynamicResource &quot;Start in the system tray when signing in to Windows&quot;}"
+                                            Margin="0,0,0,16" />
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Operating mode&quot;}"
+                                            Margin="0,0,0,4" />
+                                        <ComboBox
+                                            x:Name="OperatingModeBox"
+                                            SelectedValuePath="Tag"
+                                            Margin="0,0,0,8"
+                                            AutomationProperties.Name="{DynamicResource &quot;Operating mode&quot;}">
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;Manual launch (administrator)&quot;}"
+                                                Tag="manual" />
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;At Windows sign-in (administrator)&quot;}"
+                                                Tag="login" />
+                                            <ComboBoxItem
+                                                Content="{DynamicResource &quot;Windows service&quot;}"
+                                                Tag="service" />
+                                        </ComboBox>
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Changing the operating mode restarts MegaProxy and may require administrator approval.&quot;}"
+                                            TextWrapping="Wrap"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Margin="0,0,0,16" />
+                                        <CheckBox
+                                            x:Name="AutoConnectBox"
+                                            Content="{DynamicResource &quot;Connect when the application starts&quot;}"
+                                            Margin="0,0,0,16" />
+                                    </StackPanel>
+                                </Border>
+                                <Border
+                                    x:Name="LogSettings"
+                                    Style="{StaticResource DiagnosticCardStyle}"
+                                    Visibility="Collapsed">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Label
+                                                Content="{DynamicResource &quot;Total size, MiB:&quot;}"
+                                                Target="{Binding ElementName=LogSizeBox}"
+                                                Padding="0"
+                                                VerticalAlignment="Center"
+                                                Margin="0,0,12,0" />
+                                            <ComboBox
+                                                x:Name="LogSizeBox"
+                                                Width="100"
+                                                IsEditable="True"
+                                                IsTextSearchEnabled="False"
+                                                AutomationProperties.Name="{DynamicResource &quot;Log size in MiB&quot;}"
+                                                LostKeyboardFocus="LogSizeChanged"
+                                                KeyDown="LogSizeKeyDown">
+                                                <ComboBoxItem Content="1" />
+                                                <ComboBoxItem Content="5" />
+                                                <ComboBoxItem Content="10" />
+                                                <ComboBoxItem Content="25" />
+                                                <ComboBoxItem Content="50" />
+                                                <ComboBoxItem Content="100" />
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border
+                                    x:Name="DynamicSettingsCard"
+                                    Style="{StaticResource DiagnosticCardStyle}"
+                                    Visibility="Collapsed">
+                                    <ContentControl x:Name="SettingsDetailHost" />
+                                </Border>
+                            </Grid>
                         </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
             <TabItem x:Name="DiagnosticsTab" Header="{DynamicResource &quot;Diagnostics&quot;}">
                 <ScrollViewer

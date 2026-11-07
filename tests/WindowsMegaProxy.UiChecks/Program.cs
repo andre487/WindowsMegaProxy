@@ -750,14 +750,20 @@ internal static class Program
             Assert(importWindow.Selected.Count == 0 && importWindow.RemoveIds.Count == 0 && !importWindow.ApplyGlobals, "Import review defaults to keeping existing options and profiles.");
             Capture((Visual)importWindow.Content, Path.Combine(output, "import-options.png"));
             importWindow.Close();
+            CheckSettingsNavigation(window, sections, output);
             SubscriptionDefinition? savedSubscription = null;
-            var subscriptionWindow = new SubscriptionWindow(new Settings(), definition => { savedSubscription = definition; return Task.CompletedTask; }, () => Task.FromResult(new Settings()))
-            { Owner = window, Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
+            var subscriptionForm = new SubscriptionForm(new Settings(), definition => { savedSubscription = definition; return Task.CompletedTask; }, () => Task.FromResult(new Settings()));
+            var subscriptionWindow = new Window
+            { Content = subscriptionForm, Width = 560, Height = 700, Owner = window, Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
             subscriptionWindow.Show(); Layout(subscriptionWindow);
-            ((TextBox)typeof(SubscriptionWindow).GetField("url", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(subscriptionWindow)!).Text = "https://feed.invalid/config";
+            var subscriptionUrl = (TextBox)typeof(SubscriptionForm).GetField("url", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(subscriptionForm)!;
+            subscriptionUrl.Text = "https://feed.invalid/config";
             Wait(window, Task.Delay(800));
             Assert(savedSubscription?.Url == "https://feed.invalid/config", "Subscription settings autosave without a Save button.");
             Capture((Visual)subscriptionWindow.Content, Path.Combine(output, "subscription-settings.png"));
+            subscriptionUrl.Text = "https://feed.invalid/changed-before-navigation";
+            Wait(window, subscriptionForm.FlushAsync());
+            Assert(savedSubscription?.Url == subscriptionUrl.Text, "Leaving a subscription form flushes edits before the debounce expires.");
             subscriptionWindow.Close();
             var protectedData = SettingsStore.Protect("synthetic-profile-password-and-other-platform-secret");
             Assert(!protectedData.Contains("synthetic") && SettingsStore.Unprotect(protectedData) == "synthetic-profile-password-and-other-platform-secret", "DPAPI protects imported data.");
@@ -769,6 +775,61 @@ internal static class Program
         {
             var quit = (Task)typeof(MainWindow).GetMethod("QuitAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null)!;
             Wait(window, quit);
+        }
+    }
+
+    private static void CheckSettingsNavigation(MainWindow window, TabControl sections, string output)
+    {
+        ((TextBlock)window.FindName("MessageText")).Text = "";
+        sections.SelectedItem = window.FindName("SettingsTab");
+        Layout(window);
+        var categories = (StackPanel)window.FindName("SettingsCategories");
+        var navigate = typeof(MainWindow).GetMethod("NavigateSettingsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        void Open(string? page) { Wait(window, (Task)navigate.Invoke(window, [page])!); Layout(window); }
+        Assert(categories.IsVisible && categories.Children.OfType<Button>().Count() == 6, "Settings starts with six navigable categories.");
+        Assert(categories.Children.OfType<Button>().All(button => Math.Abs(button.ActualWidth - categories.ActualWidth) < 2), "Settings category rows stretch to the same full width.");
+        var theme = (ComboBox)window.FindName("ThemeBox");
+        var language = (ComboBox)window.FindName("LanguageBox");
+        int previousTheme = theme.SelectedIndex, previousLanguage = language.SelectedIndex;
+        foreach (var choice in new[] { (Language: 0, Theme: 1, Name: "en-light"), (Language: 1, Theme: 2, Name: "ru-dark") })
+        {
+            language.SelectedIndex = choice.Language; theme.SelectedIndex = choice.Theme; Layout(window);
+            Capture((Visual)window.Content, Path.Combine(output, "settings-categories-" + choice.Name + ".png"));
+            ((Button)window.FindName("AppearanceCategoryButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout(window);
+            Assert(!categories.IsVisible && ((ComboBox)window.FindName("LanguageBox")).IsVisible &&
+                ((TextBlock)window.FindName("SettingsPageTitle")).Text == Ui.T("Appearance"), "A category opens its inline form with a localized breadcrumb.");
+            Capture((Visual)window.Content, Path.Combine(output, "settings-appearance-" + choice.Name + ".png"));
+            ((Button)window.FindName("SettingsRootButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout(window);
+            Assert(categories.IsVisible && !((Button)window.FindName("SettingsBackButton")).IsEnabled, "The root breadcrumb returns to the category overview.");
+            Assert(ReferenceEquals(Keyboard.FocusedElement, window.FindName("AppearanceCategoryButton")), "Returning to categories restores keyboard focus to the originating row.");
+        }
+        foreach (string page in new[] { "startup", "fingerprints", "log", "subscription", "failover" })
+        {
+            Open(page);
+            Assert(!categories.IsVisible && ((Button)window.FindName("SettingsBackButton")).IsEnabled, "Each settings form has a back action.");
+            var host = (ContentControl)window.FindName("SettingsDetailHost");
+            if (page == "subscription") Assert(host.Content is SubscriptionForm && host.IsVisible, "Subscriptions are hosted inline, without an extra window.");
+            if (page == "failover") Assert(host.Content is FailoverForm && host.IsVisible, "Failover is hosted inline, without an extra window.");
+            Capture((Visual)window.Content, Path.Combine(output, "settings-" + page + ".png"));
+            Open(null);
+        }
+        var canEdit = typeof(MainWindow).GetField("canEdit", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        canEdit.SetValue(window, false);
+        try
+        {
+            Open("subscription");
+            Assert(categories.IsEnabled && !((ContentControl)window.FindName("SettingsDetailHost")).IsEnabled,
+                "Read-only users can navigate settings while editing remains disabled.");
+            Open(null);
+        }
+        finally
+        {
+            canEdit.SetValue(window, true);
+            language.SelectedIndex = previousLanguage; theme.SelectedIndex = previousTheme;
+            typeof(MainWindow).GetMethod("SetBusy", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [false]);
+            Layout(window);
         }
     }
 

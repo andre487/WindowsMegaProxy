@@ -752,8 +752,7 @@ public partial class MainWindow : Window
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
         ExportLogButton.IsEnabled = service is null || canEdit;
-        SubscriptionButton.IsEnabled = canEdit && !busy;
-        FailoverButton.IsEnabled = canEdit && !busy;
+        SettingsDetailHost.IsEnabled = editable && !busy && !settingsNavigationBusy;
         ProfilePicker.IsEnabled = editable;
         TestConnectionButton.IsEnabled = canEdit && !value && !testing && (engine?.Running == true || CanConnect());
         SpeedOptionsPanel.IsEnabled = !testing;
@@ -1297,6 +1296,7 @@ public partial class MainWindow : Window
         connection.Cancel();
         try
         {
+            await FlushSettingsFormAsync();
             await Task.WhenAll(connection.ShutdownAsync(), FlushSettingsAsync(), diagnosticTextUpdate,
                 Task.WhenAll(fileOperations.ToArray()));
         }

@@ -10,10 +10,9 @@ public partial class MainWindow
     private readonly CancellationTokenSource subscriptionStopping = new();
     private bool subscriptionRefreshing;
 
-    private void FailoverClick(object sender, RoutedEventArgs e)
+    private FailoverForm CreateFailoverForm()
     {
-        if (!canEdit || busy || quitting) return;
-        new FailoverWindow(settings.Copy(), async (mode, ids) =>
+        return new FailoverForm(settings.Copy(), async (mode, ids) =>
         {
             var updated = CaptureSettings();
             var options = updated.SharedOptions["failover"]?.DeepClone() as System.Text.Json.Nodes.JsonObject ?? new();
@@ -21,13 +20,12 @@ public partial class MainWindow
             options["profileIds"] = new System.Text.Json.Nodes.JsonArray(Array.ConvertAll(ids, id => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(id)!));
             updated.SharedOptions["failover"] = options;
             await CommitSettingsAsync(updated);
-        }) { Owner = this }.ShowDialog();
+        });
     }
 
-    private void SubscriptionClick(object sender, RoutedEventArgs e)
+    private SubscriptionForm CreateSubscriptionForm()
     {
-        if (!canEdit || busy || quitting) return;
-        var window = new SubscriptionWindow(settings.Copy(), async definition =>
+        return new SubscriptionForm(settings.Copy(), async definition =>
         {
             var updated = CaptureSettings();
             ConfigurationSubscription.Configure(updated, definition);
@@ -36,8 +34,7 @@ public partial class MainWindow
         {
             await RefreshSubscriptionAsync(true);
             return settings.Copy();
-        }) { Owner = this };
-        window.ShowDialog();
+        });
     }
 
     private async Task RefreshSubscriptionAsync(bool manual = false)
