@@ -12,11 +12,25 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+import package
 import prepare_release
 from package import archive, checksums, merge, signed_manifest, version
 
 
 class PackageTests(unittest.TestCase):
+    def test_production_signing_key_must_match_the_key_pinned_in_the_application(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "assets").mkdir()
+            wrong = Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+            (root / "assets/update-public-key.txt").write_text(base64.b64encode(wrong).decode())
+            encoded = base64.b64encode(Ed25519PrivateKey.generate().private_bytes_raw()).decode()
+            with patch.object(package, "ROOT", root), patch.object(package, "version", return_value="0.0.1"), \
+                 patch.object(package.sp, "check_output", return_value="a" * 40), patch.dict("os.environ", UPDATE_SIGNING_KEY=encoded), \
+                 patch("sys.argv", ["package.py", "--skip-build"]):
+                with self.assertRaisesRegex(RuntimeError, "pinned"):
+                    package.main()
+
     def test_checksums_use_portable_gnu_line_endings(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

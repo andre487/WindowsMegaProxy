@@ -28,6 +28,11 @@ public static partial class Installation
         try
         {
             string command = args[0];
+            if (command == "--install-update")
+            {
+                if (args.Length != 1) throw new ArgumentException("Invalid update arguments.");
+                return InstallUpdateAsync().GetAwaiter().GetResult();
+            }
             if (command == "--configure-user" || UserInstallation.IsUser) return RunUser(args);
             if (AppIdentity.IsDev && command == "--migrate-dev-settings")
             {
@@ -41,7 +46,8 @@ public static partial class Installation
             }
             if (command is not ("--install-service" or "--prepare-uninstall" or "--configure-mode" or "--set-mode")) throw new ArgumentException("Unknown installation command.");
             bool changingMode = command is "--configure-mode" or "--set-mode";
-            if (changingMode ? args.Length != 2 : args.Length != 1) throw new ArgumentException("Invalid installation arguments.");
+            bool? automaticUpdates = changingMode ? ReadAutomaticUpdates(args) : null;
+            if (!changingMode && args.Length != 1) throw new ArgumentException("Invalid installation arguments.");
             string mode = changingMode ? StartupConfiguration.Validate(args[1]) : "service";
             if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
                 throw new UnauthorizedAccessException("Installation requires administrator approval.");
@@ -68,14 +74,18 @@ public static partial class Installation
                 throw;
             }
             bool configuringService = false;
+            Settings? previousOptions = null;
+            byte[]? previousFile = File.Exists(Path.Combine(MachineSettingsStore.DefaultDirectory, "settings.json")) ? File.ReadAllBytes(Path.Combine(MachineSettingsStore.DefaultDirectory, "settings.json")) : null;
             try
             {
+                previousOptions = ConfigureAutomaticUpdates(automaticUpdates, personal: false);
                 ConfigureLogin(mode);
-                if (mode == "service") { configuringService = true; ConfigureAsync(legacySettings, previouslyRunning).GetAwaiter().GetResult(); }
+                if (mode == "service") { configuringService = true; ConfigureAsync(legacySettings ?? previousFile, previouslyRunning).GetAwaiter().GetResult(); }
                 else RemoveServiceAsync().GetAwaiter().GetResult();
             }
             catch
             {
+                if (previousOptions is not null) new MachineSettingsStore().Save(previousOptions);
                 ConfigureLogin(StartupConfiguration.Mode);
                 if (!configuringService && legacySettings is not null)
                 {
@@ -99,9 +109,9 @@ public static partial class Installation
         {
             string message = DiagnosticLog.Redact(error.Message);
             Console.Error.WriteLine(message);
-            if (args[0] == "--set-mode")
+            if (args[0] is "--set-mode" or "--install-update")
             {
-                if (Process.GetProcessesByName(AppIdentity.Name).Length == 0)
+                if (Process.GetProcessesByName(AppIdentity.Name).Length == 0 && File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)))
                     Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
                 MessageBox(IntPtr.Zero, message, "MegaProxy", 0x10);
             }

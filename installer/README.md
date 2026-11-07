@@ -80,12 +80,21 @@ The release build refuses to run without it or from a dirty checkout.
 
 `update-manifest.sig` signs the exact UTF-8 bytes of `update-manifest.json`.
 `update-public-key.txt` exports the verification key, and `signingKeyId` is its
-SHA-256. A future updater **must pin that public key** in its trusted installed
-code; it must not trust a key downloaded alongside the manifest. The manifest
+SHA-256. The updater pins that public key in its trusted installed code and does
+not trust a key downloaded alongside the manifest. The manifest
 records version, commit, architecture, runtime requirement, component URLs,
 archive sizes/hashes and individual archive entry hashes. App and service update
 together; each core is a separate component with installation-relative paths.
-This adds update artifacts, not an automatic updater.
+The application checks GitHub Releases once a day while running (including in
+the tray), verifies the manifest against its pinned Ed25519 key and downloads
+one installer. Settings provide a manual check, an automatic-update opt-out and
+an install action. Ignored notifications repeat weekly or for a newer release;
+opening the update page acknowledges the ready version. The protected helper
+verifies and stages the installer before elevation can execute it, preserves
+installation scope/mode and restarts the client. Old, partial and installed
+update downloads are removed. DEV checks can show releases but never install
+production updates over a development build. The installer also offers an
+automatic-update checkbox, selected by default.
 
 The Windows EXE installer is currently not Authenticode-signed. Manifest signing
 does not replace a Windows code-signing certificate. CI compiles the installer

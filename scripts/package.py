@@ -107,6 +107,9 @@ def main():
         if not encoded:
             raise RuntimeError("UPDATE_SIGNING_KEY is required. Use --preview for a local test package.")
         key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(encoded, validate=True))
+        pinned = base64.b64decode((ROOT / "assets/update-public-key.txt").read_text(encoding="ascii").strip(), validate=True)
+        if key.public_key().public_bytes_raw() != pinned:
+            raise RuntimeError("UPDATE_SIGNING_KEY does not match the public key pinned in the application.")
         if sp.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip():
             raise RuntimeError("Production releases require a clean checkout.")
     if not args.skip_build:

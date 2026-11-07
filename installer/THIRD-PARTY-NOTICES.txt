@@ -3,6 +3,10 @@ WindowsMegaProxy distribution
 Application: MIT. Source: https://github.com/andre487/WindowsMegaProxy
 Application source for this build is supplied as a separate release archive.
 
+BouncyCastle.Cryptography 2.7.0 verifies Ed25519 update signatures on Windows 10/11.
+Source: https://github.com/bcgit/bc-csharp/tree/release-2.7.0
+License: licenses/BouncyCastle-LICENSE.md.
+
 sing-box: GPL-3.0-or-later. Each core directory includes its upstream license.
 The complete GPL-3.0 text is included in licenses/GPL-3.0.txt.
 Stable source: https://github.com/SagerNet/sing-box/tree/v1.14.4

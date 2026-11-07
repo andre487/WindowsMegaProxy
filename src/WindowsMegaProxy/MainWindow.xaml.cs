@@ -92,10 +92,12 @@ public partial class MainWindow : Window
 
     public MainWindow(bool startInTray, Action<Settings>? persistSettings = null, DiagnosticLog? diagnosticLog = null,
         Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null,
-        ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null, bool standalone = false)
+        ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null, bool standalone = false, AppUpdateManager? appUpdates = null)
     {
         service = serviceClient ?? (persistSettings is null && !standalone ? new ServiceClient() : null);
         this.loadLegacy = loadLegacy ?? (() => Task.Run<Settings>(standalone ? StartupConfiguration.LoadLocal : SettingsStore.Load));
+        automaticUpdateChecks = persistSettings is null && loadLegacy is null;
+        this.appUpdates = appUpdates ?? (automaticUpdateChecks ? new AppUpdateManager() : null);
         canEdit = service is null;
         connection = connectionController ?? new ConnectionController(CreateEngine);
         settingsWriter = new SettingsWriter(persistSettings ?? (standalone ? StartupConfiguration.SaveLocal : value =>
@@ -150,6 +152,12 @@ public partial class MainWindow : Window
         tray = new Forms.NotifyIcon { Icon = DisconnectedIcon(), Text = BrandLabel("MegaProxy — disconnected"), Visible = true };
         tray.MouseUp += (_, args) => { if (args.Button == Forms.MouseButtons.Right) trayMenu.IsOpen = true; };
         tray.DoubleClick += (_, _) => ShowWindow();
+        tray.BalloonTipClicked += UpdateNotificationClicked;
+        if (this.appUpdates is not null)
+        {
+            this.appUpdates.Changed += () => Dispatcher.BeginInvoke(() => { if (!quitting) UpdateAppUpdatesView(); });
+            this.appUpdates.Log += value => Dispatcher.BeginInvoke(() => { if (!quitting) WriteLog(value); });
+        }
         SystemEvents.UserPreferenceChanged += ThemeChanged;
         timer.Tick += async (_, _) =>
         {
@@ -158,6 +166,7 @@ public partial class MainWindow : Window
             await RefreshConnectionsAsync();
             await RefreshLogAsync();
             await RefreshSubscriptionAsync();
+            await RunAppUpdateCheckAsync(manual: false);
         };
         timer.Start();
         DefaultActionBox.SelectionChanged += SettingsChanged;
@@ -186,6 +195,7 @@ public partial class MainWindow : Window
             if (quitting) return;
             SetConnected(false);
             MessageText.Text = Ui.T("The core exited unexpectedly. Connections are no longer protected by TUN.");
+            updateNoticeVersion = null;
             tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("The core exited. TUN is disconnected."), Forms.ToolTipIcon.Warning);
             if (service is not null) { connection.Cancel(); if (engine is not null) connection.Attach(engine); return; }
             try { await connection.DisconnectAsync(); }
@@ -753,6 +763,7 @@ public partial class MainWindow : Window
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
         ExportLogButton.IsEnabled = service is null || canEdit;
         SettingsDetailHost.IsEnabled = editable && !busy && !settingsNavigationBusy;
+        UpdateAppUpdatesView();
         ProfilePicker.IsEnabled = editable;
         TestConnectionButton.IsEnabled = canEdit && !value && !testing && (engine?.Running == true || CanConnect());
         SpeedOptionsPanel.IsEnabled = !testing;
@@ -1270,7 +1281,7 @@ public partial class MainWindow : Window
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(() => ShowError(error)); return; }
         MessageText.Text = Ui.T(error.Message);
         WriteLog("Error: " + error.GetType().Name);
-        if (!IsVisible) tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("Operation failed. Open the application window."), Forms.ToolTipIcon.Error);
+        if (!IsVisible) { updateNoticeVersion = null; tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("Operation failed. Open the application window."), Forms.ToolTipIcon.Error); }
     }
     private void ShowWindow() { Show(); WindowState = WindowState.Normal; Activate(); }
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -1293,17 +1304,20 @@ public partial class MainWindow : Window
         if (quitting) return;
         quitting = true; timer.Stop(); SetBusy(true);
         subscriptionStopping.Cancel();
+        updatesStopping.Cancel();
         connection.Cancel();
         try
         {
             await FlushSettingsFormAsync();
-            await Task.WhenAll(connection.ShutdownAsync(), FlushSettingsAsync(), diagnosticTextUpdate,
+            await Task.WhenAll(connection.ShutdownAsync(), FlushSettingsAsync(), diagnosticTextUpdate, updateOperation,
                 Task.WhenAll(fileOperations.ToArray()));
         }
+        catch (OperationCanceledException) when (updatesStopping.IsCancellationRequested) { }
         catch (Exception error) { MessageBox.Show(this, error.Message, Ui.T("Disconnecting")); }
         finally
         {
             await logWriter.DisposeAsync();
+            appUpdates?.Dispose(); updatesStopping.Dispose();
             log.Changed -= LogChanged;
             SystemEvents.UserPreferenceChanged -= ThemeChanged;
             trayMenu.IsOpen = false; tray.Visible = false; tray.Dispose(); trayIcon.Dispose(); lightTrayIcon.Dispose(); connectedIcon.Dispose();

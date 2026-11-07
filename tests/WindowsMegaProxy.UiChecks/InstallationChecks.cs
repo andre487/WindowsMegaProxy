@@ -8,6 +8,10 @@ internal static class InstallationChecks
 {
     public static void Run()
     {
+        if (Installation.ReadAutomaticUpdates(["--configure-mode", "manual"]) is not null ||
+            Installation.ReadAutomaticUpdates(["--configure-mode", "manual", "--automatic-updates", "false"]) != false ||
+            Installation.ReadAutomaticUpdates(["--configure-user", "login", "--automatic-updates", "true"]) != true)
+            throw new Exception("Installers must support opt-out automatic updates without resetting mode-switch preferences.");
         if (StartupConfiguration.ServiceStateLabel(System.ServiceProcess.ServiceControllerStatus.Running) != "Service: running" ||
             StartupConfiguration.ServiceStateLabel(System.ServiceProcess.ServiceControllerStatus.Stopped) != "Service: stopped" ||
             StartupConfiguration.ServiceStateLabel(System.ServiceProcess.ServiceControllerStatus.StartPending) != "Service: starting…")

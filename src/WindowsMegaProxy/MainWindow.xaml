@@ -912,6 +912,45 @@
                                             HorizontalAlignment="Right" />
                                     </Grid>
                                 </Button>
+                                <Button
+                                    x:Name="UpdatesCategoryButton"
+                                    Tag="updates"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;Updates&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE777;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Updates&quot;}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Application updates from GitHub&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
                             </StackPanel>
                             <Grid
                                 x:Name="SettingsForms"
@@ -1104,6 +1143,64 @@
                                     Style="{StaticResource DiagnosticCardStyle}"
                                     Visibility="Collapsed">
                                     <ContentControl x:Name="SettingsDetailHost" />
+                                </Border>
+                                <Border
+                                    x:Name="UpdatesSettings"
+                                    Style="{StaticResource DiagnosticCardStyle}"
+                                    Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock
+                                            x:Name="InstalledVersionText"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Margin="0,0,0,12" />
+                                        <TextBlock
+                                            x:Name="UpdateStatusText"
+                                            TextWrapping="Wrap"
+                                            AutomationProperties.LiveSetting="Polite"
+                                            Margin="0,0,0,8" />
+                                        <TextBlock
+                                            x:Name="UpdateVersionText"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Visibility="Collapsed"
+                                            Margin="0,0,0,12" />
+                                        <WrapPanel>
+                                            <Button
+                                                x:Name="InstallUpdateButton"
+                                                Content="{DynamicResource &quot;Install update&quot;}"
+                                                Visibility="Collapsed"
+                                                MinWidth="160"
+                                                Margin="0,0,8,12"
+                                                Click="InstallUpdateClick" />
+                                            <Button
+                                                x:Name="CheckUpdatesButton"
+                                                Content="{DynamicResource &quot;Check now&quot;}"
+                                                MinWidth="140"
+                                                Margin="0,0,0,12"
+                                                Click="CheckUpdatesClick" />
+                                        </WrapPanel>
+                                        <ProgressBar
+                                            x:Name="UpdateDownloadProgress"
+                                            Minimum="0"
+                                            Maximum="100"
+                                            Height="4"
+                                            Visibility="Collapsed"
+                                            Margin="0,0,0,12"
+                                            AutomationProperties.Name="{DynamicResource &quot;Update download progress&quot;}" />
+                                        <TextBlock
+                                            x:Name="UpdateErrorText"
+                                            TextWrapping="Wrap"
+                                            Visibility="Collapsed"
+                                            Margin="0,0,0,12" />
+                                        <CheckBox
+                                            x:Name="AutomaticUpdatesBox"
+                                            Content="{DynamicResource &quot;Automatically check and download updates&quot;}"
+                                            Click="AutomaticUpdatesChanged"
+                                            Margin="0,8,0,8" />
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Checks once a day. Ignored notifications repeat after a week or when a new release is available.&quot;}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
                                 </Border>
                             </Grid>
                         </StackPanel>

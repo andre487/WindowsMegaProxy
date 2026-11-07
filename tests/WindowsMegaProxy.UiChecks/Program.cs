@@ -30,9 +30,11 @@ internal static class Program
                 var profile = ProxyProfile.Create("Personal preservation check");
                 profile.Proxy["host"] = "personal.invalid";
                 profile.Proxy["password"] = "personal-synthetic-secret";
-                personalStore.Save(new Settings { Profiles = [profile], AutoConnect = false });
+                var seeded = personalStore.Load(); seeded.Profiles = [profile]; seeded.ActiveProfileId = profile.Id; seeded.AutoConnect = false;
+                personalStore.Save(seeded);
             }
             var personal = personalStore.Load();
+            if (AppUpdatePolicy.Enabled(personal)) throw new Exception("The personal installer must preserve its automatic-update opt-out.");
             if (File.ReadAllText(Path.Combine(personalStore.DirectoryPath, "settings.json")).Contains("personal-synthetic-secret", StringComparison.Ordinal))
                 throw new Exception("Personal secrets must remain encrypted on disk.");
             if (personal.Profiles.Count != 1 || personal.Profiles[0].Name != "Personal preservation check" || personal.Profiles[0].Proxy["password"]?.ToString() != "personal-synthetic-secret")
@@ -48,9 +50,11 @@ internal static class Program
                 var profile = ProxyProfile.Create("Installer preservation check");
                 profile.Proxy["host"] = "proxy.invalid";
                 profile.Proxy["password"] = "synthetic-secret";
-                store.Save(new Settings { Profiles = [profile], AutoConnect = false });
+                var seeded = store.Load(); seeded.Profiles = [profile]; seeded.ActiveProfileId = profile.Id; seeded.AutoConnect = false;
+                store.Save(seeded);
             }
             var installedSettings = store.Load();
+            if (!AppIdentity.IsDev && AppUpdatePolicy.Enabled(installedSettings)) throw new Exception("The system installer must preserve its automatic-update opt-out.");
             if (installedSettings.Profiles.Count != 1 || installedSettings.Profiles[0].Name != "Installer preservation check" || installedSettings.Profiles[0].Proxy["password"]?.ToString() != "synthetic-secret")
                 throw new Exception("Settings were not preserved across operating mode changes.");
             return;
@@ -84,6 +88,8 @@ internal static class Program
             return;
         }
         if (args.Contains("--engine-check")) { CheckEngineAsync().GetAwaiter().GetResult(); return; }
+        if (args.Contains("--app-update-check")) { AppUpdateChecks.RunAsync().GetAwaiter().GetResult(); return; }
+        AppUpdateChecks.RunAsync().GetAwaiter().GetResult();
         ControllerChecks.RunAsync().GetAwaiter().GetResult();
         ConfigurationRefreshChecks.RunAsync().GetAwaiter().GetResult();
         FailoverChecks.RunIsolatedAsync().GetAwaiter().GetResult();
@@ -107,6 +113,8 @@ internal static class Program
         bool autostartEnabled = false, rejectAutostart = false;
         var fixtureEngine = new TestEngine();
         var testConnection = new ConnectionController(() => fixtureEngine);
+        using var updateFeed = new AppUpdateChecks.Feed { Unavailable = true };
+        var updateClient = updateFeed.Manager(Path.GetFullPath("artifacts/ui-update-cache/" + Guid.NewGuid().ToString("N")));
         var window = new MainWindow(false, value =>
         {
             if (slowSave)
@@ -122,7 +130,7 @@ internal static class Program
             if (rejectAutostart && enabled) throw new IOException("Synthetic task failure.");
             autostartEnabled = enabled;
             return Task.CompletedTask;
-        }, () => Task.FromResult(autostartEnabled), () => { diagnosticEntries++; return Task.CompletedTask; }, testConnection) { Left = -10000, Top = -10000, ShowInTaskbar = false };
+        }, () => Task.FromResult(autostartEnabled), () => { diagnosticEntries++; return Task.CompletedTask; }, testConnection, appUpdates: updateClient) { Left = -10000, Top = -10000, ShowInTaskbar = false };
         // Exercise layout without executing startup tasks, autoconnect or any network operations.
         window.Loaded -= typeof(MainWindow).GetMethod("WindowLoaded", BindingFlags.NonPublic | BindingFlags.Instance)!
             .CreateDelegate<RoutedEventHandler>(window);
@@ -751,6 +759,7 @@ internal static class Program
             Capture((Visual)importWindow.Content, Path.Combine(output, "import-options.png"));
             importWindow.Close();
             CheckSettingsNavigation(window, sections, output);
+            CheckApplicationUpdateView(window, sections, updateFeed, saved, output);
             SubscriptionDefinition? savedSubscription = null;
             var subscriptionForm = new SubscriptionForm(new Settings(), definition => { savedSubscription = definition; return Task.CompletedTask; }, () => Task.FromResult(new Settings()));
             var subscriptionWindow = new Window
@@ -800,7 +809,7 @@ internal static class Program
         var categories = (StackPanel)window.FindName("SettingsCategories");
         var navigate = typeof(MainWindow).GetMethod("NavigateSettingsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
         void Open(string? page) { Wait(window, (Task)navigate.Invoke(window, [page])!); Layout(window); }
-        Assert(categories.IsVisible && categories.Children.OfType<Button>().Count() == 6, "Settings starts with six navigable categories.");
+        Assert(categories.IsVisible && categories.Children.OfType<Button>().Count() == 7, "Settings starts with seven navigable categories.");
         Assert(categories.Children.OfType<Button>().All(button => Math.Abs(button.ActualWidth - categories.ActualWidth) < 2), "Settings category rows stretch to the same full width.");
         var theme = (ComboBox)window.FindName("ThemeBox");
         var language = (ComboBox)window.FindName("LanguageBox");
@@ -819,7 +828,7 @@ internal static class Program
             Assert(categories.IsVisible && !((Button)window.FindName("SettingsBackButton")).IsEnabled, "The root breadcrumb returns to the category overview.");
             Assert(ReferenceEquals(Keyboard.FocusedElement, window.FindName("AppearanceCategoryButton")), "Returning to categories restores keyboard focus to the originating row.");
         }
-        foreach (string page in new[] { "startup", "fingerprints", "log", "subscription", "failover" })
+        foreach (string page in new[] { "startup", "fingerprints", "log", "subscription", "failover", "updates" })
         {
             Open(page);
             Assert(!categories.IsVisible && ((Button)window.FindName("SettingsBackButton")).IsEnabled, "Each settings form has a back action.");
@@ -845,6 +854,33 @@ internal static class Program
             typeof(MainWindow).GetMethod("SetBusy", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [false]);
             Layout(window);
         }
+    }
+
+    private static void CheckApplicationUpdateView(MainWindow window, TabControl sections, AppUpdateChecks.Feed feed, System.Collections.Generic.List<Settings> saved, string output)
+    {
+        sections.SelectedItem = window.FindName("SettingsTab");
+        Wait(window, (Task)typeof(MainWindow).GetMethod("NavigateSettingsAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, ["updates"])!);
+        var check = (Button)window.FindName("CheckUpdatesButton");
+        void CheckNow()
+        {
+            check.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Wait(window, (Task)typeof(MainWindow).GetField("updateOperation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!);
+            Layout(window);
+        }
+        CheckNow();
+        Assert(((TextBlock)window.FindName("UpdateStatusText")).Text == Ui.T("Update files are unavailable."), "A missing release shows the unavailable-files error.");
+        Capture((Visual)window.Content, Path.Combine(output, "application-updates-unavailable.png"));
+        var automatic = (CheckBox)window.FindName("AutomaticUpdatesBox");
+        automatic.IsChecked = false; automatic.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent)); Layout(window);
+        Assert(!AppUpdatePolicy.Enabled(saved[^1]), "Automatic application updates can be disabled without a Save button.");
+        feed.Unavailable = false;
+        CheckNow();
+        var install = (Button)window.FindName("InstallUpdateButton");
+        Assert(install.IsVisible && install.IsEnabled == !AppIdentity.IsDev, "A verified update exposes installation; DEV cannot replace production.");
+        Rect bounds = install.TransformToAncestor((Visual)window.Content).TransformBounds(new Rect(install.RenderSize));
+        Assert(bounds.Bottom < ((FrameworkElement)window.Content).ActualHeight && bounds.Top >= 0, "Install update is visible in the settings viewport without scrolling.");
+        Capture((Visual)window.Content, Path.Combine(output, "application-updates-ready.png"));
+        Wait(window, (Task)typeof(MainWindow).GetMethod("NavigateSettingsAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [null])!);
     }
 
     private static void Wait(Window window, Task task, bool propagate = true)

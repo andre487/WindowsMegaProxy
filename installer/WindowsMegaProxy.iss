@@ -34,10 +34,13 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
+Name: "automaticupdates"; Description: "{cm:AutomaticUpdates}"
 Name: "ssh"; Description: "{cm:InstallSSH}"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [CustomMessages]
+english.AutomaticUpdates=Automatically check for and download application updates
+russian.AutomaticUpdates=Автоматически проверять и скачивать обновления приложения
 english.InstallSSH=Install SSH support (Windows OpenSSH Client), if missing
 russian.InstallSSH=Установить поддержку SSH (клиент OpenSSH Windows), если она отсутствует
 english.Prerequisites=Preparing required Windows components…
@@ -79,6 +82,7 @@ Type: dirifempty; Name: "{code:VersionPath}"; Check: IsUserInstall
 
 [Run]
 Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: CanLaunch
+Filename: "{code:LaunchPath}"; Flags: nowait runasoriginaluser; Check: IsUpdateInstall
 
 [Code]
 var TargetVersion: String;
@@ -141,6 +145,11 @@ function LaunchPath(Param: String): String; forward;
 function CanLaunch: Boolean;
 begin
   Result := ModeConfigured;
+end;
+
+function IsUpdateInstall: Boolean;
+begin
+  Result := ModeConfigured and (ExpandConstant('{param:UPDATE|0}') = '1');
 end;
 
 function GetCustomSetupExitCode: Integer;
@@ -284,7 +293,9 @@ begin
   if Step = ssPostInstall then begin
     ConfigurationFailed := True;
     if IsAdminInstallMode then Command := '--configure-mode ' else Command := '--configure-user ';
-    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', Command + SelectedMode, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
+    Command := Command + SelectedMode + ' --automatic-updates ';
+    if WizardIsTaskSelected('automaticupdates') then Command := Command + 'true' else Command := Command + 'false';
+    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
       RaiseException('Could not configure the MegaProxy operating mode. Close MegaProxy in all Windows sessions and retry. See the setup log.');
     end;
     ModeConfigured := True;

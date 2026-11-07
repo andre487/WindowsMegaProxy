@@ -167,6 +167,7 @@ public static class PortableConfiguration
         if (settings.Language is not ("en" or "ru") || settings.Theme is not ("auto" or "light" or "dark")) throw Invalid("Invalid language or theme.");
         if (!Configuration.TlsFingerprints.Contains(settings.TlsFingerprint)) throw Invalid("Unsupported TLS fingerprint.");
         _ = ConfigurationSubscription.Get(settings);
+        _ = AppUpdatePolicy.Enabled(settings);
         FailoverPolicy.Validate(settings);
         var ids = new HashSet<string>(System.StringComparer.Ordinal);
         foreach (var profile in settings.Profiles)

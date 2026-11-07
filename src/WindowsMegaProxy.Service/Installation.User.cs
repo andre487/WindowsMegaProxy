@@ -10,8 +10,9 @@ public static partial class Installation
         if (!StartupConfiguration.IsElevated) throw new UnauthorizedAccessException("User installation requires administrator approval.");
         string command = args[0];
         bool uninstall = command == "--prepare-uninstall";
-        if (uninstall ? args.Length != 1 : args.Length != 2 || command is not ("--configure-user" or "--set-mode"))
+        if (uninstall ? args.Length != 1 : command is not ("--configure-user" or "--set-mode"))
             throw new ArgumentException("Invalid user installation arguments.");
+        bool? automaticUpdates = uninstall ? null : ReadAutomaticUpdates(args);
         string mode = uninstall ? "manual" : UserInstallation.ValidateMode(args[1]);
         string root = UserInstallation.ValidateDirectory(AppContext.BaseDirectory,
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), UserInstallation.Sid);
@@ -22,6 +23,7 @@ public static partial class Installation
         dynamic folder = scheduler.GetFolder(@"\");
         string name = UserInstallation.TaskName;
         string? launch = TaskXml(folder, name), login = TaskXml(folder, name + ".Login");
+        Settings? previousOptions = null;
         try
         {
             if (uninstall)
@@ -32,6 +34,7 @@ public static partial class Installation
                 return 0;
             }
             SettingsStore.WriteAtomic(Path.Combine(AppContext.BaseDirectory, UserInstallation.Marker), UserInstallation.Sid);
+            previousOptions = ConfigureAutomaticUpdates(automaticUpdates, personal: true);
             RegisterUserTask(scheduler, folder, name, false);
             if (mode == "login") RegisterUserTask(scheduler, folder, name + ".Login", true);
             else DeleteTask(folder, name + ".Login");
@@ -41,6 +44,7 @@ public static partial class Installation
         }
         catch
         {
+            if (previousOptions is not null) new MachineSettingsStore(UserInstallation.DataDirectory, machine: false).Save(previousOptions);
             RestoreTask(folder, name, launch);
             RestoreTask(folder, name + ".Login", login);
             throw;
