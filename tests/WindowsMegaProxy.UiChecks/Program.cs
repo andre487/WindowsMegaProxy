@@ -88,7 +88,8 @@ internal static class Program
         try
         {
             string build = ((System.Windows.Documents.Run)window.FindName("BuildInformationText")).Text;
-            Assert(build.StartsWith(AppIdentity.IsDev ? "v0.0.1-dev · " : "v0.0.1 · ") && build.Length >= 16, "Footer shows the version and source revision.");
+            string version = typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
+            Assert(build.StartsWith($"v{version} · ") && build.Length >= 16, "Footer shows the version and source revision.");
             Assert(window.Title == AppIdentity.DisplayName && ((TextBlock)window.FindName("AppTitle")).Text == AppIdentity.DisplayName, "The build's window and header identify its channel.");
             var access = typeof(MainWindow).GetField("canEdit", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var setBusy = typeof(MainWindow).GetMethod("SetBusy", BindingFlags.NonPublic | BindingFlags.Instance)!;
