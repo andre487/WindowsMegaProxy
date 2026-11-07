@@ -64,7 +64,7 @@ class ToolsChecks(unittest.TestCase):
         stop.assert_not_called()
 
     def test_dev_cleanup_without_registrations_keeps_running_standalone(self):
-        with tempfile.TemporaryDirectory() as temporary, patch("uninstall_dev.known_folder", return_value=Path(temporary)), \
+        with tempfile.TemporaryDirectory() as temporary, patch("uninstall_dev.known_folder", return_value=Path(temporary).resolve()), \
              patch("uninstall_dev.startup_records", return_value=([], [])), patch("uninstall_dev.service_state", return_value=None), \
              patch("uninstall_dev.stop_workspace_app") as close, patch("uninstall_dev.stop_service") as stop, patch("builtins.print"):
             uninstall_dev.cleanup()
