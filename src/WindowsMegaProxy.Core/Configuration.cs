@@ -162,7 +162,7 @@ public static class Configuration
             ["route"] = new JsonObject
             {
                 ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = "bootstrap", ["rules"] = rules,
-                ["rule_set"] = new JsonArray(PodkopCatalog.Used(settings).Select(id => (JsonNode)PodkopCatalog.Definition(id)).ToArray()),
+                ["rule_set"] = new JsonArray(PodkopCatalog.Groups(settings).Select(ids => (JsonNode)PodkopCatalog.Definition(ids)).ToArray()),
                 ["final"] = proxyDefault ? "proxy" : "direct"
             },
             ["experimental"] = new JsonObject { ["clash_api"] = new JsonObject { ["external_controller"] = $"127.0.0.1:{apiPort}", ["secret"] = apiSecret } }
@@ -256,7 +256,7 @@ public static class Configuration
         if (destination.Length > 0)
         {
             if (destination.StartsWith("podkop:", StringComparison.Ordinal))
-                result["rule_set"] = new JsonArray(PodkopCatalog.Parse(destination).Select(id => (JsonNode)JsonValue.Create("podkop:" + id)!).ToArray());
+                result["rule_set"] = new JsonArray(PodkopCatalog.Tag(PodkopCatalog.Parse(destination)));
             else if (IPAddress.TryParse(destination, out var ip))
                 result["ip_cidr"] = new JsonArray(ip + (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? "/32" : "/128"));
             else if (destination.Contains('/'))

@@ -79,6 +79,7 @@ public static class PortableConfiguration
             if (root["windows"] is JsonObject windows)
             {
                 windows.Remove(ConfigurationSubscription.StateKey);
+                windows.Remove(PodkopCatalog.WarningKey);
                 candidate.WindowsOptions = Merge(candidate.WindowsOptions, windows);
                 if (!windows.ContainsKey("version") || windows["version"]?.GetValue<int>() == 1)
                 {
@@ -133,6 +134,7 @@ public static class PortableConfiguration
         }
         var windows = (JsonObject)settings.WindowsOptions.DeepClone();
         windows.Remove(ConfigurationSubscription.StateKey);
+        windows.Remove(PodkopCatalog.WarningKey);
         if (!windows.ContainsKey("version") || windows["version"]?.GetValue<int>() == 1)
         {
             windows["version"] = 1;

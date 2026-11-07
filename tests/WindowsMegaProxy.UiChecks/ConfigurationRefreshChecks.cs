@@ -60,6 +60,16 @@ internal static class ConfigurationRefreshChecks
 
         string directory = Path.GetFullPath(Path.Combine("artifacts/configuration-checks", Guid.NewGuid().ToString("N")));
         var cache = new PodkopCache(directory);
+        int skipped = 0;
+        var suffixes = PodkopCache.Parse(new[] { ".ua\n*.example.org\ninvalid/path\n" }, count => skipped = count);
+        Check(skipped == 1 && suffixes["rules"]![0]!["domain_suffix"]!.AsArray().Select(value => value!.ToString()).SequenceEqual(new[] { "ua", "example.org" }), "Podkop accepts leading-dot/wildcard suffixes and reports malformed lines without dropping valid entries.");
+        var deduplicated = PodkopCache.Merge(new[]
+        {
+            PodkopCache.Parse(new[] { "example.com\n192.0.2.0/24\n2001:db8::/32" }),
+            PodkopCache.Parse(new[] { ".EXAMPLE.com\napi.example.com\n192.0.2.0/24\n2001:0db8:0:0::/32" })
+        });
+        Check(deduplicated["rules"]![0]!["domain_suffix"]!.AsArray().Count == 2 && deduplicated["rules"]![1]!["ip_cidr"]!.AsArray().Count == 2,
+            "Combined lists deduplicate domains, normalized suffixes and equivalent IPv4/IPv6 subnets.");
         int downloads = 0;
         string path = await cache.GetAsync("discord", CancellationToken.None, (url, _) =>
         {
@@ -75,11 +85,16 @@ internal static class ConfigurationRefreshChecks
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => Task.FromResult("https://invalid.example/path"));
         Check(File.ReadAllText(path) == before, "Invalid list updates retain the last verified copy.");
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new HttpRequestException("offline"));
-        await RejectAsync(() => cache.GetAsync("youtube", CancellationToken.None, (_, _) => throw new IOException("offline")));
+        string unavailable = await cache.GetAsync("youtube", CancellationToken.None, (_, _) => throw new IOException("offline"));
+        Check(cache.Unavailable.Contains("youtube") && JsonNode.Parse(File.ReadAllText(unavailable))!["rules"]!.AsArray().Count == 0, "Missing first-download sources become visibly inactive instead of aborting the connection.");
         var proxy = ProxyProfile.Create("Rule set check"); proxy.Proxy["host"] = "proxy.example";
-        var rules = new Settings { Profiles = [proxy], ActiveProfileId = proxy.Id, Rules = [new() { Destination = "podkop:discord" }] };
+        var rules = new Settings { Profiles = [proxy], ActiveProfileId = proxy.Id, Rules = [new() { Destination = "podkop:discord,youtube" }] };
         var config = Configuration.Build(rules, 1, "test");
-        config["route"]!["rule_set"]![0]!["path"] = path;
+        string combined = cache.MergeGroup(["discord", "youtube"]);
+        Check(combined == cache.MergeGroup(["youtube", "discord"]), "List order does not create duplicate combined files.");
+        config["route"]!["rule_set"]![0]!["path"] = combined;
+        var emptySet = PodkopCatalog.Definition("youtube"); emptySet["path"] = unavailable;
+        config["route"]!["rule_set"]!.AsArray().Add(emptySet);
         string configPath = Path.Combine(directory, "check.json"); File.WriteAllText(configPath, config.ToJsonString());
         foreach (string core in new[] { ".tools/sing-box/sing-box.exe", ".tools/sing-box-h3/sing-box.exe" })
         {
@@ -88,6 +103,10 @@ internal static class ConfigurationRefreshChecks
             var result = await CoreProcess.RunAsync(start, TimeSpan.FromSeconds(15), CancellationToken.None);
             Check(result.ExitCode == 0, "Both cores accept the generated Podkop source/routing configuration: " + result.Error);
         }
+        await cache.GetAsync("youtube", CancellationToken.None, (_, _) => Task.FromResult("youtube.com"));
+        cache.MergeGroup(["discord", "youtube"]);
+        Check(!cache.Unavailable.Contains("youtube") && JsonNode.Parse(File.ReadAllText(unavailable))!["rules"]!.AsArray().Count > 0, "A previously inactive source is retried and recovers automatically.");
+        Check(JsonNode.Parse(File.ReadAllText(combined))!["rules"]![0]!["domain_suffix"]!.AsArray().Count == 3, "Combined sets are rebuilt when their components recover.");
         Console.WriteLine("Subscription fallback/protocol/bounds and verified Podkop cache checks passed; no TUN.");
     }
 }

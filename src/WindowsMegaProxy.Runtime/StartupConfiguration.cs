@@ -3,6 +3,8 @@ using System.IO;
 using System.Security.Principal;
 using Microsoft.Win32;
 using System.Diagnostics;
+using System.ServiceProcess;
+using System.ComponentModel;
 
 namespace WindowsMegaProxy;
 
@@ -11,6 +13,18 @@ public static class StartupConfiguration
     public static string RegistryPath => @"SOFTWARE\" + AppIdentity.Name;
     public static string Validate(string mode) => mode is "manual" or "login" or "service" ? mode : throw new ArgumentException("Unknown operating mode.");
     public static bool IsElevated => new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+    public static string ServiceStateLabel(ServiceControllerStatus status) => status switch
+    {
+        ServiceControllerStatus.Running => "Service: running", ServiceControllerStatus.Stopped => "Service: stopped",
+        ServiceControllerStatus.StartPending or ServiceControllerStatus.ContinuePending => "Service: starting…",
+        ServiceControllerStatus.StopPending => "Service: stopping…", _ => "Service: paused"
+    };
+    public static string QueryServiceState()
+    {
+        try { using var controller = new ServiceController(ServiceProtocol.Name); return ServiceStateLabel(controller.Status); }
+        catch (InvalidOperationException error) when (error.InnerException is Win32Exception { NativeErrorCode: 1060 }) { return "Service: not installed"; }
+        catch (Exception error) when (error is InvalidOperationException or Win32Exception or UnauthorizedAccessException) { return "Service: unavailable"; }
+    }
     public static ProcessStartInfo ModeCommand(string applicationDirectory, string? installScript, string mode)
     {
         Validate(mode);

@@ -38,6 +38,7 @@ public sealed partial class Engine : IEngine
     private Task drain = Task.CompletedTask;
     private CancellationTokenSource? listStopping;
     private Task listUpdates = Task.CompletedTask;
+    private string[] podkopWarnings = [];
     public string SelectedOutbound
     {
         get
@@ -105,6 +106,7 @@ public sealed partial class Engine : IEngine
         }
         await StartCoreAsync(runtime, testOnly, cancellationToken);
         AppliedSettings = PortableConfiguration.Copy(settings);
+        SetPodkopWarningMetadata(AppliedSettings, podkopWarnings);
         if (runtime.ActiveProfile is { Type: "SSH" } appliedSsh && AppliedSettings.ActiveProfile is { } savedSsh)
         {
             if (savedSsh.Data["windows"] is not JsonObject) savedSsh.Data["windows"] = new JsonObject();
@@ -134,8 +136,10 @@ public sealed partial class Engine : IEngine
         var secret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var config = Configuration.Build(settings, port, secret);
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
+        foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken).ConfigureAwait(false);
         foreach (var ruleSet in config["route"]!["rule_set"]!.AsArray())
-            ruleSet!["path"] = await cache.GetAsync(ruleSet["tag"]!.ToString()[7..], cancellationToken).ConfigureAwait(false);
+            ruleSet!["path"] = cache.MergeGroup(ruleSet["tag"]!.ToString()[7..].Split('+'));
+        podkopWarnings = cache.Unavailable.ToArray();
         AppliedSettings = PortableConfiguration.Copy(settings);
         AppliedSignature = Configuration.Signature(settings);
         outboundTags = config["outbounds"]!.AsArray().Select(item => item!["tag"]!.ToString()).Where(tag => tag != "direct").ToArray();
@@ -303,10 +307,33 @@ public sealed partial class Engine : IEngine
         using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
         while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+        {
             foreach (string id in PodkopCatalog.Used(settings))
-                try { await cache.GetAsync(id, token).ConfigureAwait(false); }
+                try
+                {
+                    await cache.GetAsync(id, token).ConfigureAwait(false);
+                    var warnings = podkopWarnings.Where(value => value != id).ToList();
+                    if (cache.Unavailable.Contains(id)) warnings.Add(id);
+                    if (!podkopWarnings.SequenceEqual(warnings))
+                    {
+                        podkopWarnings = warnings.ToArray();
+                        if (AppliedSettings is { } applied)
+                        {
+                            var updated = applied.Copy(); SetPodkopWarningMetadata(updated, podkopWarnings); AppliedSettings = updated;
+                            RuntimeChanged?.Invoke();
+                        }
+                    }
+                }
                 catch (IOException) { Log?.Invoke("Podkop cache refresh failed; active rules were retained."); }
+            foreach (var group in PodkopCatalog.Groups(settings).Where(group => group.Length > 1))
+                try { cache.MergeGroup(group); }
+                catch (Exception error) when (error is IOException or InvalidDataException or System.Text.Json.JsonException)
+                { Log?.Invoke("Podkop combined rule set could not be refreshed; the previous set was retained."); }
+        }
     }
+
+    private static void SetPodkopWarningMetadata(Settings settings, string[] ids) =>
+        settings.WindowsOptions[PodkopCatalog.WarningKey] = new JsonArray(ids.Select(id => (JsonNode)JsonValue.Create(id)!).ToArray());
 
     private ProcessStartInfo StartInfo(string executable, string command)
     {

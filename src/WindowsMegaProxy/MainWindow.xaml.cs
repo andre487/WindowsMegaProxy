@@ -153,6 +153,7 @@ public partial class MainWindow : Window
         SystemEvents.UserPreferenceChanged += ThemeChanged;
         timer.Tick += async (_, _) =>
         {
+            await RefreshServiceStateAsync();
             await RefreshServiceAsync();
             await RefreshConnectionsAsync();
             await RefreshLogAsync();
@@ -333,7 +334,8 @@ public partial class MainWindow : Window
         connectionRows.Clear();
         previousTrafficTime = default;
         TrafficText.Text = "↑ —  ↓ —";
-        ConnectionsHint.Text = StatusText.Text = Ui.T("Service unavailable");
+        ConnectionsHint.Text = Ui.T("Service unavailable");
+        StatusText.Text = Ui.T("Connection unknown");
         tray.Text = BrandLabel("MegaProxy — service unavailable");
         tray.Icon = DisconnectedIcon();
         diagnosticSucceeded = false; checkedSettings = null; lastDiagnosticResult = null; lastSpeedResults = null;
@@ -507,7 +509,7 @@ public partial class MainWindow : Window
         {
             bool connected = engine?.Running == true;
             bool unavailable = service is not null && !serviceAvailable;
-            StatusText.Text = Ui.T(unavailable ? "Service unavailable" : connected ? "Connected" : "Disconnected");
+            StatusText.Text = Ui.T(unavailable ? "Connection unknown" : connected ? "Connected" : "Disconnected");
             trayOpen.Header = BrandLabel("Open MegaProxy");
             trayExit.Header = Ui.T("Exit");
             tray.Text = BrandLabel(unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
@@ -734,6 +736,7 @@ public partial class MainWindow : Window
 
     private void SetBusy(bool value)
     {
+        UpdateServiceStateView();
         bool connecting = connection.State == ConnectionState.Connecting;
         ConnectButton.IsEnabled = canEdit && !quitting && (connecting || !value && (engine?.Running == true || (!testing && CanConnect())));
         ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");

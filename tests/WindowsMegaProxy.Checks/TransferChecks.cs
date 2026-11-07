@@ -93,7 +93,9 @@ internal static class TransferChecks
         Check(Configuration.Signature(current) != before, "Backup network changes require reconnecting.");
         current.Rules.Add(new RoutingRule { Destination = "podkop:youtube,discord", Action = "proxy" });
         var config = Configuration.Build(current, 1, "test");
-        Check(config["route"]!["rule_set"]!.AsArray().Count == 2 && Configuration.BuildRule(current.Rules[0])["rule_set"]!.AsArray().Count == 2, "Podkop lists become native sing-box rule sets.");
+        Check(config["route"]!["rule_set"]!.AsArray().Count == 1 && Configuration.BuildRule(current.Rules[0])["rule_set"]!.AsArray().Count == 1, "Multiple Podkop lists share a deduplicated native rule set.");
+        current.Rules.Add(new RoutingRule { Destination = "podkop:discord,youtube", Action = "block" });
+        Check(Configuration.Build(current, 1, "test")["route"]!["rule_set"]!.AsArray().Count == 1, "Equivalent selections reuse the same set without changing rule actions or priority.");
         Reject(() => Configuration.BuildRule(new RoutingRule { Destination = "podkop:../../bad" }));
         Console.WriteLine("Configuration formats, import review, subscriptions, failover policy and Podkop rules passed.");
     }

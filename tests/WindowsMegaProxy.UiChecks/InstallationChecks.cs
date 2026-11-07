@@ -8,6 +8,10 @@ internal static class InstallationChecks
 {
     public static void Run()
     {
+        if (StartupConfiguration.ServiceStateLabel(System.ServiceProcess.ServiceControllerStatus.Running) != "Service: running" ||
+            StartupConfiguration.ServiceStateLabel(System.ServiceProcess.ServiceControllerStatus.Stopped) != "Service: stopped" ||
+            StartupConfiguration.ServiceStateLabel(System.ServiceProcess.ServiceControllerStatus.StartPending) != "Service: starting…")
+            throw new Exception("Windows service state labels must be independent of tunnel state.");
         foreach (string mode in new[] { "manual", "login", "service" })
         {
             if (StartupConfiguration.Validate(mode) != mode) throw new Exception("Operating mode validation changed its value.");

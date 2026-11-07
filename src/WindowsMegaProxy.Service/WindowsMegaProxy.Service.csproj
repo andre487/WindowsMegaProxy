@@ -7,6 +7,5 @@
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../WindowsMegaProxy.Runtime/WindowsMegaProxy.Runtime.csproj" />
-        <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
     </ItemGroup>
 </Project>

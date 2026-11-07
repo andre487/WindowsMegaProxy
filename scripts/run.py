@@ -8,6 +8,7 @@ import subprocess as sp
 import sys
 import shutil
 import winreg
+import time
 
 from common import ROOT, cli, artifact_root, app_name
 from service_control import require_production_stopped, stop_service, service_state
@@ -29,6 +30,8 @@ kernel32.QueryFullProcessImageNameW.argtypes = [wt.HANDLE, wt.DWORD, wt.LPWSTR, 
 kernel32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
 kernel32.CloseHandle.argtypes = [wt.HANDLE]
 kernel32.GetExitCodeProcess.argtypes = [wt.HANDLE, ct.POINTER(wt.DWORD)]
+kernel32.OpenMutexW.argtypes = [wt.DWORD, wt.BOOL, wt.LPCWSTR]
+kernel32.OpenMutexW.restype = wt.HANDLE
 
 
 def workspace_windows(title="MegaProxy DEV"):
@@ -49,8 +52,30 @@ def workspace_windows(title="MegaProxy DEV"):
     return windows
 
 
+def _app_mutex_exists(dev):
+    handle = kernel32.OpenMutexW(0x100000, False, "Local\\" + app_name(dev))
+    if not handle:
+        if ct.get_last_error() == 2:
+            return False
+        raise ct.WinError(ct.get_last_error())
+    kernel32.CloseHandle(handle)
+    return True
+
+
 def stop_workspace_app(dev=True, workspace_only=True):
-    for window, pid in workspace_windows("MegaProxy DEV" if dev else "MegaProxy"):
+    for _ in range(300):
+        windows = workspace_windows("MegaProxy DEV" if dev else "MegaProxy")
+        if windows:
+            _stop_windows(windows, dev, workspace_only)
+            return
+        if not _app_mutex_exists(dev):
+            return
+        time.sleep(0.1)
+    raise RuntimeError("MegaProxy is still starting or has an open dialog. Close it and retry.")
+
+
+def _stop_windows(windows, dev, workspace_only):
+    for window, pid in windows:
         process = kernel32.OpenProcess(0x1000 | 0x100000, False, pid)
         if not process:
             raise ct.WinError(ct.get_last_error())
@@ -87,7 +112,8 @@ def restart():
     require_production_stopped()
     mode = configured_mode()
     if mode != "manual":
-        sp.run([sys.executable, str(ROOT / "scripts/install.py"), "--dev", "--launch", "--mode", mode, "--elevated"], check=True)
+        print(f"Rebuilding and restarting DEV in {mode} mode...", flush=True)
+        sp.run([sys.executable, str(ROOT / "scripts/install.py"), "--dev", "--launch", "--mode", mode], check=True)
         return
     stop_workspace_app(workspace_only=False)
     stop_service(app_name(True))

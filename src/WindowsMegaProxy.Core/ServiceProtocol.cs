@@ -78,6 +78,7 @@ public static class ServiceView
             }
             result.Profiles.Add(visible);
         }
+        if (source.WindowsOptions[PodkopCatalog.WarningKey] is { } warning) result.WindowsOptions[PodkopCatalog.WarningKey] = warning.DeepClone();
         return result;
     }
 

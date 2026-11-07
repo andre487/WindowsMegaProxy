@@ -31,6 +31,18 @@ def known_folder(identifier):
     return Path(path.value)
 
 
+def print_progress(log, printed=0, final=False):
+    try:
+        content = log.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return printed
+    end = len(content) if final else content.rfind("\n") + 1
+    if end < printed:
+        printed = 0
+    print(content[printed:end], end="", flush=True)
+    return end
+
+
 def elevate(script=None):
     class ShellExecuteInfo(ct.Structure):
         _fields_ = [("cbSize", wt.DWORD), ("fMask", wt.ULONG), ("hwnd", wt.HWND),
@@ -41,6 +53,8 @@ def elevate(script=None):
     script = Path(script or __file__).resolve()
     log = ROOT / f".tools/{script.stem}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("", encoding="utf-8")
+    print("Requesting administrator approval...", flush=True)
     info = ShellExecuteInfo(cbSize=ct.sizeof(ShellExecuteInfo), fMask=0x40, lpVerb="runas", lpFile=sys.executable,
         lpParameters=sp.list2cmdline([str(script), *[arg for arg in sys.argv[1:] if arg != "--elevated"], "--elevated"]), lpDirectory=str(ROOT), nShow=0)
     shell = ct.WinDLL("shell32", use_last_error=True)
@@ -52,12 +66,17 @@ def elevate(script=None):
     kernel.GetExitCodeProcess.argtypes = [wt.HANDLE, ct.POINTER(wt.DWORD)]
     kernel.CloseHandle.argtypes = [wt.HANDLE]
     try:
-        kernel.WaitForSingleObject(info.hProcess, 0xFFFFFFFF)
+        printed = 0
+        while True:
+            state = kernel.WaitForSingleObject(info.hProcess, 250)
+            printed = print_progress(log, printed, final=state == 0)
+            if state == 0:
+                break
+            if state != 258:
+                raise ct.WinError(ct.get_last_error())
         code = wt.DWORD()
         if not kernel.GetExitCodeProcess(info.hProcess, ct.byref(code)):
             raise ct.WinError(ct.get_last_error())
-        if log.exists():
-            print(log.read_text(encoding="utf-8", errors="replace"), end="")
         if code.value:
             raise RuntimeError(f"Installation failed. See {log}.")
     finally:
@@ -175,7 +194,8 @@ def install():
                 original = artifact_root(True) / "app" / (app_name(True) + ".exe")
                 if original.is_file():
                     sp.Popen([str(original)], cwd=ROOT, env=environment)
-            ct.windll.user32.MessageBoxW(None, "Could not finish changing the operating mode. The interface has been reopened when possible. See .tools/install.log.", "MegaProxy DEV", 0x10)
+            details = "See .tools/install.log." if "--elevated" in sys.argv else "See the console output."
+            ct.windll.user32.MessageBoxW(None, "Could not finish changing the operating mode. The interface has been reopened when possible. " + details, "MegaProxy DEV", 0x10)
         raise
 
 

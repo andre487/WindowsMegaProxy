@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace WindowsMegaProxy;
 
@@ -10,6 +12,8 @@ public sealed record PodkopList(string Id, string Name, string[] Paths);
 public static class PodkopCatalog
 {
     public const string BaseUrl = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/";
+    public const string WarningKey = "_podkopWarnings";
+    public static string[] Warnings(Settings? settings) => settings?.WindowsOptions[WarningKey] is JsonArray values ? values.Select(value => value!.GetValue<string>()).ToArray() : [];
     public static IReadOnlyList<PodkopList> Lists { get; } = Create();
     private static PodkopList[] Create()
     {
@@ -43,5 +47,10 @@ public static class PodkopCatalog
     }
 
     public static string[] Used(Settings settings) => settings.Rules.Where(rule => rule.Enabled).SelectMany(rule => Parse(rule.Destination.Trim())).Distinct(StringComparer.Ordinal).ToArray();
-    public static JsonObject Definition(string id) => new() { ["type"] = "local", ["tag"] = "podkop:" + id, ["format"] = "source", ["path"] = "podkop/" + id + ".json" };
+    public static string Tag(IEnumerable<string> ids) => "podkop:" + string.Join('+', ids.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+    public static string FileName(string[] ids) => ids.Length == 1 ? ids[0] + ".json" : "combined-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Tag(ids)))) + ".json";
+    public static IEnumerable<string[]> Groups(Settings settings) => settings.Rules.Where(rule => rule.Enabled).Select(rule => Parse(rule.Destination.Trim()))
+        .Where(ids => ids.Length > 0).GroupBy(Tag, StringComparer.Ordinal).Select(group => group.First().Order(StringComparer.Ordinal).ToArray());
+    public static JsonObject Definition(string id) => Definition([id]);
+    public static JsonObject Definition(string[] ids) => new() { ["type"] = "local", ["tag"] = Tag(ids), ["format"] = "source", ["path"] = "podkop/" + FileName(ids) };
 }

@@ -204,10 +204,26 @@
                         Text="{DynamicResource &quot;Connection&quot;}"
                         Style="{DynamicResource CaptionTextBlockStyle}"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <WrapPanel>
+                        <TextBlock
+                            x:Name="StatusText"
+                            Text="{DynamicResource &quot;Disconnected&quot;}"
+                            Style="{DynamicResource SubtitleTextBlockStyle}"
+                            Margin="0,4,0,4"
+                            AutomationProperties.LiveSetting="Polite" />
+                        <TextBlock
+                            x:Name="ServiceStateText"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Margin="16,4,0,4"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed"
+                            AutomationProperties.LiveSetting="Polite" />
+                    </WrapPanel>
                     <TextBlock
-                        x:Name="StatusText"
-                        Text="{DynamicResource &quot;Disconnected&quot;}"
-                        Style="{DynamicResource SubtitleTextBlockStyle}"
+                        x:Name="RoutingWarningText"
+                        TextWrapping="Wrap"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Visibility="Collapsed"
                         Margin="0,4,0,4"
                         AutomationProperties.LiveSetting="Polite" />
                     <ComboBox

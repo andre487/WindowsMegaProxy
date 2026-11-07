@@ -31,7 +31,7 @@ public static class LogAutoScroll
         var box = (TextBox)sender;
         if ((bool)box.GetValue(ChangingProperty)) return;
         if (e.ExtentHeightChange == 0 && e.ViewportHeightChange == 0) box.SetValue(FollowingProperty, AtBottom(box));
-        else if (IsFollowing(box)) box.ScrollToEnd();
+        else if (IsFollowing(box)) box.ScrollToVerticalOffset(double.MaxValue);
     }
 
     public static void Replace(TextBox box, string text)
@@ -88,13 +88,15 @@ public static class LogAutoScroll
     {
         bool following = IsFollowing(box);
         double offset = box.VerticalOffset;
+        double horizontal = box.HorizontalOffset;
         box.SetValue(ChangingProperty, true);
         update();
         (box.GetValue(ScrollProperty) as DispatcherOperation)?.Abort();
         box.SetValue(ScrollProperty, box.Dispatcher.BeginInvoke(() =>
         {
-            if (following) box.ScrollToEnd();
+            if (following) box.ScrollToVerticalOffset(double.MaxValue);
             else box.ScrollToVerticalOffset(offset);
+            box.ScrollToHorizontalOffset(horizontal);
             box.SetValue(FollowingProperty, following);
             box.SetValue(ChangingProperty, false);
         }, DispatcherPriority.Loaded));

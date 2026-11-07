@@ -912,6 +912,20 @@ internal static class Program
         Assert(LogAutoScroll.IsFollowing(box) && box.VerticalOffset >= box.ExtentHeight - box.ViewportHeight - 1, "Resumed logs continue to follow new entries.");
         LogAutoScroll.Replace(box, box.Text.Replace("entry", "other")); Layout(window);
         Assert(LogAutoScroll.IsFollowing(box) && box.VerticalOffset >= box.ExtentHeight - box.ViewportHeight - 1, "Replacing a bounded log tail without changing its height preserves follow mode.");
+        if (box.TextWrapping == TextWrapping.NoWrap)
+        {
+            LogAutoScroll.Append(box, Environment.NewLine + new string('W', 500)); Layout(window);
+            box.ScrollToHorizontalOffset(0); Layout(window);
+            var point = box.PointToScreen(new Point(12, 12));
+            int coordinates = (unchecked((ushort)(short)point.Y) << 16) | unchecked((ushort)(short)point.X);
+            SendMessage(new WindowInteropHelper(window).Handle, 0x020E, new IntPtr(120 << 16), new IntPtr(coordinates)); Layout(window);
+            Assert(box.HorizontalOffset > 0, "Native horizontal touchpad wheel messages scroll the log under the pointer.");
+            double horizontal = box.HorizontalOffset;
+            LogAutoScroll.Append(box, Environment.NewLine + "horizontal position preserved"); Layout(window);
+            Assert(Math.Abs(box.HorizontalOffset - horizontal) < 1 && LogAutoScroll.IsFollowing(box), "Following new log entries preserves horizontal reading position.");
+            SendMessage(new WindowInteropHelper(window).Handle, 0x020E, new IntPtr(-120 << 16), new IntPtr(coordinates)); Layout(window);
+            Assert(box.HorizontalOffset < horizontal, "Horizontal touchpad scrolling works in both directions.");
+        }
         foreach (var (previous, next) in new[] { ("", "new"), ("abcabc", "abc"), ("aaaa", "aaab"), ("old\nretained\n", "retained\nnew\n"), ("x", ""), ("🇯🇵\n", "🇯🇵\nnext") })
         {
             box.Text = previous;

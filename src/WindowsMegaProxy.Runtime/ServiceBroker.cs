@@ -127,7 +127,7 @@ public sealed class ServiceBroker : IAsyncDisposable
                             }
                             await engine.StartAsync(PortableConfiguration.Copy(settings), request.TestOnly, token).ConfigureAwait(false);
                         }
-                        catch { await StopAsync().ConfigureAwait(false); throw; }
+                        catch (Exception error) { log.Write("Service connection start failed (" + error.GetType().Name + ")."); await StopAsync().ConfigureAwait(false); throw; }
                         if (request.TestOnly)
                         {
                             lease = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

@@ -40,8 +40,10 @@ internal static class UiRecoveryChecks
             typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [new Settings { Language = "en" }]);
             Wait(window, (Task)Field(window, "analysisTask")!);
             Wait(window, Invoke(window, "RefreshServiceAsync"));
-            Assert(((TextBlock)window.FindName("StatusText")).Text == "Service unavailable" && migrations == 0,
+            Assert(((TextBlock)window.FindName("StatusText")).Text == "Connection unknown" && migrations == 0,
                 "An unavailable service cannot overwrite or prematurely migrate settings.");
+            Assert(((TextBlock)window.FindName("ServiceStateText")).Visibility == Visibility.Visible,
+                "Service clients display the Windows service state separately from connection state.");
             Assert(((TextBlock)window.FindName("MessageText")).Text.Contains(AppIdentity.IsDev ? "run.cmd" : "install.cmd --mode service"),
                 "Repair instructions must target the same build channel.");
             var first = new RecoveryFixture(store, pipe);

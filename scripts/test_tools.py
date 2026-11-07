@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import io
+from contextlib import redirect_stdout
 
 from PIL import Image
 
@@ -92,12 +94,17 @@ class ToolsChecks(unittest.TestCase):
             build.assert_not_called()
             cleanup.assert_not_called()
 
+    def test_graceful_stop_waits_for_a_starting_instance(self):
+        with patch("run.workspace_windows", side_effect=[[], []]), patch("run._app_mutex_exists", side_effect=[True, False]), patch("run.time.sleep") as wait:
+            dev_runner.stop_workspace_app(dev=True, workspace_only=False)
+        wait.assert_called_once_with(0.1)
+
     def test_failed_mode_switch_reopens_the_ui_and_reports_the_log(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "app").mkdir()
             (root / "app/WindowsMegaProxy.Dev.exe").write_bytes(b"fixture")
-            with patch("sys.argv", ["install.py", "--dev", "--launch", "--mode", "login"]), \
+            with patch("sys.argv", ["install.py", "--dev", "--launch", "--mode", "login", "--elevated"]), \
                  patch("install.install_main", side_effect=RuntimeError("synthetic deployment failure")), \
                  patch("install.artifact_root", return_value=root), patch("run.workspace_windows", return_value=[]), \
                  patch("install.sp.Popen") as restart, patch("ctypes.windll.user32.MessageBoxW") as report:
@@ -105,6 +112,16 @@ class ToolsChecks(unittest.TestCase):
                     installer.install()
             self.assertEqual(Path(restart.call_args.args[0][0]).name, "WindowsMegaProxy.Dev.exe")
             self.assertIn(".tools/install.log", report.call_args.args[1])
+
+    def test_elevated_progress_is_streamed_once_and_preserves_partial_lines(self):
+        with tempfile.TemporaryDirectory() as temporary, redirect_stdout(io.StringIO()) as output:
+            log = Path(temporary) / "progress.log"
+            log.write_text("Building\nPart", encoding="utf-8")
+            printed = installer.print_progress(log)
+            log.write_text("Building\nPartial line\nFinished", encoding="utf-8")
+            printed = installer.print_progress(log, printed)
+            installer.print_progress(log, printed, final=True)
+        self.assertEqual(output.getvalue(), "Building\nPartial line\nFinished")
 
     def test_stop_service_waits_for_an_existing_stop(self):
         with patch("service_control.service_state", side_effect=[3, 1]), patch("service_control.sp.run") as control, \

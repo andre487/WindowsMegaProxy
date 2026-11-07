@@ -9,7 +9,7 @@ from common import ROOT, cli, dotnet
 from install import known_folder
 from service_control import running_images, service_state, system_executable
 from uninstall_dev import NAME, RUN_KEY, startup_records
-from run import stop_workspace_app
+from run import stop_workspace_app, workspace_windows
 
 
 def main():
@@ -37,8 +37,8 @@ def main():
                 sp.run([str(ROOT / "scripts/.venv/Scripts/python.exe"), str(ROOT / "scripts/run.py"), "--elevated"], check=True, timeout=600)
                 with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + NAME) as key:
                     assert winreg.QueryValueEx(key, "Mode")[0] == "login", "run.cmd must preserve the selected DEV mode."
-                for _ in range(40):
-                    if "windowsmegaproxy.dev.exe" in running_images():
+                for _ in range(120):
+                    if "windowsmegaproxy.dev.exe" in running_images() and workspace_windows():
                         break
                     time.sleep(0.25)
                 else:
