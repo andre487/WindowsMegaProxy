@@ -3,6 +3,7 @@ import csv
 import ctypes as ct
 import json
 import os
+import shutil
 import subprocess as sp
 import time
 import winreg
@@ -144,7 +145,15 @@ def check_legacy_upgrade(setup, logs, destination, data):
         if not (destination / "versions").exists():
             break
         time.sleep(0.5)
+    client_log = known_folder(0x1c) / "WindowsMegaProxy/logs/current.log"
+    if client_log.is_file():
+        shutil.copy2(client_log, logs / "legacy-upgrade-client.log")
     assert not (destination / "versions").exists(), "Upgrade must remove legacy versions after the old updater exits."
+    for _ in range(120):
+        if workspace_windows("MegaProxy"):
+            break
+        time.sleep(0.25)
+    assert workspace_windows("MegaProxy"), "Automatic updates must reopen the new application."
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
         assert Path(winreg.QueryValueEx(key, "HelperPath")[0]).parent == destination
         assert winreg.QueryValueEx(key, "Mode")[0] == "service"

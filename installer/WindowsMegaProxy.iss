@@ -77,9 +77,7 @@ Type: files; Name: "{code:RuntimePath}\user-installation.sid"; Check: IsUserInst
 Type: dirifempty; Name: "{code:RuntimePath}"; Check: IsUserInstall
 
 [Run]
-Filename: "{code:RuntimePath}\WindowsMegaProxy.Service.exe"; Parameters: "--cleanup-installation"; Flags: nowait runhidden; Check: CanLaunch
-Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: CanLaunch
-Filename: "{code:LaunchPath}"; Flags: nowait runasoriginaluser; Check: IsUpdateInstall
+Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]
 var OwnerSid, PreviousHelper, PreviousMode: String;
@@ -138,11 +136,6 @@ begin
 end;
 
 function LaunchPath(Param: String): String; forward;
-
-function CanLaunch: Boolean;
-begin
-  Result := ModeConfigured;
-end;
 
 function IsUpdateInstall: Boolean;
 begin
@@ -318,6 +311,14 @@ begin
     end;
     ModeConfigured := True;
     ConfigurationFailed := False;
+  end;
+  if (Step = ssDone) and ModeConfigured then begin
+    { Regular Run entries execute before ssPostInstall has configured the mode. }
+    if not Exec(RuntimePath('') + '\WindowsMegaProxy.Service.exe', '--cleanup-installation', '', SW_HIDE, ewNoWait, Code) then
+      Log('Could not start installation cleanup.');
+    if IsUpdateInstall and WizardSilent then
+      if not ExecAsOriginalUser(LaunchPath(''), '', '', SW_SHOWNORMAL, ewNoWait, Code) then
+        Log('Could not reopen MegaProxy after updating.');
   end;
 end;
 
