@@ -15,13 +15,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-import virus_total as vt
 from authenticode import PUBLIC_CERTIFICATE
 
 START = "<!-- megaproxy-virustotal -->"
 END = "<!-- /megaproxy-virustotal -->"
 METADATA = {"SHA256SUMS", "update-manifest.json", "update-manifest.sig", "update-public-key.txt"}
-REPORTS = {"VIRUSTOTAL.md", "VIRUSTOTAL.json"}
 
 
 def has_current_authenticode(directory):
@@ -62,7 +60,7 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def verify(directory, tag, commit, reports=False):
+def verify(directory, tag, commit):
     manifest_bytes = (directory / "update-manifest.json").read_bytes()
     manifest = json.loads(manifest_bytes)
     if (manifest.get("schemaVersion") != 1 or manifest.get("preview") is not False
@@ -86,22 +84,15 @@ def verify(directory, tag, commit, reports=False):
     seen = set()
     for line in (directory / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([a-f0-9]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)", line)
-        if not match or match[2] not in expected | REPORTS or match[2] in seen:
+        if match and match[2] in {"VIRUSTOTAL.md", "VIRUSTOTAL.json"}:
+            continue  # Older checksum lists may include optional diagnostics.
+        if not match or match[2] not in expected or match[2] in seen:
             raise RuntimeError("Invalid release checksum entry")
         seen.add(match[2])
         if digest(directory / match[2]) != match[1]:
             raise RuntimeError("Release checksum mismatch")
     if not expected <= seen:
         raise RuntimeError("Release checksums are incomplete")
-    if reports:
-        rows = json.loads((directory / "VIRUSTOTAL.json").read_text(encoding="utf-8"))
-        paths = vt.targets(directory)
-        if (not isinstance(rows, list) or len(rows) != len(paths)
-                or any(sum(vt.valid_row(row, path) for row in rows) != 1 for path in paths)
-                or any(row["stats"]["malicious"] or row["stats"]["suspicious"] for row in rows)):
-            raise RuntimeError("Completed clean VirusTotal reports for both release files are required")
-        # Render from validated fields, never append arbitrary downloaded Markdown to release notes.
-        vt.write_report(directory, rows, True)
     return files
 
 
@@ -113,7 +104,7 @@ def download_release(state, repo, tag, directory):
             return False
         raise RuntimeError("Published release assets are incomplete; refusing to replace them")
     arguments = ["release", "download", tag, "--repo", repo, "--dir", str(directory)]
-    for name in sorted(required | (REPORTS & available)):
+    for name in sorted(required):
         arguments += ["--pattern", name]
     gh(*arguments)
     return True
@@ -142,27 +133,24 @@ def restore(directory, repo, tag, commit, run_id=None):
                 gh("run", "download", str(run_id), "--repo", repo, "--name", "release-packages", "--dir", str(staging))
                 verify(staging, tag, commit)
                 restored = True
-                if "virustotal-" + tag in existing:
-                    gh("run", "download", str(run_id), "--repo", repo, "--name", "virustotal-" + tag, "--dir", str(staging))
         if restored and (state is None or state["draft"]) and not has_current_authenticode(staging):
             return False
         if not restored:
             return False
         directory.mkdir(parents=True, exist_ok=True)
-        for path in staging.iterdir():
-            if path.is_file():
-                shutil.copy2(path, directory / path.name)
+        for name in verify(staging, tag, commit):
+            shutil.copy2(staging / name, directory / name)
         print("Restored original release files; rebuilding is unnecessary.")
         return True
 
 
-def release_notes(body, report):
+def release_notes(body):
     body = re.sub(re.escape(START) + ".*?" + re.escape(END), "", body, flags=re.S).rstrip()
-    return body + "\n\n" + START + "\n" + report + END + "\n"
+    return body + "\n"
 
 
 def publish(directory, repo, tag, commit, notes_path):
-    names = verify(directory, tag, commit, reports=True) | REPORTS
+    names = verify(directory, tag, commit)
     state = release_state(repo, tag)
     if (state is None or state["draft"]) and not has_current_authenticode(directory):
         raise RuntimeError("New releases require packages signed with the current Windows certificate.")
@@ -173,13 +161,13 @@ def publish(directory, repo, tag, commit, notes_path):
             original.mkdir()
             download_release(state, repo, tag, original)
             verify(original, tag, commit)
-            if any(digest(original / name) != digest(directory / name) for name in names - REPORTS):
+            if any(digest(original / name) != digest(directory / name) for name in names):
                 raise RuntimeError("Published release differs from these packages; refusing to replace assets")
             body = state.get("body") or ""
         else:
             body = notes_path.read_text(encoding="utf-8")
         notes = temporary / "notes.md"
-        notes.write_text(release_notes(body, (directory / "VIRUSTOTAL.md").read_text(encoding="utf-8")), encoding="utf-8")
+        notes.write_text(release_notes(body), encoding="utf-8")
         if state is None:
             gh("release", "create", tag, "--repo", repo, "--verify-tag", "--draft", "--title", tag, "--notes-file", str(notes))
         if state is None or state["draft"]:
@@ -191,7 +179,7 @@ def publish(directory, repo, tag, commit, notes_path):
             gh("release", "edit", tag, "--repo", repo, "--notes-file", str(notes), "--draft=false")
         else:
             gh("release", "edit", tag, "--repo", repo, "--notes-file", str(notes))
-            print("Published assets preserved; VirusTotal links are up to date.")
+            print("Published assets preserved; release notes are up to date.")
 
 
 def main():
@@ -213,7 +201,7 @@ def main():
             with open(output, "a", encoding="utf-8") as stream:
                 stream.write(f"reused={str(reused).lower()}\n")
     else:
-        publish(args.artifacts, repo, tag, commit, Path("release-notes") / (tag + ".md"))
+        publish(args.artifacts, repo, tag, commit, Path(__file__).resolve().parent.parent / "release-notes" / (tag + ".md"))
 
 
 if __name__ == "__main__":
@@ -223,4 +211,4 @@ if __name__ == "__main__":
         raise SystemExit(str(error)) from None
     except Exception:
         # Network payloads, credentials and upload URLs must never enter action logs.
-        raise SystemExit("Release operation failed; publication stopped. Verify original assets, checksums and VirusTotal reports.") from None
+        raise SystemExit("Release operation failed; publication stopped. Verify original assets, signatures and checksums.") from None

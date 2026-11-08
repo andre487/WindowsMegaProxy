@@ -100,34 +100,25 @@ jobs:
         with:
           name: release-packages
           path: |
-            artifacts/release/*
-            !artifacts/release/VIRUSTOTAL.*
+            artifacts/release/WindowsMegaProxy-*.zip
+            artifacts/release/WindowsMegaProxy-*.exe
+            artifacts/release/SHA256SUMS
+            artifacts/release/update-manifest.*
+            artifacts/release/update-public-key.txt
           if-no-files-found: error
           retention-days: 14
           overwrite: true
 
-      - name: Scan the installer and application archive with VirusTotal
-        timeout-minutes: 35
-        shell: cmd
-        env:
-          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
-        run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/virus_total.py
-
-      - name: Preserve VirusTotal reports, including incomplete scans
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: virustotal-${{ env.RELEASE_TAG }}
-          path: artifacts/release/VIRUSTOTAL.*
-          retention-days: 30
-          if-no-files-found: warn
-          overwrite: true
-
-      - name: Preserve packages and completed reports for publication
+      - name: Preserve verified packages for publication
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-ready
-          path: artifacts/release/*
+          path: |
+            artifacts/release/WindowsMegaProxy-*.zip
+            artifacts/release/WindowsMegaProxy-*.exe
+            artifacts/release/SHA256SUMS
+            artifacts/release/update-manifest.*
+            artifacts/release/update-public-key.txt
           if-no-files-found: error
           retention-days: 14
           overwrite: true

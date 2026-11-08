@@ -59,8 +59,6 @@ public sealed partial class Engine : IEngine
     private async Task StartSelectedAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
     {
         if (Running) return;
-        if (Configuration.RequiresHttp3(settings) && !settings.Http3Enabled)
-            throw new InvalidOperationException("Enable HTTP/3 in settings before using this profile.");
         if (AppIdentity.IsDev && !testOnly)
             foreach (string name in new[] { "WindowsMegaProxy", "WindowsMegaProxy.Service" })
                 foreach (var production in Process.GetProcessesByName(name))
@@ -124,8 +122,7 @@ public sealed partial class Engine : IEngine
     }
 
     private string CoreExecutable(bool http3) => (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(http3 ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
-        ?? (AppIdentity.IsDev ? Path.Combine(AppContext.BaseDirectory, "dependencies", http3 ? "sing-box-h3" : "sing-box", AppIdentity.CoreExecutable)
-            : CoreInstallation.Resolve(http3));
+        ?? Path.Combine(AppContext.BaseDirectory, "dependencies", http3 ? "sing-box-h3" : "sing-box", AppIdentity.CoreExecutable);
 
     private async Task StartCoreAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
     {
@@ -163,10 +160,7 @@ public sealed partial class Engine : IEngine
         {
             ["inbound"] = new JsonArray("diagnostic-proxy"), ["action"] = "route", ["outbound"] = SelectedOutbound
         });
-        string coreVersion = Http3Selected ? Configuration.Http3CoreVersion : Configuration.CoreVersion;
-        if (!AppIdentity.IsDev && (!allowEnvironmentOverrides || Environment.GetEnvironmentVariable(Http3Selected ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") is null) &&
-            CoreInstallation.Stable() is { } installed && string.Equals(installed.Path, executable, StringComparison.OrdinalIgnoreCase)) coreVersion = installed.Version;
-        Log?.Invoke($"Starting {coreVersion} core; HTTP/3={Http3Selected}; TUN={!testOnly}.");
+        Log?.Invoke($"Starting {(Http3Selected ? Configuration.Http3CoreVersion : Configuration.CoreVersion)} core; HTTP/3={Http3Selected}; TUN={!testOnly}.");
         client.Dispose();
         client = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
         client.BaseAddress = new Uri($"http://127.0.0.1:{port}/");

@@ -46,6 +46,29 @@ def row(path, malicious=0):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class VirusTotalTests(unittest.TestCase):
+    def test_manual_key_file_supports_bom_and_environment_override(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            key = Path(temporary) / "key.txt"
+            key.write_text("a" * 64 + "\n", encoding="utf-8-sig")
+            with patch.dict("os.environ", {"VIRUSTOTAL_API_KEY": ""}):
+                self.assertEqual(vt.local_key(key), "a" * 64)
+            with patch.dict("os.environ", {"VIRUSTOTAL_API_KEY": "b" * 64}):
+                self.assertEqual(vt.local_key(key), "b" * 64)
+
+    def test_manual_reports_do_not_modify_build_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory, output = Path(temporary) / "build", Path(temporary) / "reports"
+            rows = fixture(directory)
+            for name in ("VIRUSTOTAL.json", "VIRUSTOTAL.md"):
+                (directory / name).unlink()
+            before = (directory / "SHA256SUMS").read_bytes()
+            with patch.object(vt, "Client") as client:
+                client.return_value.scan.side_effect = rows
+                vt.scan_artifacts(directory, output, "a" * 64)
+            self.assertTrue((output / "VIRUSTOTAL.json").is_file())
+            self.assertFalse((directory / "VIRUSTOTAL.json").exists())
+            self.assertEqual((directory / "SHA256SUMS").read_bytes(), before)
+
     def test_existing_hash_reports_are_reused_without_an_api_key(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -65,7 +88,7 @@ class VirusTotalTests(unittest.TestCase):
                 vt.scan_artifacts(directory)
             client.assert_not_called()
 
-    def test_partial_scan_retains_the_completed_report_and_blocks_publication(self):
+    def test_partial_scan_keeps_local_results_without_blocking_release_verification(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             rows = fixture(directory)
@@ -76,8 +99,7 @@ class VirusTotalTests(unittest.TestCase):
                     vt.scan_artifacts(directory)
             self.assertEqual(len(json.loads((directory / "VIRUSTOTAL.json").read_text())), 1)
             self.assertIn("Scan incomplete", (directory / "VIRUSTOTAL.md").read_text())
-            with self.assertRaises(RuntimeError):
-                release.verify(directory, TAG, COMMIT, reports=True)
+            release.verify(directory, TAG, COMMIT)
 
     def test_detected_files_are_rescanned_on_retry_and_only_fresh_clean_results_unblock(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -151,6 +173,19 @@ class VirusTotalTests(unittest.TestCase):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class ReleaseRetryTests(unittest.TestCase):
+    def test_publication_neither_requires_nor_uploads_antivirus_reports(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "build"
+            fixture(directory)
+            (directory / "VIRUSTOTAL.json").write_text('{"unrelated": "local diagnostic"}')
+            (directory / "VIRUSTOTAL.md").unlink()
+            notes = Path(temporary) / "notes.md"
+            notes.write_text("Release notes")
+            with patch.object(release, "release_state", side_effect=[None, {"draft": True}]), patch.object(release, "gh") as gh:
+                release.publish(directory, REPO, TAG, COMMIT, notes)
+            upload = next(call.args for call in gh.call_args_list if call.args[:2] == ("release", "upload"))
+            self.assertFalse(any("VIRUSTOTAL" in argument for argument in upload))
+
     def test_github_utf8_json_is_read_correctly_on_a_windows_ansi_locale(self):
         payload = {"draft": False, "tag_name": TAG, "body": "Release notes: \u0441\u0431\u043e\u0440\u043a\u0430 \u65e5\u672c"}
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -170,11 +205,11 @@ class ReleaseRetryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "^GitHub command failed: release upload$"):
                 release.gh("release", "upload", TAG)
 
-    def test_manifest_signature_hashes_and_reports_are_required(self):
+    def test_manifest_signature_and_hashes_are_required(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             fixture(directory)
-            release.verify(directory, TAG, COMMIT, reports=True)
+            release.verify(directory, TAG, COMMIT)
             with self.assertRaises(RuntimeError):
                 release.verify(directory, TAG, "b" * 40)
             path = directory / release.package_names(TAG)["app"]
@@ -205,7 +240,7 @@ class ReleaseRetryTests(unittest.TestCase):
                 notes.append(Path(args[args.index("--notes-file") + 1]).read_text())
             with patch.object(release, "release_state", return_value=state), patch.object(release, "download_release", side_effect=download), patch.object(release, "gh", side_effect=gh):
                 release.publish(directory, REPO, TAG, COMMIT, Path("unused"))
-            self.assertEqual(notes[0].count(release.START), 1)
+            self.assertNotIn(release.START, notes[0])
             self.assertIn("User notes", notes[0])
 
     def test_published_files_cannot_be_replaced_by_a_rebuild(self):
@@ -246,6 +281,7 @@ class ReleaseRetryTests(unittest.TestCase):
             with patch.object(release, "release_state", return_value={"draft": True, "assets": []}), patch.object(release, "gh", side_effect=gh):
                 self.assertTrue(release.restore(destination, REPO, TAG, COMMIT, "123"))
             self.assertEqual((destination / "update-manifest.json").read_bytes(), (source / "update-manifest.json").read_bytes())
+            self.assertFalse((destination / "VIRUSTOTAL.json").exists())
 
     def test_unsigned_checkpoint_is_rebuilt_instead_of_reused(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -10,7 +10,7 @@ import release_notes as notes
 def published(tag, date="2026-11-01T12:00:00Z"):
     return {"tag_name": tag, "published_at": date, "draft": False, "prerelease": False,
             "assets": [{"name": name, "size": 100, "state": "uploaded"}
-                       for name in set(notes.package_names(tag).values()) | notes.METADATA | notes.REPORTS]}
+                       for name in set(notes.package_names(tag).values()) | notes.METADATA]}
 
 
 class ReleaseNotesTests(unittest.TestCase):

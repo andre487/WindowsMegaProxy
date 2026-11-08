@@ -28,7 +28,6 @@ public sealed class Settings
     public string Language { get; set; } = Ui.DefaultLanguage(Ui.WindowsLanguage);
     public string Theme { get; set; } = "auto";
     public string TlsFingerprint { get; set; } = "default";
-    public bool Http3Enabled { get; set; }
     public List<RoutingRule> Rules { get; set; } = [];
 
     [JsonIgnore] public ProxyProfile? ActiveProfile => Profiles.FirstOrDefault(profile => profile.Id == ActiveProfileId);
@@ -98,7 +97,6 @@ public static class Configuration
         var snapshot = new JsonObject
         {
             ["failover"] = FailoverPolicy.Signature(settings),
-            ["http3Enabled"] = settings.Http3Enabled,
             ["configuration"] = Configuration.Build(settings, 1, "snapshot", allowUnresolvedSsh: true),
             ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? ResolveTlsFingerprint(settings.TlsFingerprint) : null,
             ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,

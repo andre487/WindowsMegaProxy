@@ -52,7 +52,7 @@ class Client:
         req = urllib.request.Request(url, data=body, headers=headers)
         try:
             with self.opener.open(
-                req, timeout=min(120, self.deadline - time.monotonic())
+                req, timeout=min(600 if body is not None else 120, self.deadline - time.monotonic())
             ) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
@@ -155,7 +155,7 @@ def valid_row(row, path):
 def write_report(directory, rows, complete):
     report = "## VirusTotal\n\n"
     if not complete:
-        report += "**Scan incomplete; release publication blocked.**\n\n"
+        report += "**Scan incomplete; results are partial.**\n\n"
     report += "| File | Malicious | Suspicious | Report |\n| --- | --- | --- | --- |\n"
     for row in rows:
         stats = row["stats"]
@@ -163,15 +163,14 @@ def write_report(directory, rows, complete):
     report += "\nCompleted engine verdicts are a point-in-time check, not a guarantee of safety. See each report for unsupported engines, failures and timeouts.\n"
     (directory / "VIRUSTOTAL.md").write_text(report, encoding="utf-8")
     (directory / "VIRUSTOTAL.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
-    if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(summary, "a", encoding="utf-8") as output:
-            output.write(report)
 
 
-def scan_artifacts(directory):
+def scan_artifacts(directory, output=None, key=None):
+    output = Path(output) if output is not None else directory
+    output.mkdir(parents=True, exist_ok=True)
     paths = targets(directory)
     try:
-        cached = json.loads((directory / "VIRUSTOTAL.json").read_text(encoding="utf-8"))
+        cached = json.loads((output / "VIRUSTOTAL.json").read_text(encoding="utf-8"))
         if not isinstance(cached, list):
             cached = []
     except (FileNotFoundError, ValueError):
@@ -184,7 +183,7 @@ def scan_artifacts(directory):
             row = next((row for row in cached if valid_row(row, path)
                         and not row["stats"]["malicious"] and not row["stats"]["suspicious"]), None)
             if row is None:
-                client = client or Client(os.environ.get("VIRUSTOTAL_API_KEY", "").strip())
+                client = client or Client(key or os.environ.get("VIRUSTOTAL_API_KEY", "").strip())
                 print(f"Scanning {path.name}", flush=True)
                 row = client.scan(path)
                 if not valid_row(row, path):
@@ -194,17 +193,28 @@ def scan_artifacts(directory):
             rows.append(row)
         complete = True
     finally:
-        write_report(directory, rows, complete)
+        write_report(output, rows, complete)
     if any(row["stats"]["malicious"] or row["stats"]["suspicious"] for row in rows):
-        raise RuntimeError("VirusTotal detections require review; publication blocked")
+        raise RuntimeError("VirusTotal detections require review; see the local report.")
+
+
+def local_key(path=None):
+    if key := os.environ.get("VIRUSTOTAL_API_KEY", "").strip():
+        return key
+    path = path or Path(os.environ["LOCALAPPDATA"]) / "MegaProxy/DeveloperSecrets/WindowsMegaProxy/virus-total.txt"
+    if not path.is_file():
+        raise RuntimeError("Set VIRUSTOTAL_API_KEY or provide --key-file with a VirusTotal API key.")
+    return path.read_text(encoding="utf-8-sig").strip()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--artifacts", type=Path, default=Path("artifacts/release"))
+    parser.add_argument("--artifacts", type=Path, default=Path("artifacts/release-preview"))
+    parser.add_argument("--output", type=Path, default=Path("artifacts/virustotal"), help="Local report directory; never uploaded automatically")
+    parser.add_argument("--key-file", type=Path, help="Defaults to the local developer secrets directory")
     args = parser.parse_args()
     try:
-        scan_artifacts(args.artifacts)
+        scan_artifacts(args.artifacts, args.output, local_key(args.key_file))
     except (RuntimeError, KeyError, TypeError, ValueError, OSError, AttributeError) as error:
         message = str(error) if isinstance(error, RuntimeError) else "VirusTotal operation failed"
         raise SystemExit(message) from None

@@ -14,7 +14,6 @@ public sealed class ImportReview
     public List<ImportOption> Options { get; } = [];
     public List<ProxyProfile> Missing { get; }
     public bool HasGlobalOptions { get; }
-    public bool EnablesHttp3 { get; }
     public bool UnsafeTrust => Import.Profiles.Any(profile => Unsafe(profile.Proxy));
     private static bool Unsafe(JsonObject proxy) => new[] { "allowInvalidProxyCertificate", "acceptAnyHostKey" }.Any(key => proxy[key]?.GetValue<bool>() == true)
         || proxy["jump"] is JsonObject jump && Unsafe(jump);
@@ -26,7 +25,6 @@ public sealed class ImportReview
         this.current = current.Copy();
         ProfileTransfer.MatchListProfiles(import, current.Profiles, subscription: false);
         var candidate = PortableConfiguration.Import(import.Document.ToJsonString(), current);
-        EnablesHttp3 = !current.Http3Enabled && candidate.Http3Enabled;
         foreach (var profile in import.Profiles)
         {
             var old = current.Profiles.FirstOrDefault(item => item.Id == profile.Id);
@@ -63,7 +61,7 @@ public sealed class ImportReview
         return result;
     }
 
-    public Settings Apply(ISet<string> selected, bool applyGlobals, ISet<string> removeIds, bool allowHttp3Enable = false)
+    public Settings Apply(ISet<string> selected, bool applyGlobals, ISet<string> removeIds)
     {
         var document = (JsonObject)Import.Document.DeepClone();
         foreach (var node in document["profiles"]!.AsArray())
@@ -116,7 +114,6 @@ public sealed class ImportReview
             result.AutoConnect = current.AutoConnect; result.LogSizeMb = current.LogSizeMb;
             result.ShowAllConnections = current.ShowAllConnections; result.Language = current.Language; result.Theme = current.Theme;
             result.TlsFingerprint = current.TlsFingerprint; result.LaunchAtSignIn = current.LaunchAtSignIn;
-            result.Http3Enabled = current.Http3Enabled;
             result.WindowsOptions = (JsonObject)current.WindowsOptions.DeepClone();
             result.Rules = current.Rules.Select(rule => rule.Copy()).ToList();
             result.ActiveProfileId = current.ActiveProfileId;
@@ -125,11 +122,6 @@ public sealed class ImportReview
                 result.SharedOptions.Remove(key);
                 if (current.SharedOptions.ContainsKey(key)) result.SharedOptions[key] = current.SharedOptions[key]?.DeepClone();
             }
-        }
-        if (EnablesHttp3 && !allowHttp3Enable)
-        {
-            result.Http3Enabled = false;
-            result.WindowsOptions["http3Enabled"] = false;
         }
         var allowed = Missing.Select(profile => profile.Id).ToHashSet();
         if (!removeIds.IsSubsetOf(allowed)) throw new ArgumentException("Only missing profiles can be removed during import.");

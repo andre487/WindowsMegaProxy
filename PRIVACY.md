@@ -82,7 +82,9 @@ Information you post in public GitHub issues or pull requests is public and is
 also subject to GitHub's policies. Do not post credentials or private logs.
 
 Release automation uses OpenAI to draft release notes from public repository
-changes and submits release installers and application archives to VirusTotal.
+changes. It does not automatically submit builds to antivirus services. The
+optional manual VirusTotal tool uploads only the selected build installer and
+application archive when explicitly run by a developer.
 These processes concern project source and distributable build files, not
 configuration or traffic collected from installed clients. VirusTotal submissions
 should be treated as shared with that service and its analysis ecosystem.

@@ -118,11 +118,10 @@ timestamping. Pull-request CI never receives the permanent signing secrets.
 
 ## Use files locally
 
-The VirusTotal API key in `virus-total.txt` is used by the release workflow as
-`VIRUSTOTAL_API_KEY`. It scans the native installer and `*-app.zip`, publishes
-Markdown/JSON reports and blocks publication on detections or incomplete scans.
-Reports are bound to SHA-256 hashes and reused only for identical files on retry.
-The build scripts do not read this credential automatically.
+The optional `virus-total.txt` key is read only by `check-virus-total.cmd`, or
+supplied with `VIRUSTOTAL_API_KEY` / `--key-file`. Reports stay in the ignored
+`artifacts/virustotal` directory. CI and release workflows do not use this key,
+upload files to VirusTotal or publish scan reports.
 
 Load only what a command needs into the current PowerShell process:
 
@@ -152,7 +151,6 @@ stdin without placing their contents in command history or arguments:
 $secretDir = Join-Path $env:LOCALAPPDATA 'MegaProxy\DeveloperSecrets\WindowsMegaProxy'
 Get-Content -LiteralPath "$secretDir\release-bot-token.txt" -Raw | gh secret set RELEASE_BOT_TOKEN --repo andre487/WindowsMegaProxy
 Get-Content -LiteralPath "$secretDir\update-signing-key.txt" -Raw | gh secret set UPDATE_SIGNING_KEY --repo andre487/WindowsMegaProxy
-Get-Content -LiteralPath "$secretDir\virus-total.txt" -Raw | gh secret set VIRUSTOTAL_API_KEY --repo andre487/WindowsMegaProxy
 ```
 
 Upload the CI service-account key for note generation as

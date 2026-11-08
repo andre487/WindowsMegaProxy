@@ -5,6 +5,7 @@ import subprocess as sp
 from pathlib import Path
 
 from common import SDK_VERSION, core_mirrors, download, extract, open_download
+from service_control import system_executable
 
 CORE_VERSION = "1.14.4"
 CORE_HASH = "99185d75d314a07dbba4a130c8ad986cbeb629a07927975636b341ca61f991df"
@@ -14,15 +15,16 @@ CORE_ASSET_ID = 669527524
 H3_CORE_ASSET_ID = 669516594
 
 
-def install_machine_dependencies(*, runtime_only=False):
-    winget = shutil.which("winget.exe")
-    if winget is None:
-        raise RuntimeError("Windows Package Manager (App Installer) is required. Install it and retry.")
-    packages = ["Microsoft.DotNet.DesktopRuntime.10"] if runtime_only else ["SagerNet.sing-box", "Microsoft.DotNet.DesktopRuntime.10"]
-    result = sp.run([winget, "install", *packages, "--exact", "--source", "winget", "--scope", "machine", "--architecture", "x64",
-                     "--silent", "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity"], check=False)
-    if result.returncode not in (0, -1978335189, 0x8A15002B):
-        raise RuntimeError(f"WinGet dependency installation failed ({result.returncode}).")
+def install_openssh():
+    scanner = Path(system_executable("OpenSSH/ssh-keyscan.exe"))
+    if scanner.is_file():
+        return
+    dism = system_executable("dism.exe")
+    result = sp.run([str(dism), "/Online", "/Add-Capability", "/CapabilityName:OpenSSH.Client~~~~0.0.1.0", "/NoRestart"], check=False)
+    if result.returncode == 3010:
+        raise RuntimeError("Restart Windows before continuing installation.")
+    if result.returncode or not scanner.is_file():
+        raise RuntimeError("OpenSSH Client installation failed. Check Windows Update access and retry.")
 
 
 def release():

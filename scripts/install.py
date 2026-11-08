@@ -10,7 +10,7 @@ from ctypes import wintypes as wt
 from pathlib import Path
 
 from common import ROOT, app_name, artifact_root, cli
-from dependencies import install_core, install_machine_dependencies
+from dependencies import install_core, install_openssh
 from package import merge
 
 
@@ -142,7 +142,7 @@ def install_main():
     if not (sources[0] / (name + ".exe")).is_file() or not (sources[1] / (name + ".Service.exe")).is_file():
         raise RuntimeError("Run build.cmd before installation.")
     cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
-    install_machine_dependencies()
+    install_openssh()
     root = known_folder(0x26) / name
     target = root / "versions" / f"local-{time.time_ns()}"
     for directory in (root, root / "versions", target):
@@ -153,9 +153,9 @@ def install_main():
         if any(entry.is_symlink() or entry.is_junction() for entry in source.rglob("*")):
             raise RuntimeError("Application files cannot contain links.")
         merge(source, target)
+    install_core(target / "dependencies/sing-box", cache)
+    install_core(target / "dependencies/sing-box-h3", cache, http3=True)
     if options.dev:
-        install_core(target / "dependencies/sing-box", cache)
-        install_core(target / "dependencies/sing-box-h3", cache, http3=True)
         for directory in ("sing-box", "sing-box-h3"):
             (target / "dependencies" / directory / "sing-box.exe").rename(target / "dependencies" / directory / "sing-box-dev.exe")
     run(str(target / (name + ".Service.exe")), "--configure-mode", options.mode)

@@ -28,6 +28,8 @@ bld/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+VIRUSTOTAL.json
+VIRUSTOTAL.md
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

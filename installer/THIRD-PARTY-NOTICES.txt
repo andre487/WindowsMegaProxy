@@ -13,8 +13,8 @@ Stable source: https://github.com/SagerNet/sing-box/tree/v1.14.4
 HTTP/3 source: https://github.com/SagerNet/sing-box/tree/v1.15.0-alpha.13
 Releases: https://github.com/SagerNet/sing-box/releases
 Build metadata and upstream dependencies: run sing-box.exe version -m.
-Stable sing-box is installed through WinGet. An optional HTTP/3 core is downloaded
-only when needed, after confirmation, and checked against pinned SHA-256 hashes.
+Both sing-box versions are bundled unmodified from official releases, with pinned
+archive SHA-256 hashes. The profile transport selects the version automatically.
 Cronet (libcronet.dll) is installed unmodified from those packages.
 Cronet-Go source: https://github.com/SagerNet/cronet-go/tree/0d28acc44093
 Cronet-Go license: licenses/Cronet-Go-LICENSE.txt.
@@ -25,6 +25,7 @@ WindowsMegaProxy does not build a kernel driver or remove the shared driver.
 Wintun: https://www.wintun.net/ and https://git.zx2c4.com/wintun/
 The Wintun binary distribution license is included in licenses/Wintun-LICENSE.txt.
 
-.NET Desktop Runtime is installed through WinGet from Microsoft, not bundled.
-Windows OpenSSH Client is an optional Windows capability, not bundled.
+.NET 10.0.14 is bundled in the self-contained application executables.
+.NET source and license: https://github.com/dotnet/runtime/tree/v10.0.14
+Windows OpenSSH Client is a mandatory Windows capability installed when missing.
 Their respective installers and operating-system license terms apply.

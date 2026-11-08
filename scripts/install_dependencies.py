@@ -1,27 +1,23 @@
-"""Install production prerequisites with WinGet; keep diagnostic downloads separate."""
+"""Prepare pinned proxy cores and the mandatory Windows OpenSSH Client."""
 import argparse
 import tempfile
 from pathlib import Path
 
 from common import cli
-from dependencies import install_core, install_machine_dependencies, runtime_installer
+from dependencies import install_core, install_openssh
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("directory", type=Path, nargs="?", help="Legacy argument; installation is now machine-wide through WinGet")
-    parser.add_argument("--runtime-only", action="store_true")
-    parser.add_argument("--download-only", action="store_true", help="Verify downloads without installing .NET")
+    parser.add_argument("directory", type=Path, help="Application directory for the bundled core files")
+    parser.add_argument("--download-only", action="store_true", help="Verify core downloads without installing OpenSSH")
     args = parser.parse_args()
     cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
-    if args.download_only:
-        if not args.runtime_only:
-            install_core(cache / "verified/sing-box", cache)
-        installer = runtime_installer(cache)
-        print(f"Verified runtime installer: {installer}")
-        return
-    install_machine_dependencies(runtime_only=args.runtime_only)
-    print("Dependencies installed through WinGet. HTTP/3 is installed on demand from the application.")
+    install_core(args.directory.resolve() / "dependencies/sing-box", cache)
+    install_core(args.directory.resolve() / "dependencies/sing-box-h3", cache, http3=True)
+    if not args.download_only:
+        install_openssh()
+    print("Pinned proxy cores ready. .NET is included in the application.")
 
 
 if __name__ == "__main__":

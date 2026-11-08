@@ -36,14 +36,11 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
 Name: "automaticupdates"; Description: "{cm:AutomaticUpdates}"
-Name: "ssh"; Description: "{cm:InstallSSH}"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [CustomMessages]
 english.AutomaticUpdates=Automatically check for and download application updates
 russian.AutomaticUpdates=Автоматически проверять и скачивать обновления приложения
-english.InstallSSH=Install SSH support (Windows OpenSSH Client), if missing
-russian.InstallSSH=Установить поддержку SSH (клиент OpenSSH Windows), если она отсутствует
 english.Prerequisites=Preparing required Windows components…
 russian.Prerequisites=Подготовка необходимых компонентов Windows…
 english.OperatingMode=Operating mode
@@ -65,7 +62,7 @@ Name: "{code:ProtectedUserRoot}"; Permissions: admins-full system-full users-rea
 Name: "{code:ProtectedUserRoot}\versions"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
 
 [Files]
-Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Excludes: "launcher\*,dependencies\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion; Check: IsUserInstall
 
 [Icons]
@@ -86,7 +83,6 @@ Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flag
 Filename: "{code:LaunchPath}"; Flags: nowait runasoriginaluser; Check: IsUpdateInstall
 
 [Code]
-#include "Winget.iss"
 var TargetVersion: String;
     OwnerSid: String;
     ModePage: TInputOptionWizardPage;
@@ -228,44 +224,18 @@ function DeleteService(Service: THandle): Boolean;
 function CloseServiceHandle(Handle: THandle): Boolean;
   external 'CloseServiceHandle@advapi32.dll stdcall';
 
-function RuntimeInstalled: Boolean;
-var Names: TArrayOfString; I: Integer; Version, Minimum: Int64; Directory: String; Entry: TFindRec;
-begin
-  Result := False;
-  if not StrToVersion('{#RuntimeVersion}', Minimum) then Exit;
-  if RegGetValueNames(HKLM64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App', Names) then
-    for I := 0 to GetArrayLength(Names) - 1 do
-      if (Pos('10.', Names[I]) = 1) and StrToVersion(Names[I], Version) and
-        (ComparePackedVersion(Version, Minimum) >= 0) then Result := True;
-  if Result then Exit;
-  Directory := ExpandConstant('{commonpf}\dotnet\shared\Microsoft.WindowsDesktop.App');
-  if FindFirst(Directory + '\*', Entry) then begin
-    try
-      repeat
-        if (Pos('10.', Entry.Name) = 1) and StrToVersion(Entry.Name, Version) and
-          (ComparePackedVersion(Version, Minimum) >= 0) and
-          FileExists(Directory + '\' + Entry.Name + '\PresentationFramework.dll') then Result := True;
-      until not FindNext(Entry);
-    finally
-      FindClose(Entry);
-    end;
-  end;
-end;
-
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
   Result := '';
   try
     SelectedMode;
-    InstallWingetDependencies;
-    if not RuntimeInstalled then RaiseException('WinGet did not install a compatible .NET Desktop Runtime.');
-    if WizardIsTaskSelected('ssh') and not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then begin
+    if not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then begin
       if not Exec(ExpandConstant('{sys}\dism.exe'), '/Online /Add-Capability /CapabilityName:OpenSSH.Client~~~~0.0.1.0 /NoRestart', '', SW_HIDE, ewWaitUntilTerminated, Code) then
         RaiseException('Could not start Windows OpenSSH Client installation.');
       if Code = 3010 then begin NeedsRestart := True; RaiseException('Restart Windows before continuing installation.'); end;
       if (Code <> 0) or not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then
-        RaiseException('OpenSSH Client installation failed. Retry or deselect SSH support.');
+        RaiseException('OpenSSH Client installation failed. Retry after checking Windows Update access.');
     end;
   except
     Result := GetExceptionMessage;
@@ -278,7 +248,7 @@ begin
   if Step = ssPostInstall then begin
     ConfigurationFailed := True;
     if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--check-dependencies', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
-      RaiseException('WinGet did not provide a usable machine-wide sing-box installation. See the setup log.');
+      RaiseException('A bundled core is missing or invalid. See the setup log.');
     if IsAdminInstallMode then Command := '--configure-mode ' else Command := '--configure-user ';
     Command := Command + SelectedMode + ' --automatic-updates ';
     if WizardIsTaskSelected('automaticupdates') then Command := Command + 'true' else Command := Command + 'false';

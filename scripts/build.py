@@ -7,6 +7,32 @@ from ctypes import wintypes as wt
 from common import ROOT, app_name, artifact_root, cli, dotnet
 
 
+def product_version(path):
+    library = ct.WinDLL("version", use_last_error=True)
+    library.GetFileVersionInfoSizeW.argtypes = [wt.LPCWSTR, ct.POINTER(wt.DWORD)]
+    library.GetFileVersionInfoW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ct.c_void_p]
+    library.VerQueryValueW.argtypes = [ct.c_void_p, wt.LPCWSTR, ct.POINTER(ct.c_void_p), ct.POINTER(wt.UINT)]
+    size = library.GetFileVersionInfoSizeW(str(path), None)
+    data = ct.create_string_buffer(size)
+    value, length = ct.c_void_p(), wt.UINT()
+    if not size or not library.GetFileVersionInfoW(str(path), 0, size, data):
+        raise RuntimeError("Published executable has no Windows version resource.")
+    if not library.VerQueryValueW(data, r"\VarFileInfo\Translation", ct.byref(value), ct.byref(length)) or length.value < 4:
+        raise RuntimeError("Published executable has no version translation.")
+    language, codepage = ct.cast(value, ct.POINTER(wt.WORD))[:2]
+    query = rf"\StringFileInfo\{language:04x}{codepage:04x}\ProductVersion"
+    if not library.VerQueryValueW(data, query, ct.byref(value), ct.byref(length)):
+        raise RuntimeError("Published executable has no product version.")
+    return ct.wstring_at(value, length.value - 1)
+
+
+def publish_options(dev=False):
+    if dev:
+        return ["--self-contained", "true"]
+    return ["--self-contained", "true", "-p:PublishSingleFile=true",
+            "-p:IncludeNativeLibrariesForSelfExtract=true", "-p:DebugType=embedded"]
+
+
 def main(dev=False, app_only=False):
     kernel = ct.WinDLL("kernel32", use_last_error=True)
     kernel.CreateMutexW.argtypes = [ct.c_void_p, wt.BOOL, wt.LPCWSTR]
@@ -27,7 +53,7 @@ def main(dev=False, app_only=False):
             destination.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="publish-", dir=destination.parent) as staging:
                 dotnet("publish", str(ROOT / f"src/{project}/{project}.csproj"), "-c", "Release", "-r", "win-x64",
-                       "--self-contained", "false", "-o", staging, "--nologo", f"-p:MegaProxyDev={str(dev).lower()}")
+                       *publish_options(dev=dev and output == "app"), "-o", staging, "--nologo", f"-p:MegaProxyDev={str(dev).lower()}")
                 # Replace only after a successful publish; discard obsolete bundled runtimes.
                 if destination.exists():
                     shutil.rmtree(destination)
