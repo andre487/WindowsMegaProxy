@@ -31,6 +31,8 @@ public sealed partial class Engine
         try
         {
             if (Running) return;
+            if (Configuration.RequiresHttp3(settings) && !settings.Http3Enabled)
+                throw new InvalidOperationException("Enable HTTP/3 in settings before using this profile.");
             var requested = settings.Copy();
             FailoverPolicy.Validate(requested);
             bool enabled = !testOnly && Configuration.UsesProxy(requested) && FailoverPolicy.Mode(requested) != "DISABLED";
@@ -93,6 +95,8 @@ public sealed partial class Engine
 
     private async Task CheckCandidateAsync(Settings settings, CancellationToken token)
     {
+        if (Configuration.RequiresHttp3(settings) && !settings.Http3Enabled)
+            throw new InvalidOperationException("Enable HTTP/3 in settings before using this profile.");
         // First-use SSH key verification stays in StartSelectedAsync; never send credentials before it.
         if (settings.ActiveProfile is { Type: "SSH" } ssh && SshConfiguration.PublicKey(ssh).Length == 0) return;
         var runtime = settings.Copy();

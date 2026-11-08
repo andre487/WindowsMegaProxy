@@ -1,7 +1,6 @@
 """Install/repair/uninstall only on an empty disposable GitHub-hosted runner."""
 import csv
 import ctypes as ct
-import json
 import os
 import subprocess as sp
 import time
@@ -9,18 +8,17 @@ import winreg
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from common import ROOT, cli, digest, dotnet
+from common import ROOT, cli, dotnet
 from install import known_folder
 from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state
 
 
 def check_downloaded_cores(version_directory):
-    manifest = json.loads((ROOT / "artifacts/release-preview/update-manifest.json").read_text(encoding="utf-8"))
-    for name in ("sing-box", "sing-box-h3"):
-        for entry in manifest["components"][name]["files"]:
-            path = version_directory / entry["path"]
-            assert path.is_file() and digest(path, "sha256") == entry["sha256"], "Downloaded core differs from the verified official package."
+    assert not (version_directory / "dependencies/sing-box").exists(), "Stable core must come from WinGet."
+    assert not (version_directory / "dependencies/sing-box-h3").exists(), "HTTP/3 must be installed on demand."
+    assert (version_directory / "WindowsMegaProxy.Http3Core.exe").is_file(), "The signed on-demand installer is required."
+    sp.run([str(version_directory / "WindowsMegaProxy.Service.exe"), "--check-dependencies"], check=True, timeout=30)
 
 
 def main():

@@ -34,7 +34,7 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(definitions[label + "URL"], upstream["url"])
                 self.assertTrue(upstream["url"].startswith("https://github.com/SagerNet/sing-box/releases/download/v"))
                 self.assertEqual(definitions[label + "SHA256"], expected_hash)
-                self.assertEqual(definitions[label + "ApiURL"], asset_url.return_value)
+                self.assertEqual(definitions[label + "ApiURL"], upstream["apiUrl"])
                 self.assertEqual(definitions[label + "Mirrors"], "|".join(package.core_mirrors(upstream)))
                 self.assertEqual(definitions[label + "Directory"], upstream["name"])
                 self.assertEqual(definitions[label + "ExecutableSHA256"], package.digest(payload / "dependencies/sing-box/sing-box.exe", "sha256"))

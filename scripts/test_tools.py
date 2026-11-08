@@ -28,12 +28,22 @@ from common import (
     github_asset_url,
     open_download,
 )
-from dependencies import asset, core_package
+from dependencies import asset, core_package, install_machine_dependencies
 from install import secure_directory
 from service_control import require_production_stopped, stop_service
 
 
 class ToolsChecks(unittest.TestCase):
+    def test_dependency_install_fails_without_winget_or_on_package_error(self):
+        with patch("dependencies.shutil.which", return_value=None), patch("dependencies.sp.run") as install:
+            with self.assertRaisesRegex(RuntimeError, "App Installer"):
+                install_machine_dependencies()
+            install.assert_not_called()
+        with patch("dependencies.shutil.which", return_value="winget.exe"), \
+             patch("dependencies.sp.run", return_value=type("Result", (), {"returncode": 1})()):
+            with self.assertRaisesRegex(RuntimeError, "WinGet dependency installation failed"):
+                install_machine_dependencies()
+
     def test_console_installer_uses_mode_helper_in_version_directory(self):
         for mode, dev in ((mode, dev) for mode in ("manual", "login", "service") for dev in (False, True)):
             with self.subTest(mode=mode, dev=dev), tempfile.TemporaryDirectory() as temporary:
@@ -48,7 +58,8 @@ class ToolsChecks(unittest.TestCase):
                     (destination / "sing-box.exe").write_bytes(b"core-fixture")
                 with patch("sys.argv", ["install.py", "--mode", mode] + (["--dev"] if dev else [])), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
                      patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
-                     patch("install.release", return_value={"windowsdesktop": {"version": "10.0.14"}}), \
+                     patch("dependencies.shutil.which", return_value="winget.exe"), \
+                     patch("install.sp.run", return_value=type("Result", (), {"returncode": 0})()) as dependencies, \
                      patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
                      patch("install.install_core", side_effect=core), patch("install.run") as configure, patch("builtins.print"), \
                      patch("run.stop_workspace_app"), patch("service_control.require_production_stopped"), patch("build.main"):
@@ -57,6 +68,11 @@ class ToolsChecks(unittest.TestCase):
                 self.assertIn("versions", Path(command[0]).parts)
                 self.assertEqual(Path(command[0]).name, name + ".Service.exe")
                 self.assertEqual(command[1:], ("--configure-mode", mode))
+                dependencies.assert_called_once()
+                batch = dependencies.call_args.args[0]
+                self.assertEqual(batch[:4], ["winget.exe", "install", "SagerNet.sing-box", "Microsoft.DotNet.DesktopRuntime.10"])
+                self.assertEqual(batch[batch.index("--scope") + 1], "machine")
+                self.assertNotIn("--ignore-security-hash", batch)
 
     def test_dev_cleanup_matches_only_its_own_task_names(self):
         for task in (r"\WindowsMegaProxy.Dev.Login", r"\WindowsMegaProxy.Dev-S-1-5-21-1001", r"\WindowsMegaProxy.Dev"):

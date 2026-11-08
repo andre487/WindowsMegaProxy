@@ -1018,6 +1018,11 @@
                                     Style="{StaticResource DiagnosticCardStyle}"
                                     Visibility="Collapsed">
                                     <StackPanel>
+                                        <CheckBox
+                                            x:Name="Http3EnabledBox"
+                                            Content="{DynamicResource &quot;Enable HTTP/3&quot;}"
+                                            Click="SettingsChanged"
+                                            Margin="0,0,0,16" />
                                         <Label
                                             Content="{DynamicResource &quot;TCP TLS fingerprint&quot;}"
                                             Target="{Binding ElementName=TlsFingerprintBox}"

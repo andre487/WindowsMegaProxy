@@ -1,10 +1,11 @@
 # Antivirus and code signing
 
-MegaProxy downloads pinned official sing-box packages during installation and
-updates. The installer and application ZIP do not embed the cores. Archive and
-extracted executable/library hashes are checked before the runtime is activated.
-The upstream cores include Wintun; Windows OpenSSH support is an optional
-Windows capability, enabled by default in Setup.
+Setup installs stable sing-box and .NET through WinGet with its normal package
+hash and malware checks. Neither core is bundled. HTTP/3 is opt-in: a compatible
+WinGet core is reused, otherwise an additional pinned core is downloaded only
+after confirmation. Its archive and executable/library hashes are verified.
+The upstream cores include Wintun; OpenSSH Client is a Windows capability,
+enabled by default in Setup.
 
 Proxy and tunnelling programs can receive network-tool or riskware
 classifications. Such a classification is distinct from a named malware family;

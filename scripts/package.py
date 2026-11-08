@@ -98,7 +98,7 @@ def core_installer_definitions(payload):
     for label, folder, http3 in (("StableCore", "sing-box", False), ("H3Core", "sing-box-h3", True)):
         core = core_package(http3=http3)
         definitions.update({label + "URL": core["url"], label + "SHA256": core["sha256"], label + "Directory": core["name"],
-                            label + "ApiURL": github_asset_url(core["url"]),
+                            label + "ApiURL": core.get("apiUrl") or github_asset_url(core["url"]),
                             label + "Mirrors": "|".join(core_mirrors(core)),
                             label + "ExecutableSHA256": digest(payload / "dependencies" / folder / "sing-box.exe", "sha256"),
                             label + "CronetSHA256": digest(payload / "dependencies" / folder / "libcronet.dll", "sha256")})
@@ -183,6 +183,7 @@ def main():
             "RepositoryRoot": str(ROOT), "PayloadDirectory": str(payload), "ReleaseDirectory": str(staging),
             "RuntimeVersion": runtime["version"], "RuntimeURL": runtime_file["url"],
             "RuntimeSHA256": digest(runtime_download, "sha256"),
+            "H3CoreVersion": H3_CORE_VERSION,
         }
         definitions.update(core_installer_definitions(payload))
         (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
@@ -190,7 +191,16 @@ def main():
         script = script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\nSignedUninstaller=yes\n", 1)
         helper = Path(__file__).resolve().parent.parent / "installer/Downloads.iss"
         shutil.copy2(helper, staging / "Downloads.iss")
-        if '#include "Downloads.iss"' not in script:
+        automation = Path(__file__).resolve().parent.parent
+        shutil.copy2(automation / "installer/Winget.iss", staging / "Winget.iss")
+        h3_script = (automation / "installer/Http3Core.iss").read_text(encoding="utf-8-sig")
+        h3_script = h3_script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\n", 1)
+        (staging / "Http3Core.iss").write_text(h3_script, encoding="utf-8-sig")
+        sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "Http3Core.iss")],
+               env=signer.environment, check=True)
+        app = components["app"]
+        app["files"] = archive(payload, staging / app["file"], exclude=("dependencies",))
+        if '#include "Downloads.iss"' not in script and '#include "Winget.iss"' not in script:
             script = script.replace("[Code]\n", '[Code]\n#include "Downloads.iss"\n', 1)
             legacy = ("      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
                       "      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');\n"

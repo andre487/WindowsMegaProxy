@@ -1,6 +1,7 @@
 """Checksum-verified downloads shared by development and installation."""
 import json
 import shutil
+import subprocess as sp
 from pathlib import Path
 
 from common import SDK_VERSION, core_mirrors, download, extract, open_download
@@ -9,6 +10,19 @@ CORE_VERSION = "1.14.4"
 CORE_HASH = "99185d75d314a07dbba4a130c8ad986cbeb629a07927975636b341ca61f991df"
 H3_CORE_VERSION = "1.15.0-alpha.13"
 H3_CORE_HASH = "7cff6a39687a12d51b289bd57a203723629eb8fd42f6668601b4484456436bc9"
+CORE_ASSET_ID = 669527524
+H3_CORE_ASSET_ID = 669516594
+
+
+def install_machine_dependencies(*, runtime_only=False):
+    winget = shutil.which("winget.exe")
+    if winget is None:
+        raise RuntimeError("Windows Package Manager (App Installer) is required. Install it and retry.")
+    packages = ["Microsoft.DotNet.DesktopRuntime.10"] if runtime_only else ["SagerNet.sing-box", "Microsoft.DotNet.DesktopRuntime.10"]
+    result = sp.run([winget, "install", *packages, "--exact", "--source", "winget", "--scope", "machine", "--architecture", "x64",
+                     "--silent", "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity"], check=False)
+    if result.returncode not in (0, -1978335189, 0x8A15002B):
+        raise RuntimeError(f"WinGet dependency installation failed ({result.returncode}).")
 
 
 def release():
@@ -25,6 +39,7 @@ def core_package(*, http3=False):
     version, checksum = (H3_CORE_VERSION, H3_CORE_HASH) if http3 else (CORE_VERSION, CORE_HASH)
     name = f"sing-box-{version}-windows-amd64"
     return {"version": version, "name": name, "sha256": checksum,
+            "apiUrl": f"https://api.github.com/repos/SagerNet/sing-box/releases/assets/{H3_CORE_ASSET_ID if http3 else CORE_ASSET_ID}",
             "url": f"https://github.com/SagerNet/sing-box/releases/download/v{version}/{name}.zip"}
 
 

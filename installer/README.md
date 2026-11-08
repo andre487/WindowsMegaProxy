@@ -6,19 +6,29 @@ Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in
 `artifacts/release-preview`. Preview manifests use disposable keys and have
 `preview: true`; do not distribute them as trusted updates.
 
-The installer targets Windows 10/11 x64, requires one administrator approval,
-and installs the UI and mode-management helper into Program Files. Both pinned official
-sing-box packages, including libcronet and embedded signed Wintun, are downloaded
-from SagerNet's official GitHub releases during installation and application
-updates. The installer pins and checks SHA-256 for each archive and verifies the
-extracted executable and library before activating the new version. Downloads
-finish before the existing installation is switched; failure leaves the old
-runtime active. The installer and application ZIP do not embed either core.
-The installer downloads a checksum-verified .NET 10 Desktop Runtime from
-Microsoft only when the required version is missing. SSH support uses the
-Windows OpenSSH Client capability and is selected by default; users can opt out.
-Python, uv and the .NET SDK are build
-tools only. Prerequisites are prepared before changing an existing service.
+The installer targets Windows 10/11 x64 and prepares machine-wide dependencies
+with one command: `winget install SagerNet.sing-box Microsoft.DotNet.DesktopRuntime.10
+--exact --source winget --scope machine --architecture x64 --silent
+--accept-source-agreements --accept-package-agreements --disable-interactivity`.
+App Installer/WinGet must be available in the installing user's session; the
+WinGet CLI is not run as SYSTEM. Package hash and malware checks remain enabled.
+The application and service resolve sing-box through its machine-wide WinGet
+registration, without relying on a user's PATH or user-writable executable.
+
+HTTP/3 is disabled by default. When enabled and requested by a profile, the
+client first checks the WinGet core version. A compatible 1.15+ core is reused;
+otherwise it asks before downloading the pinned `1.15.0-alpha.13` core. A signed
+on-demand installer checks archive and extracted file hashes and installs it
+under Program Files. Headless service starts never download it implicitly.
+MegaProxy.json stores the setting as `windows.http3Enabled`. Import asks before
+turning it on; declining still imports the other selected settings. Absent
+options preserve local values. Background subscription refreshes cannot turn
+HTTP/3 on without confirmation.
+Neither core nor .NET is embedded in the installer/application ZIP. OpenSSH
+Client remains a Windows capability, selected by default with an opt-out;
+WinGet's OpenSSH Preview package is not substituted for the Windows client.
+Python, uv and the .NET SDK remain development-only tools downloaded into the
+checkout. Dependency preparation completes before switching the application mode.
 
 The installer defaults to manual launch on a new installation and offers three
 operating modes: manual, elevated sign-in startup, or a Windows service. It
@@ -127,17 +137,15 @@ and tests silent installation, repair and uninstall on a disposable runner,
 without activating TUN. Interactive installation, failure rollback and driver
 activation still need testing in a disposable Windows VM before public release.
 
-Dependencies use Inno's HTTPS downloads with pinned hashes for the official .NET
-installer and sing-box archives. OpenSSH uses the Windows capability installer;
-Wintun is already provided by the upstream core. WinGet is not required: calling
-its CLI would add an App Installer/user-registration dependency, and the CLI is
-not supported under SYSTEM. See [Microsoft's limitations](https://learn.microsoft.com/windows/package-manager/winget/troubleshooting).
+OpenSSH uses the Windows capability installer; Wintun is provided by the upstream
+core. Dependency installation runs from user-session Setup, never the service.
+See [WinGet's system-context limitation](https://learn.microsoft.com/windows/package-manager/winget/troubleshooting).
 
 Development/release downloads retry HTTP 5xx four times with 1, 2 and 4 second
 backoff delays, logging a bounded error body and diagnostic headers. After
 exhausted retries on a GitHub release URL, build tools can retrieve the same
 asset through the official GitHub REST API with the original pinned hash.
-Setup applies the same retry policy to core downloads. If the release URL and
+The on-demand HTTP/3 installer applies the same retry policy to core downloads. If the release URL and
 mirrors keep failing, it resolves an API redirect using Windows WinHTTP, accepts
 only the official HTTPS asset hosts, then downloads and hash-checks with Inno.
 Download-rule checks are a separate test executable and are not bundled.

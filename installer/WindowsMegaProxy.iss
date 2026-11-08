@@ -67,12 +67,6 @@ Name: "{code:ProtectedUserRoot}\versions"; Permissions: admins-full system-full 
 [Files]
 Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Excludes: "launcher\*,dependencies\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion; Check: IsUserInstall
-Source: "{tmp}\stable-core\{#StableCoreDirectory}\sing-box.exe"; DestDir: "{code:VersionPath}\dependencies\sing-box"; Flags: external ignoreversion
-Source: "{tmp}\stable-core\{#StableCoreDirectory}\libcronet.dll"; DestDir: "{code:VersionPath}\dependencies\sing-box"; Flags: external ignoreversion
-Source: "{tmp}\stable-core\{#StableCoreDirectory}\LICENSE"; DestDir: "{code:VersionPath}\dependencies\sing-box"; Flags: external ignoreversion
-Source: "{tmp}\h3-core\{#H3CoreDirectory}\sing-box.exe"; DestDir: "{code:VersionPath}\dependencies\sing-box-h3"; Flags: external ignoreversion
-Source: "{tmp}\h3-core\{#H3CoreDirectory}\libcronet.dll"; DestDir: "{code:VersionPath}\dependencies\sing-box-h3"; Flags: external ignoreversion
-Source: "{tmp}\h3-core\{#H3CoreDirectory}\LICENSE"; DestDir: "{code:VersionPath}\dependencies\sing-box-h3"; Flags: external ignoreversion
 
 [Icons]
 Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"
@@ -92,7 +86,7 @@ Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flag
 Filename: "{code:LaunchPath}"; Flags: nowait runasoriginaluser; Check: IsUpdateInstall
 
 [Code]
-#include "Downloads.iss"
+#include "Winget.iss"
 var TargetVersion: String;
     OwnerSid: String;
     ModePage: TInputOptionWizardPage;
@@ -258,53 +252,14 @@ begin
   end;
 end;
 
-procedure VerifyCore(Directory, ExecutableHash, CronetHash: String);
-begin
-  if not FileExists(Directory + '\sing-box.exe') or not FileExists(Directory + '\libcronet.dll') then
-    RaiseException('Downloaded sing-box package is incomplete.');
-  if (CompareText(GetSHA256OfFile(Directory + '\sing-box.exe'), ExecutableHash) <> 0) or
-     (CompareText(GetSHA256OfFile(Directory + '\libcronet.dll'), CronetHash) <> 0) then
-    RaiseException('sing-box file checksum verification failed.');
-end;
-
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var Code: Integer; Download: TDownloadWizardPage;
+var Code: Integer;
 begin
   Result := '';
   try
     SelectedMode;
-    Download := CreateDownloadPage(CustomMessage('Prerequisites'), 'sing-box', nil);
-    try
-      Download.Show;
-      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', '{#StableCoreMirrors}', 'sing-box-stable.zip', '{#StableCoreSHA256}');
-      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', '{#H3CoreMirrors}', 'sing-box-h3.zip', '{#H3CoreSHA256}');
-    finally
-      Download.Hide;
-      Download.Free;
-    end;
-    ExtractArchive(ExpandConstant('{tmp}\sing-box-stable.zip'), ExpandConstant('{tmp}\stable-core'), '', True, nil);
-    ExtractArchive(ExpandConstant('{tmp}\sing-box-h3.zip'), ExpandConstant('{tmp}\h3-core'), '', True, nil);
-    VerifyCore(ExpandConstant('{tmp}\stable-core\{#StableCoreDirectory}'), '{#StableCoreExecutableSHA256}', '{#StableCoreCronetSHA256}');
-    VerifyCore(ExpandConstant('{tmp}\h3-core\{#H3CoreDirectory}'), '{#H3CoreExecutableSHA256}', '{#H3CoreCronetSHA256}');
-    if not RuntimeInstalled then begin
-      Download := CreateDownloadPage(CustomMessage('Prerequisites'), '.NET Desktop Runtime', nil);
-      try
-        Download.Add('{#RuntimeURL}', 'dotnet-desktop.exe', '{#RuntimeSHA256}');
-        Download.Show;
-        Download.Download;
-      finally
-        Download.Hide;
-        Download.Free;
-      end;
-      if not Exec(ExpandConstant('{tmp}\dotnet-desktop.exe'), '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, Code) then
-        RaiseException('Could not start the .NET Desktop Runtime installer.');
-      Log(Format('.NET Desktop Runtime installer exit code: %d', [Code]));
-      if Code = 3010 then begin
-        NeedsRestart := True;
-        RaiseException('Restart Windows before continuing installation. Existing MegaProxy files have not been changed.');
-      end;
-      if (Code <> 0) or not RuntimeInstalled then RaiseException('.NET Desktop Runtime installation failed. Existing MegaProxy files have not been changed.');
-    end;
+    InstallWingetDependencies;
+    if not RuntimeInstalled then RaiseException('WinGet did not install a compatible .NET Desktop Runtime.');
     if WizardIsTaskSelected('ssh') and not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then begin
       if not Exec(ExpandConstant('{sys}\dism.exe'), '/Online /Add-Capability /CapabilityName:OpenSSH.Client~~~~0.0.1.0 /NoRestart', '', SW_HIDE, ewWaitUntilTerminated, Code) then
         RaiseException('Could not start Windows OpenSSH Client installation.');
@@ -322,8 +277,8 @@ var Code: Integer; Command: String;
 begin
   if Step = ssPostInstall then begin
     ConfigurationFailed := True;
-    VerifyCore(VersionPath('') + '\dependencies\sing-box', '{#StableCoreExecutableSHA256}', '{#StableCoreCronetSHA256}');
-    VerifyCore(VersionPath('') + '\dependencies\sing-box-h3', '{#H3CoreExecutableSHA256}', '{#H3CoreCronetSHA256}');
+    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--check-dependencies', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
+      RaiseException('WinGet did not provide a usable machine-wide sing-box installation. See the setup log.');
     if IsAdminInstallMode then Command := '--configure-mode ' else Command := '--configure-user ';
     Command := Command + SelectedMode + ' --automatic-updates ';
     if WizardIsTaskSelected('automaticupdates') then Command := Command + 'true' else Command := Command + 'false';

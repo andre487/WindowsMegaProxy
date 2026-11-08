@@ -29,7 +29,6 @@ begin
   Require(IsGitHubAssetLocation('https://release-assets.githubusercontent.com/file'), 'Allow the official HTTPS asset host.');
   Require(not IsGitHubAssetLocation('http://release-assets.githubusercontent.com/file'), 'Reject HTTP redirects.');
   Require(not IsGitHubAssetLocation('https://release-assets.githubusercontent.com.evil.invalid/file'), 'Reject lookalike hosts.');
-  Require(IsGitHubAssetLocation(GitHubAssetLocation('{#StableCoreApiURL}')), 'Resolve the official asset API without following or logging its redirect.');
   if not SaveStringToFile('{#CheckOutputDirectory}\result.txt', 'passed', False) then
     RaiseException('Could not write the installer checks result.');
   Result := False;
