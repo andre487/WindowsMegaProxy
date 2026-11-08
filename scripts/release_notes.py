@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 
 from common import ROOT
-from publish_release import METADATA, REPORTS, gh, package_names
+from publish_release import METADATA, gh, package_names
 
 CONTEXT_LIMIT = 200000
 
@@ -27,7 +27,7 @@ def previous_release(version):
                 continue
             assets = {asset["name"] for asset in release.get("assets", [])
                       if asset.get("state") == "uploaded" and asset.get("size", 0) > 0}
-            if (set(package_names(tag).values()) | METADATA | REPORTS) <= assets:
+            if (set(package_names(tag).values()) | METADATA) <= assets:
                 candidates.append(release)
     for release in sorted(candidates, key=lambda item: item["published_at"], reverse=True):
         tag = release["tag_name"]

@@ -62,7 +62,7 @@ configuration migration.
 
 The `Prepare release` action accepts only a version. It generates English/Russian
 notes through OpenAI and opens a reviewable PR. The baseline is the latest published
-stable release with the complete package, manifest and VirusTotal asset set; empty
+stable release with the complete package and signed manifest asset set; empty
 or partial releases are skipped. With no usable release, notes describe the first
 release using the complete repository diff. Large diffs are summarized in bounded
 parts before note generation, without truncating the evidence. Set `RELEASE_BOT_TOKEN` to a fine-grained token with repository
@@ -82,22 +82,16 @@ base. Retries reuse an existing release PR and never move an existing tag.
    `vX.Y.Z`. The tag points to the merged commit, which must also pass main CI.
 3. The Release action builds and publishes the installer, application archive,
    separate stable/H3 core archives, application source, signed update manifest
-   and SHA256SUMS, plus VirusTotal reports for the installer and application ZIP.
+   and SHA256SUMS. VirusTotal is a separate manual diagnostic, not a release gate.
    A manual dispatch with an existing tag resumes the release. Published assets
    are never replaced; repeated publication verifies the original files and
-   refreshes the VirusTotal section without duplicating it.
+   updates release notes without changing package bytes.
 
-Configure `VIRUSTOTAL_API_KEY` as described in [local development secrets](LOCAL-SECRETS.md).
-Incomplete scans and malicious/suspicious verdicts block publication. Markdown
-and JSON reports are preserved as Actions artifacts even if scanning fails.
-Original packages are checkpointed for 14 days so rerunning the same workflow
-can finish a partial scan without rebuilding files or changing their hashes.
-Complete draft/published releases can also restore their original packages;
-an incomplete draft may replace its unpublished files. Reports for identical
-SHA-256 hashes are reused if clean; detected files are rescanned on retry.
-When recovering a previously published release that
-has no report assets, reports stay in Actions and their links are added to the
-release notes, since immutable assets cannot be added after publication.
+Original packages are checkpointed for 14 days so retries can resume without
+rebuilding files or changing hashes. Complete draft/published releases can also
+restore their original packages; only unpublished draft files may be replaced.
+Antivirus reports are never required, restored, uploaded or published by release
+automation. See [antivirus notes and manual checks](../docs/ANTIVIRUS.md).
 
 Configure the repository secret `UPDATE_SIGNING_KEY` before releasing: base64
 of a 32-byte Ed25519 private key. Generate it with a trusted tool, store it in a
