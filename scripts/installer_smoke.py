@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from common import ROOT, cli, digest, dotnet, download
+from deferred_update_smoke import check as check_deferred_updates
 from install import known_folder
 from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state
@@ -117,6 +118,7 @@ def main():
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     check_legacy_upgrade(setups[0], logs, destination, data)
+    check_deferred_updates(setups[0], logs, destination, data)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
 
 

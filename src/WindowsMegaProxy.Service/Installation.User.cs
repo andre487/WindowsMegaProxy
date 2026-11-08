@@ -18,6 +18,9 @@ public static partial class Installation
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), UserInstallation.Sid);
         foreach (string path in new[] { Path.GetDirectoryName(root)!, root }) CheckDirectory(path);
         CloseClients(root, currentSession: true);
+        if (uninstall || command == "--set-mode") CancelPendingUpdate(root, true);
+        if (command == "--set-mode") System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(root, AppIdentity.ServiceExecutable))
+        { Arguments = "--cleanup-installation", UseShellExecute = false, CreateNoWindow = true })?.Dispose();
         dynamic scheduler = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")!)!;
         scheduler.Connect();
         dynamic folder = scheduler.GetFolder(@"\");

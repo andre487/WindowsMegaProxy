@@ -8,6 +8,16 @@ internal static class InstallationChecks
 {
     public static void Run()
     {
+        foreach (bool service in new[] { false, true })
+        {
+            foreach (string action in new[] { "now", service ? "restart" : "launch", service ? "reboot" : "launch" })
+                if (PendingAppUpdate.ValidateAction(action, service) != action) throw new Exception("Valid update timing was rejected.");
+            foreach (string invalid in service ? new[] { "launch", "", "reboot --bad" } : new[] { "reboot", "restart", "", "launch --bad" })
+            {
+                try { PendingAppUpdate.ValidateAction(invalid, service); throw new Exception("Invalid update timing was accepted."); }
+                catch (ArgumentException) { }
+            }
+        }
         if (Installation.ReadAutomaticUpdates(["--configure-mode", "manual"]) is not null ||
             Installation.ReadAutomaticUpdates(["--configure-mode", "manual", "--automatic-updates", "false"]) != false ||
             Installation.ReadAutomaticUpdates(["--configure-user", "login", "--automatic-updates", "true"]) != true)

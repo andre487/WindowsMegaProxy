@@ -73,6 +73,7 @@ Root: HKLM; Subkey: "SOFTWARE\WindowsMegaProxy"; Flags: uninsdeletekey; Check: I
 Root: HKCU; Subkey: "SOFTWARE\WindowsMegaProxy\UserInstallation"; Flags: uninsdeletekey; Check: IsUserInstall
 
 [UninstallDelete]
+Type: filesandordirs; Name: "{code:RuntimePath}\update"
 Type: files; Name: "{code:RuntimePath}\user-installation.sid"; Check: IsUserInstall
 Type: dirifempty; Name: "{code:RuntimePath}"; Check: IsUserInstall
 
@@ -258,11 +259,12 @@ begin
     if (Pos(Lowercase(Root + '\'), Lowercase(PreviousHelper)) <> 1) or
       (Pos('\..', PreviousHelper) <> 0) or (CompareText(ExtractFileName(PreviousHelper), 'WindowsMegaProxy.Service.exe') <> 0) then
       RaiseException('The previous installation helper is outside the protected installation directory.');
-    if not FileExists(PreviousHelper) then RaiseException('The previous installation helper is missing. Repair the previous installation first.');
+    if (ExpandConstant('{param:STAGEDUPDATE|0}') <> '1') and not FileExists(PreviousHelper) then
+      RaiseException('The previous installation helper is missing. Repair the previous installation first.');
   end;
   if IsAdminInstallMode then StopInstalledService;
   Prepared := True;
-  if (PreviousHelper <> '') and
+  if (ExpandConstant('{param:STAGEDUPDATE|0}') <> '1') and (PreviousHelper <> '') and
     (not ExecAndLogOutput(PreviousHelper, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0)) then
     RaiseException('Could not close the previous installation. Close MegaProxy in all Windows sessions and retry.');
 end;
@@ -316,7 +318,7 @@ begin
     { Regular Run entries execute before ssPostInstall has configured the mode. }
     if not Exec(RuntimePath('') + '\WindowsMegaProxy.Service.exe', '--cleanup-installation', '', SW_HIDE, ewNoWait, Code) then
       Log('Could not start installation cleanup.');
-    if IsUpdateInstall and WizardSilent then
+    if IsUpdateInstall and WizardSilent and (ExpandConstant('{param:REOPEN|1}') <> '0') then
       if not ExecAsOriginalUser(LaunchPath(''), '', '', SW_SHOWNORMAL, ewNoWait, Code) then
         Log('Could not reopen MegaProxy after updating.');
   end;

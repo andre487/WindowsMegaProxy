@@ -26,6 +26,11 @@ public static partial class Installation
         try
         {
             string command = args[0];
+            if (command is "--apply-pending-update" or "--run-staged-update")
+            {
+                if (args.Length != 1) throw new ArgumentException("Invalid pending update arguments.");
+                return command == "--apply-pending-update" ? ApplyPendingUpdate() : RunStagedUpdateAsync().GetAwaiter().GetResult();
+            }
             if (command == "--cleanup-installation")
             {
                 if (args.Length != 1) throw new ArgumentException("Invalid cleanup arguments.");
@@ -48,8 +53,8 @@ public static partial class Installation
             }
             if (command == "--install-update")
             {
-                if (args.Length != 1) throw new ArgumentException("Invalid update arguments.");
-                return InstallUpdateAsync().GetAwaiter().GetResult();
+                if (args.Length is not (1 or 2)) throw new ArgumentException("Invalid update arguments.");
+                return InstallUpdateAsync(args.Length == 1 ? "now" : args[1]).GetAwaiter().GetResult();
             }
             if (command == "--configure-user" || UserInstallation.IsUser) return RunUser(args);
             if (AppIdentity.IsDev && command == "--migrate-dev-settings")
@@ -72,7 +77,12 @@ public static partial class Installation
             string root = InstallRoot(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
             CheckDirectory(root);
             CloseClients(root);
-            if (command == "--prepare-uninstall") { ConfigureLogin("manual"); return 0; }
+            if (command == "--prepare-uninstall") { if (!AppIdentity.IsDev) CancelPendingUpdate(root, false); ConfigureLogin("manual"); return 0; }
+            if (command == "--set-mode" && !AppIdentity.IsDev)
+            {
+                CancelPendingUpdate(root, false);
+                Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.ServiceExecutable)) { Arguments = "--cleanup-installation", UseShellExecute = false, CreateNoWindow = true })?.Dispose();
+            }
             ProtectDataDirectory(MachineSettingsStore.DefaultDirectory);
             bool previouslyRunning;
             using (var registration = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name))
@@ -126,7 +136,7 @@ public static partial class Installation
         {
             string message = DiagnosticLog.Redact(error.Message);
             Console.Error.WriteLine(message);
-            if (args[0] == "--install-update")
+            if (args[0] is "--install-update" or "--apply-pending-update" or "--run-staged-update")
             {
                 // A hidden modal dialog would keep installation DLLs locked indefinitely.
                 try { new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100)
