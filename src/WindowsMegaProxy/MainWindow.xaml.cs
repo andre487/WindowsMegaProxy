@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private bool canEdit = true, refreshingService;
     private bool serviceAvailable, serviceTesting;
     private string? serviceInstance;
+    private string? serviceAccessDiagnostic;
     private readonly Func<Task<Settings>> loadLegacy;
     private long serviceRevision;
     private readonly string? installScript = FindInstallScript();
@@ -212,6 +213,7 @@ public partial class MainWindow : Window
 
     private static string? FindInstallScript()
     {
+        if (!AppIdentity.IsDev) return null;
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         for (int i = 0; i < 4 && directory is not null; i++, directory = directory.Parent)
         {
@@ -232,12 +234,12 @@ public partial class MainWindow : Window
                 UseShellExecute = true, Verb = "runas", WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
                 WorkingDirectory = Path.GetDirectoryName(installScript)!
             };
-            start.Arguments = "--mode service";
+            start.Arguments = "--dev --mode service";
             using var installer = System.Diagnostics.Process.Start(start) ?? throw new IOException("Could not start the service installer.");
             await installer.WaitForExitAsync();
             if (installer.ExitCode != 0) throw new IOException(AppIdentity.IsDev
                 ? "Service installation failed. Run install.cmd --dev to see the details."
-                : "Service installation failed. Run install.cmd to see the details.");
+                : "Service installation failed. Repair the installation using the installer.");
             await RefreshServiceAsync();
         }
         catch (Exception error) { ShowError(error); }
@@ -258,6 +260,7 @@ public partial class MainWindow : Window
                 serviceAvailable = true; serviceTesting = reply.Testing; serviceInstance = reply.InstanceId;
                 loaded = reply.Settings ?? new Settings();
                 serviceRevision = reply.Revision;
+                RecordServiceAccess();
                 var remote = (RemoteEngine)CreateEngine();
                 remote.Apply(reply);
                 connection.Attach(remote);
@@ -277,7 +280,7 @@ public partial class MainWindow : Window
                 ApplySettings(new Settings());
                 LoseServiceConnection();
                 MessageText.Text = ServiceUnavailableMessage;
-                WriteLog("The MegaProxy service is unavailable: " + error.GetType().Name);
+                RecordServiceFailure(error);
                 InstallServiceButton.Visibility = installScript is not null && ClientAccess.Current().CanEdit ? Visibility.Visible : Visibility.Collapsed;
             }
             else ShowError(error);
@@ -316,6 +319,8 @@ public partial class MainWindow : Window
             }
             serviceInstance = reply.InstanceId; serviceAvailable = true; serviceTesting = reply.Testing;
             canEdit = reply.CanEdit;
+            RecordServiceAccess();
+            UpdateServiceStateView();
             InstallServiceButton.Visibility = Visibility.Collapsed;
             if (rebind || MessageText.Text == ServiceUnavailableMessage) MessageText.Text = "";
             if (engine is RemoteEngine remote)
@@ -330,6 +335,7 @@ public partial class MainWindow : Window
         }
         catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException or Win32Exception)
         {
+            RecordServiceFailure(error);
             LoseServiceConnection();
             MessageText.Text = ServiceUnavailableMessage;
             SetBusy(busy);
@@ -340,6 +346,7 @@ public partial class MainWindow : Window
     private void LoseServiceConnection()
     {
         serviceAvailable = false; serviceTesting = false; canEdit = false;
+        UpdateServiceStateView();
         connection.Cancel();
         if (engine is RemoteEngine remote) { remote.Invalidate(); if (!busy) connection.Attach(remote); }
         connectionRows.Clear();
@@ -371,7 +378,32 @@ public partial class MainWindow : Window
     private static string BrandLabel(string key) => Ui.T(key).Replace("MegaProxy", AppIdentity.DisplayName, StringComparison.Ordinal);
     private static string ServiceUnavailableMessage => Ui.T(AppIdentity.IsDev
         ? "The DEV host is unavailable. Restart it with run.cmd."
-        : "The MegaProxy service is unavailable. Repair service mode with the installer or install.cmd --mode service.");
+        : "Cannot communicate with the MegaProxy service. See the log for details. If the problem persists, repair the installation using the installer.");
+
+    private void RecordServiceAccess()
+    {
+        string message = canEdit ? "Service IPC connected; configuration editing is allowed."
+            : "Read-only mode: the service authenticated this client, but its Windows account or token is not allowed to edit configuration. An administrator account with an unrestricted token is required.";
+        if (serviceAccessDiagnostic == message) return;
+        serviceAccessDiagnostic = message;
+        WriteLog(message);
+    }
+
+    private void RecordServiceFailure(Exception error)
+    {
+        string reason = error switch
+        {
+            UnauthorizedAccessException when error.Message == "The service pipe has an untrusted owner." => "The service pipe owner is untrusted; the client refused to communicate with it.",
+            UnauthorizedAccessException => "Access denied while opening or authenticating the service pipe. Check its permissions and owner.",
+            TimeoutException or OperationCanceledException => "The service pipe connection or request timed out.",
+            System.Text.Json.JsonException => "The service returned an invalid or incompatible response.",
+            _ => "The service pipe connection or request failed."
+        };
+        string message = $"Read-only mode: service IPC unavailable. Pipe={ServiceProtocol.PipeName}; {serviceState}; {error.GetType().Name}; HRESULT=0x{error.HResult:X8}. {reason}";
+        if (serviceAccessDiagnostic == message) return;
+        serviceAccessDiagnostic = message;
+        WriteLog(message);
+    }
 
     private Task SaveSettingsAsync() => CommitSettingsAsync(CaptureSettings());
 
@@ -761,7 +793,7 @@ public partial class MainWindow : Window
         OperatingModeBox.IsEnabled = editable && !busy && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
-        ExportLogButton.IsEnabled = service is null || canEdit;
+        ExportLogButton.IsEnabled = !quitting;
         SettingsDetailHost.IsEnabled = editable && !busy && !settingsNavigationBusy;
         UpdateAppUpdatesView();
         ProfilePicker.IsEnabled = editable;
@@ -1203,7 +1235,13 @@ public partial class MainWindow : Window
         readingLog = true;
         try
         {
-            string text = service is null ? await logWriter.ReadAsync(tailOnly: true) : canEdit ? (await service.CallAsync(new("log"))).Text ?? "" : "";
+            string text = await logWriter.ReadAsync(tailOnly: true);
+            if (service is not null && serviceAvailable && canEdit)
+            {
+                try { text = "[Client]\n" + text + "\n[Service]\n" + ((await service.CallAsync(new("log"))).Text ?? ""); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or TimeoutException or OperationCanceledException or System.Text.Json.JsonException or Win32Exception)
+                { RecordServiceFailure(error); text = await logWriter.ReadAsync(tailOnly: true); }
+            }
             if (!quitting && IsVisible && ((TabItem)Sections.Items[^1]).IsSelected && LogText.SelectionLength == 0)
             {
                 LogAutoScroll.Replace(LogText, text);
@@ -1216,13 +1254,12 @@ public partial class MainWindow : Window
 
     private async void ExportLogClick(object sender, RoutedEventArgs e)
     {
-        if (service is not null && !canEdit) return;
         if (quitting) return;
         var dialog = new SaveFileDialog { FileName = "MegaProxy.log", Filter = Ui.T("Text log|*.log"), AddExtension = true };
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            if (service is null) await TrackFileAsync(logWriter.ExportAsync(dialog.FileName));
+            if (service is null || !serviceAvailable || !canEdit) await TrackFileAsync(logWriter.ExportAsync(dialog.FileName));
             else await TrackFileAsync(service.ExportLogAsync(dialog.FileName));
         }
         catch (Exception error) { ShowError(error); }

@@ -38,7 +38,7 @@ public sealed class ServiceClient(string pipeName = ServiceProtocol.PipeName, st
     private async Task<NamedPipeClientStream> ConnectAsync(CancellationToken token)
     {
         var pipe = new NamedPipeClientStream(".", pipeName,
-            PipeAccessRights.ReadData | PipeAccessRights.WriteData | PipeAccessRights.ReadPermissions | PipeAccessRights.Synchronize,
+            ServicePipeServer.ClientRights,
             PipeOptions.Asynchronous, TokenImpersonationLevel.Impersonation, HandleInheritability.None);
         try
         {

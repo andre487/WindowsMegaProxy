@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.IO.Pipes;
+using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Threading;
@@ -39,6 +41,20 @@ internal static class ServiceChecks
         }
         var identity = ClientAccess.Current();
         string sid = WindowsIdentity.GetCurrent().User!.Value;
+        string limitedName = "WindowsMegaProxy.LimitedAccess." + Guid.NewGuid().ToString("N");
+        var limitedAcl = new PipeSecurity();
+        limitedAcl.SetAccessRuleProtection(true, false);
+        limitedAcl.SetOwner(new SecurityIdentifier(sid));
+        limitedAcl.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(sid), ServicePipeServer.ClientRights, AccessControlType.Allow));
+        using (var limited = NamedPipeServerStreamAcl.Create(limitedName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 4096, 4096, limitedAcl))
+        {
+            var accepted = limited.WaitForConnectionAsync();
+            using var clientPipe = new NamedPipeClientStream(".", limitedName, ServicePipeServer.ClientRights, PipeOptions.Asynchronous, TokenImpersonationLevel.Impersonation, HandleInheritability.None);
+            await clientPipe.ConnectAsync(3000);
+            await accepted;
+            Assert((ServicePipeServer.ClientRights & (PipeAccessRights.CreateNewInstance | PipeAccessRights.ChangePermissions)) == 0,
+                "A client can connect without administrator FullControl and cannot create server instances or change their ACL.");
+        }
         Assert(identity.Sid == sid, "Windows token identity is captured.");
         string directory = Path.GetFullPath(Path.Combine("artifacts", "service-checks", Guid.NewGuid().ToString("N")));
         var store = new MachineSettingsStore(directory, machine: false);
