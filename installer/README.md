@@ -137,3 +137,7 @@ Development/release downloads retry HTTP 5xx four times with 1, 2 and 4 second
 backoff delays, logging a bounded error body and diagnostic headers. After
 exhausted retries on a GitHub release URL, build tools can retrieve the same
 asset through the official GitHub REST API with the original pinned hash.
+Setup applies the same retry policy to core downloads. If the normal release
+URL keeps failing, it resolves an API redirect using Windows WinHTTP, accepts
+only the official HTTPS asset hosts, then downloads and hash-checks with Inno.
+Download-rule checks are a separate test executable and are not bundled.

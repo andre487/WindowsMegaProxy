@@ -92,6 +92,7 @@ Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flag
 Filename: "{code:LaunchPath}"; Flags: nowait runasoriginaluser; Check: IsUpdateInstall
 
 [Code]
+#include "Downloads.iss"
 var TargetVersion: String;
     OwnerSid: String;
     ModePage: TInputOptionWizardPage;
@@ -274,10 +275,9 @@ begin
     SelectedMode;
     Download := CreateDownloadPage(CustomMessage('Prerequisites'), 'sing-box', nil);
     try
-      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');
-      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');
       Download.Show;
-      Download.Download;
+      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');
+      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');
     finally
       Download.Hide;
       Download.Free;

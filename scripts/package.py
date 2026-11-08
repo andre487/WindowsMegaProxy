@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import build
 from authenticode import Signer
-from common import ROOT, cli, digest, download, extract
+from common import ROOT, cli, digest, download, extract, github_asset_url
 from dependencies import (
     CORE_VERSION,
     H3_CORE_VERSION,
@@ -98,6 +98,7 @@ def core_installer_definitions(payload):
     for label, folder, http3 in (("StableCore", "sing-box", False), ("H3Core", "sing-box-h3", True)):
         core = core_package(http3=http3)
         definitions.update({label + "URL": core["url"], label + "SHA256": core["sha256"], label + "Directory": core["name"],
+                            label + "ApiURL": github_asset_url(core["url"]),
                             label + "ExecutableSHA256": digest(payload / "dependencies" / folder / "sing-box.exe", "sha256"),
                             label + "CronetSHA256": digest(payload / "dependencies" / folder / "libcronet.dll", "sha256")})
     return definitions
@@ -186,7 +187,29 @@ def main():
         (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
         script = (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
         script = script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\nSignedUninstaller=yes\n", 1)
+        helper = Path(__file__).resolve().parent.parent / "installer/Downloads.iss"
+        shutil.copy2(helper, staging / "Downloads.iss")
+        if '#include "Downloads.iss"' not in script:
+            script = script.replace("[Code]\n", '[Code]\n#include "Downloads.iss"\n', 1)
+            legacy = ("      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
+                      "      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');\n"
+                      "      Download.Show;\n      Download.Download;")
+            script = script.replace(legacy, "      Download.Show;\n"
+                "      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
+                "      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');")
         (staging / "WindowsMegaProxy.iss").write_text(script, encoding="utf-8-sig")
+        checks = ROOT / "artifacts/installer-checks/download-rules"
+        checks.mkdir(parents=True, exist_ok=True)
+        (checks / "result.txt").unlink(missing_ok=True)
+        source_root = Path(__file__).resolve().parent.parent
+        shutil.copy2(source_root / "tests/InstallerDownloads.iss", staging / "InstallerDownloads.iss")
+        (staging / "check-config.iss").write_text(f'#define CheckOutputDirectory "{checks}"\n', encoding="utf-8-sig")
+        sp.run([str(compiler()), "/Qp", str(staging / "InstallerDownloads.iss")], check=True)
+        result = sp.run([str(checks / "installer-download-checks.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES",
+                         f"/LOG={checks.parent / 'download-rules.log'}"], timeout=30)
+        # InitializeSetup returns False after the checks, so Inno exits before installation with code 1.
+        if result.returncode != 1 or (checks / "result.txt").read_text() != "passed":
+            raise RuntimeError("Installer download checks failed; no installation was attempted.")
         sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "WindowsMegaProxy.iss")],
                env=signer.environment, check=True)
         setup = f"WindowsMegaProxy-{app_version}-win-x64-setup.exe"
