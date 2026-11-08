@@ -76,7 +76,7 @@ public static partial class Installation
         string root = UserInstallation.IsUser ? UserInstallation.ValidateDirectory(AppContext.BaseDirectory, programFiles, UserInstallation.Sid)
             : InstallRoot(AppContext.BaseDirectory, programFiles);
         CheckDirectory(root);
-        var log = new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"));
+        var log = new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
         for (int attempt = 0; attempt < 60; attempt++)
         {
             try
