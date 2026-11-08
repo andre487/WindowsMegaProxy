@@ -1,4 +1,13 @@
 {
+    "When should the update be installed?": "Когда установить обновление?",
+    "Update now": "Обновить сейчас",
+    "While the service is updating, connections will use the system network settings.": "На время обновления службы соединения будут использовать системные настройки сети.",
+    "Restart computer and update": "Перезагрузить компьютер и обновить",
+    "Update at the next computer restart": "Обновить при следующей перезагрузке",
+    "Update at the next application start": "Обновить при следующем запуске приложения",
+    "Update scheduled for the next application start.": "Обновление запланировано на следующий запуск приложения.",
+    "Update scheduled for the next computer restart.": "Обновление запланировано на следующую перезагрузку компьютера.",
+    "Change update timing": "Изменить время обновления",
     "Another MegaProxy version is running": "Уже запущена другая версия MegaProxy",
     "{0} is already running. Choose which version should remain active.": "{0} уже работает. Выберите, какая версия должна остаться активной.",
     "Stop {0}": "Остановить {0}",

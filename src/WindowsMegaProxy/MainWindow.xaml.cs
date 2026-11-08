@@ -103,13 +103,18 @@ public partial class MainWindow : Window
     public MainWindow(bool startInTray, Action<Settings>? persistSettings = null, DiagnosticLog? diagnosticLog = null,
         Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null,
         ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null, bool standalone = false, AppUpdateManager? appUpdates = null,
-        Func<Task>? installAppUpdate = null)
+        Func<string, Task>? installAppUpdate = null, Func<string?>? chooseAppUpdate = null)
     {
         service = serviceClient ?? (persistSettings is null && !standalone ? new ServiceClient() : null);
         this.loadLegacy = loadLegacy ?? (() => Task.Run<Settings>(standalone ? StartupConfiguration.LoadLocal : SettingsStore.Load));
         automaticUpdateChecks = persistSettings is null && loadLegacy is null;
         this.appUpdates = appUpdates ?? (automaticUpdateChecks ? new AppUpdateManager() : null);
-        this.installAppUpdate = installAppUpdate ?? StartAppUpdateInstallerAsync;
+        this.installAppUpdate = installAppUpdate ?? (action => PendingAppUpdate.RequestAsync(action));
+        this.chooseAppUpdate = chooseAppUpdate ?? (() =>
+        {
+            var dialog = new UpdateInstallWindow(service is not null) { Owner = this };
+            return dialog.ShowDialog() == true ? dialog.Action : null;
+        });
         canEdit = service is null;
         connection = connectionController ?? new ConnectionController(CreateEngine);
         settingsWriter = new SettingsWriter(persistSettings ?? (standalone ? StartupConfiguration.SaveLocal : value =>
@@ -805,7 +810,7 @@ public partial class MainWindow : Window
         ConnectButton.IsEnabled = canEdit && !quitting && (connecting || !value && (engine?.Running == true || (!testing && CanConnect())));
         ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
         trayConnect.IsEnabled = ConnectButton.IsEnabled;
-        bool editable = canEdit && !quitting && !settingsLoading;
+        bool editable = canEdit && !quitting && !settingsLoading && !installingAppUpdate;
         RulesEditable = editable;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;

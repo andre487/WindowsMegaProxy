@@ -15,7 +15,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 - **Subscriptions:** HTTPS sources with backups, optional Basic authentication, automatic/manual updates and subscription definitions imported from JSON. Updates preserve local profiles and require reconnecting to apply network changes.
 - **Failover:** optional selected/all-profile backups in profile order, triggered by proxy transport failures; retains certificate and SSH key checks.
 - **Windows integration:** manual launch, elevated startup at sign-in, or a shared Windows service; the active profile and transport in the system tray and main window, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
-- **Application updates:** daily checks and downloads from GitHub Releases, signed manifests, installation notifications and a manual check. Automatic checks can be disabled in settings or during installation.
+- **Application updates:** daily checks and downloads from GitHub Releases, signed manifests and installation notifications. Update immediately or at the next application start; service installations can update during the next computer restart or restart now. Automatic checks can be disabled in settings or during installation.
 - **Shared service:** one protected configuration for the machine; administrator accounts can edit without repeated UAC prompts, other users have a read-only interface.
 - **Appearance:** English and Russian, automatic/light/dark themes and Windows display scaling.
 - **Logs:** local rotating logs, configurable size and export. Log entries are always in English.

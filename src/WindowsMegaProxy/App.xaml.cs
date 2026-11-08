@@ -78,6 +78,14 @@ public partial class App : Application
         }
         try
         {
+            var pending = AppIdentity.IsDev ? null : PendingAppUpdate.Read();
+            if (pending?.When is "applying" or "now" && (!standalone || PendingAppUpdate.WorkerRunning())) { Shutdown(); return; }
+            if (standalone && pending?.When is "launch" or "applying" or "now")
+            {
+                await PendingAppUpdate.RequestAsync("now", applyPending: true);
+                Shutdown();
+                return;
+            }
             if (standalone) runtime = StartupConfiguration.ClaimRuntime();
             var window = new MainWindow(Array.Exists(e.Args, arg => arg == "--tray"), standalone: standalone);
             MainWindow = window;

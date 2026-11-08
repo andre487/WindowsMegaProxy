@@ -63,7 +63,7 @@ internal static partial class Program
             return;
         }
         if (ChannelFixture.Run(args)) return;
-        if (args.Contains("--update-install-check")) { UpdateInstallChecks.Run(); return; }
+        if (args.Contains("--update-install-check")) { UpdateInstallChecks.Run(args.Length == 2 ? args[1] : "now"); return; }
         if (FailoverChecks.RunFixture(args)) return;
         if (args.Contains("--failover-check"))
         {
