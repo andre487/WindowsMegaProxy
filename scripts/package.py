@@ -14,7 +14,8 @@ from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import build
-from common import ROOT, cli, digest, download, extract
+from authenticode import Signer
+from common import ROOT, cli, core_mirrors, digest, download, extract, github_asset_url
 from dependencies import (
     CORE_VERSION,
     H3_CORE_VERSION,
@@ -97,6 +98,8 @@ def core_installer_definitions(payload):
     for label, folder, http3 in (("StableCore", "sing-box", False), ("H3Core", "sing-box-h3", True)):
         core = core_package(http3=http3)
         definitions.update({label + "URL": core["url"], label + "SHA256": core["sha256"], label + "Directory": core["name"],
+                            label + "ApiURL": core.get("apiUrl") or github_asset_url(core["url"]),
+                            label + "Mirrors": "|".join(core_mirrors(core)),
                             label + "ExecutableSHA256": digest(payload / "dependencies" / folder / "sing-box.exe", "sha256"),
                             label + "CronetSHA256": digest(payload / "dependencies" / folder / "libcronet.dll", "sha256")})
     return definitions
@@ -131,7 +134,7 @@ def main():
     runtime = release()["windowsdesktop"]
     runtime_file = asset(runtime, ".exe")
     runtime_download = runtime_installer(cache)
-    with tempfile.TemporaryDirectory(prefix="package-", dir=ROOT / "artifacts") as temporary:
+    with Signer(preview=args.preview) as signer, tempfile.TemporaryDirectory(prefix="package-", dir=ROOT / "artifacts") as temporary:
         staging = Path(temporary)
         payload = staging / "payload"
         payload.mkdir()
@@ -158,6 +161,7 @@ def main():
         shutil.copy2(ROOT / "LICENSE", payload / "LICENSE.txt")
         shutil.copy2(ROOT / "installer/THIRD-PARTY-NOTICES.txt", payload / "THIRD-PARTY-NOTICES.txt")
         shutil.copytree(ROOT / "installer/licenses", payload / "licenses")
+        signer.sign_directory(payload)
         for name, http3 in (("sing-box", False), ("sing-box-h3", True)):
             install_core(payload / "dependencies" / name, cache, http3=http3)
         wintun = download("https://www.wintun.net/builds/wintun-0.14.1.zip", cache / "wintun-0.14.1.zip",
@@ -179,11 +183,46 @@ def main():
             "RepositoryRoot": str(ROOT), "PayloadDirectory": str(payload), "ReleaseDirectory": str(staging),
             "RuntimeVersion": runtime["version"], "RuntimeURL": runtime_file["url"],
             "RuntimeSHA256": digest(runtime_download, "sha256"),
+            "H3CoreVersion": H3_CORE_VERSION,
         }
         definitions.update(core_installer_definitions(payload))
         (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
-        shutil.copy2(ROOT / "installer/WindowsMegaProxy.iss", staging / "WindowsMegaProxy.iss")
-        sp.run([str(compiler()), "/Qp", str(staging / "WindowsMegaProxy.iss")], check=True)
+        script = (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
+        script = script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\nSignedUninstaller=yes\n", 1)
+        helper = Path(__file__).resolve().parent.parent / "installer/Downloads.iss"
+        shutil.copy2(helper, staging / "Downloads.iss")
+        automation = Path(__file__).resolve().parent.parent
+        shutil.copy2(automation / "installer/Winget.iss", staging / "Winget.iss")
+        h3_script = (automation / "installer/Http3Core.iss").read_text(encoding="utf-8-sig")
+        h3_script = h3_script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\n", 1)
+        (staging / "Http3Core.iss").write_text(h3_script, encoding="utf-8-sig")
+        sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "Http3Core.iss")],
+               env=signer.environment, check=True)
+        app = components["app"]
+        app["files"] = archive(payload, staging / app["file"], exclude=("dependencies",))
+        if '#include "Downloads.iss"' not in script and '#include "Winget.iss"' not in script:
+            script = script.replace("[Code]\n", '[Code]\n#include "Downloads.iss"\n', 1)
+            legacy = ("      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
+                      "      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');\n"
+                      "      Download.Show;\n      Download.Download;")
+            script = script.replace(legacy, "      Download.Show;\n"
+                "      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', '{#StableCoreMirrors}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
+                "      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', '{#H3CoreMirrors}', 'sing-box-h3.zip', '{#H3CoreSHA256}');")
+        (staging / "WindowsMegaProxy.iss").write_text(script, encoding="utf-8-sig")
+        checks = ROOT / "artifacts/installer-checks/download-rules"
+        checks.mkdir(parents=True, exist_ok=True)
+        (checks / "result.txt").unlink(missing_ok=True)
+        source_root = Path(__file__).resolve().parent.parent
+        shutil.copy2(source_root / "tests/InstallerDownloads.iss", staging / "InstallerDownloads.iss")
+        (staging / "check-config.iss").write_text(f'#define CheckOutputDirectory "{checks}"\n', encoding="utf-8-sig")
+        sp.run([str(compiler()), "/Qp", str(staging / "InstallerDownloads.iss")], check=True)
+        result = sp.run([str(checks / "installer-download-checks.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES",
+                         f"/LOG={checks.parent / 'download-rules.log'}"], timeout=30)
+        # InitializeSetup returns False after the checks, so Inno exits before installation with code 1.
+        if result.returncode != 1 or (checks / "result.txt").read_text() != "passed":
+            raise RuntimeError("Installer download checks failed; no installation was attempted.")
+        sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "WindowsMegaProxy.iss")],
+               env=signer.environment, check=True)
         setup = f"WindowsMegaProxy-{app_version}-win-x64-setup.exe"
         components["installer"] = {"version": app_version, "file": setup}
         source = f"WindowsMegaProxy-{app_version}-source.zip"
@@ -195,6 +234,7 @@ def main():
                         url=f"{REPOSITORY}/releases/download/v{app_version}/{file.name}")
         manifest = {"schemaVersion": 1, "version": app_version, "commit": commit, "platform": "win-x64",
                     "preview": args.preview, "serviceProtocol": 3, "components": components,
+                    "authenticodeCertificateSha256": signer.fingerprint,
                     "runtime": {"version": runtime["version"], "url": runtime_file["url"], "sha512": runtime_file["hash"]}}
         signed_manifest(manifest, staging, key)
         names = [item["file"] for item in components.values()] + ["update-manifest.json", "update-manifest.sig", "update-public-key.txt"]

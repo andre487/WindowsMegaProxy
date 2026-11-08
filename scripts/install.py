@@ -1,7 +1,6 @@
 """Developer installation using the same protected mode helper as native setup."""
 import argparse
 import ctypes as ct
-import re
 import subprocess as sp
 import sys
 import tempfile
@@ -11,7 +10,7 @@ from ctypes import wintypes as wt
 from pathlib import Path
 
 from common import ROOT, app_name, artifact_root, cli
-from dependencies import install_core, release, runtime_installer
+from dependencies import install_core, install_machine_dependencies
 from package import merge
 
 
@@ -143,17 +142,7 @@ def install_main():
     if not (sources[0] / (name + ".exe")).is_file() or not (sources[1] / (name + ".Service.exe")).is_file():
         raise RuntimeError("Run build.cmd before installation.")
     cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
-    runtime_root = known_folder(0x26) / "dotnet/shared/Microsoft.WindowsDesktop.App"
-    minimum = tuple(map(int, release()["windowsdesktop"]["version"].split(".")))
-    installed = any(path.is_dir() and re.fullmatch(r"10\.\d+\.\d+", path.name) and tuple(map(int, path.name.split("."))) >= minimum
-                    for path in runtime_root.glob("10.*"))
-    if not installed:
-        installer = runtime_installer(cache)
-        result = sp.run([str(installer), "/install", "/passive", "/norestart"], check=False)
-        if result.returncode not in (0, 3010):
-            raise RuntimeError(f".NET installer exited with {result.returncode}.")
-        if result.returncode == 3010:
-            raise RuntimeError("Restart Windows before continuing installation.")
+    install_machine_dependencies()
     root = known_folder(0x26) / name
     target = root / "versions" / f"local-{time.time_ns()}"
     for directory in (root, root / "versions", target):
@@ -164,9 +153,9 @@ def install_main():
         if any(entry.is_symlink() or entry.is_junction() for entry in source.rglob("*")):
             raise RuntimeError("Application files cannot contain links.")
         merge(source, target)
-    install_core(target / "dependencies/sing-box", cache)
-    install_core(target / "dependencies/sing-box-h3", cache, http3=True)
     if options.dev:
+        install_core(target / "dependencies/sing-box", cache)
+        install_core(target / "dependencies/sing-box-h3", cache, http3=True)
         for directory in ("sing-box", "sing-box-h3"):
             (target / "dependencies" / directory / "sing-box.exe").rename(target / "dependencies" / directory / "sing-box-dev.exe")
     run(str(target / (name + ".Service.exe")), "--configure-mode", options.mode)

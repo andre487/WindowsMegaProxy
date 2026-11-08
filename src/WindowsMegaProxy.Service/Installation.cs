@@ -28,6 +28,12 @@ public static partial class Installation
         try
         {
             string command = args[0];
+            if (command == "--check-dependencies")
+            {
+                if (args.Length != 1 || CoreInstallation.Stable() is null)
+                    throw new IOException("The machine-wide SagerNet.sing-box package is missing. Install it with WinGet.");
+                return 0;
+            }
             if (command == "--install-update")
             {
                 if (args.Length != 1) throw new ArgumentException("Invalid update arguments.");

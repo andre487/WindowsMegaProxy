@@ -1,8 +1,10 @@
 import ctypes as ct
 import hashlib
 import io
+import json
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -15,13 +17,33 @@ import run as dev_runner
 import stop_prod
 import uninstall_dev
 from artwork import preferred_color
-from common import ROOT, app_name, artifact_root, download, extract
-from dependencies import asset
+from common import (
+    ROOT,
+    DownloadHttpError,
+    app_name,
+    artifact_root,
+    core_mirrors,
+    download,
+    extract,
+    github_asset_url,
+    open_download,
+)
+from dependencies import asset, core_package, install_machine_dependencies
 from install import secure_directory
 from service_control import require_production_stopped, stop_service
 
 
 class ToolsChecks(unittest.TestCase):
+    def test_dependency_install_fails_without_winget_or_on_package_error(self):
+        with patch("dependencies.shutil.which", return_value=None), patch("dependencies.sp.run") as install:
+            with self.assertRaisesRegex(RuntimeError, "App Installer"):
+                install_machine_dependencies()
+            install.assert_not_called()
+        with patch("dependencies.shutil.which", return_value="winget.exe"), \
+             patch("dependencies.sp.run", return_value=type("Result", (), {"returncode": 1})()):
+            with self.assertRaisesRegex(RuntimeError, "WinGet dependency installation failed"):
+                install_machine_dependencies()
+
     def test_console_installer_uses_mode_helper_in_version_directory(self):
         for mode, dev in ((mode, dev) for mode in ("manual", "login", "service") for dev in (False, True)):
             with self.subTest(mode=mode, dev=dev), tempfile.TemporaryDirectory() as temporary:
@@ -36,7 +58,8 @@ class ToolsChecks(unittest.TestCase):
                     (destination / "sing-box.exe").write_bytes(b"core-fixture")
                 with patch("sys.argv", ["install.py", "--mode", mode] + (["--dev"] if dev else [])), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
                      patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
-                     patch("install.release", return_value={"windowsdesktop": {"version": "10.0.14"}}), \
+                     patch("dependencies.shutil.which", return_value="winget.exe"), \
+                     patch("install.sp.run", return_value=type("Result", (), {"returncode": 0})()) as dependencies, \
                      patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
                      patch("install.install_core", side_effect=core), patch("install.run") as configure, patch("builtins.print"), \
                      patch("run.stop_workspace_app"), patch("service_control.require_production_stopped"), patch("build.main"):
@@ -45,6 +68,11 @@ class ToolsChecks(unittest.TestCase):
                 self.assertIn("versions", Path(command[0]).parts)
                 self.assertEqual(Path(command[0]).name, name + ".Service.exe")
                 self.assertEqual(command[1:], ("--configure-mode", mode))
+                dependencies.assert_called_once()
+                batch = dependencies.call_args.args[0]
+                self.assertEqual(batch[:4], ["winget.exe", "install", "SagerNet.sing-box", "Microsoft.DotNet.DesktopRuntime.10"])
+                self.assertEqual(batch[batch.index("--scope") + 1], "machine")
+                self.assertNotIn("--ignore-security-hash", batch)
 
     def test_dev_cleanup_matches_only_its_own_task_names(self):
         for task in (r"\WindowsMegaProxy.Dev.Login", r"\WindowsMegaProxy.Dev-S-1-5-21-1001", r"\WindowsMegaProxy.Dev"):
@@ -230,10 +258,106 @@ class ToolsChecks(unittest.TestCase):
                  {"rid": "win-x64", "url": "https://example/x64.exe"}]
         self.assertEqual(asset({"files": files}, ".exe"), files[2])
 
+    def test_download_retries_5xx_with_exponential_backoff_and_logs_gateway_details(self):
+        url = "https://example.invalid/asset"
+        errors = [urllib.error.HTTPError(url, status, "gateway", {"Server": "test-gateway", "X-Azure-Ref": "trace-id"},
+                                        io.BytesIO(b"<html>Upstream timed out</html>")) for status in (503, 504)]
+        response = unittest.mock.Mock()
+        response.geturl.return_value = url
+        output = io.StringIO()
+        with patch("urllib.request.urlopen", side_effect=[*errors, response]) as network, \
+                patch("common.time.sleep") as sleep, redirect_stdout(output):
+            self.assertIs(open_download(url), response)
+        self.assertEqual(network.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+        self.assertIn("Server: test-gateway", output.getvalue())
+        self.assertIn("X-Azure-Ref: trace-id", output.getvalue())
+        self.assertIn("Upstream timed out", output.getvalue())
+
+    def test_download_retries_are_bounded_and_4xx_are_not_retried(self):
+        url = "https://example.invalid/asset"
+        for status, attempts in ((504, 4), (404, 1), (403, 1)):
+            errors = [urllib.error.HTTPError(url, status, "error", {}, io.BytesIO(b"failure")) for _ in range(attempts)]
+            with patch("urllib.request.urlopen", side_effect=errors) as network, \
+                    patch("common.time.sleep") as sleep, redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, f"HTTP {status}"):
+                    open_download(url)
+            self.assertEqual(network.call_count, attempts)
+            self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4] if status == 504 else [])
+
+    def test_official_github_api_fallback_keeps_hash_verification(self):
+        url = "https://github.com/owner/repository/releases/download/v1/asset.zip"
+        endpoint = "https://api.github.com/repos/owner/repository/releases/assets/123"
+        metadata = {"assets": [{"name": "asset.zip", "browser_download_url": url, "url": endpoint}]}
+        expected = hashlib.sha256(b"verified").hexdigest()
+        for content, success in ((b"verified", True), (b"corrupted", False)):
+            with tempfile.TemporaryDirectory() as temporary:
+                target = Path(temporary) / "asset.zip"
+                target.write_bytes(b"previous")
+                responses = [DownloadHttpError(url, 504, 4), io.BytesIO(json.dumps(metadata).encode()), io.BytesIO(content)]
+                with patch("common.open_download", side_effect=responses) as network, redirect_stdout(io.StringIO()):
+                    if success:
+                        self.assertEqual(download(url, target, expected), target)
+                        self.assertEqual(target.read_bytes(), content)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "Checksum mismatch"):
+                            download(url, target, expected)
+                        self.assertEqual(target.read_bytes(), b"previous")
+                self.assertEqual(network.call_args.args, (endpoint,))
+                self.assertEqual(network.call_args.kwargs["headers"], {"Accept": "application/octet-stream"})
+                self.assertFalse(target.with_name("asset.zip.download").exists())
+
+    def test_github_fallback_rejects_an_untrusted_api_endpoint(self):
+        url = "https://github.com/owner/repository/releases/download/v1/asset.zip"
+        metadata = {"assets": [{"name": "asset.zip", "browser_download_url": url,
+                                "url": "https://untrusted.invalid/archive.zip"}]}
+        with patch("common.open_download", return_value=io.BytesIO(json.dumps(metadata).encode())):
+            with self.assertRaisesRegex(RuntimeError, "untrusted"):
+                github_asset_url(url)
+        self.assertIsNone(github_asset_url("https://example.invalid/file.zip"))
+
     def test_flag_palette_and_neutral_pixels(self):
         palette = [(255, 0, 0), (0, 0, 255)]
         self.assertEqual(preferred_color(Image.new("RGBA", (2, 2), "white"), palette), -1)
         self.assertEqual(preferred_color(Image.new("RGBA", (2, 2), "blue"), palette), 1)
+
+
+class CoreMirrorTests(unittest.TestCase):
+    def test_versioned_mirror_order(self):
+        stable = core_package()
+        alpha = core_package(http3=True)
+        self.assertEqual(core_mirrors(stable), [
+            f"https://dl.sing-box.org/releases/latest/{stable['name']}.zip",
+            "https://ghfast.top/" + stable["url"],
+        ])
+        self.assertEqual(core_mirrors(alpha), ["https://ghfast.top/" + alpha["url"]])
+
+    def test_mirrors_keep_the_original_hash_and_order(self):
+        content = b"official archive"
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "core.zip"
+            with patch("common.open_download", side_effect=[
+                DownloadHttpError("https://github.com/asset", 504, 4),
+                DownloadHttpError("https://mirror-one/asset", 404, 1),
+                io.BytesIO(content),
+            ]) as request:
+                download("https://github.com/asset", target, hashlib.sha256(content).hexdigest(),
+                         mirrors=["https://mirror-one/asset", "https://mirror-two/asset"])
+                self.assertEqual(target.read_bytes(), content)
+                self.assertEqual([call.args[0] for call in request.call_args_list], [
+                    "https://github.com/asset", "https://mirror-one/asset", "https://mirror-two/asset"])
+
+    def test_corrupt_mirror_is_never_accepted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "core.zip"
+            with patch("common.open_download", side_effect=[
+                DownloadHttpError("https://github.com/asset", 504, 4), io.BytesIO(b"modified"),
+            ]):
+                with self.assertRaisesRegex(RuntimeError, "Checksum mismatch"):
+                    download("https://github.com/asset", target, "0" * 64,
+                             mirrors=["https://mirror-one/asset"])
+            self.assertFalse(target.exists())
+            self.assertFalse(target.with_suffix(".zip.download").exists())
 
 
 if __name__ == "__main__":

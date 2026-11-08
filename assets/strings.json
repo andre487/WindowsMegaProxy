@@ -462,5 +462,11 @@
     "Could not check for updates. Try again later.": "Не удалось проверить обновления. Повторите попытку позже.",
     "Update {0} is downloaded. Click to install.": "Обновление {0} скачано. Нажмите, чтобы установить.",
     "Development builds are updated with run.cmd.": "DEV-сборки обновляются через run.cmd.",
-    "Administrator rights are required to install updates.": "Для установки обновлений нужны права администратора."
+    "Administrator rights are required to install updates.": "Для установки обновлений нужны права администратора.",
+    "Enable HTTP/3": "Включить HTTP/3",
+    "The imported configuration enables HTTP/3. Enable it? If you decline, the other selected settings will still be imported.": "Импортируемая конфигурация включает HTTP/3. Включить его? При отказе остальные выбранные настройки всё равно будут импортированы.",
+    "Enable HTTP/3 in settings before using this profile.": "Перед использованием этого профиля включите HTTP/3 в настройках.",
+    "HTTP/3 requires downloading sing-box {0}. The archive will be verified against its pinned SHA-256. Download and install it now?": "Для HTTP/3 необходимо скачать sing-box {0}. Архив будет проверен по закреплённому SHA-256. Скачать и установить сейчас?",
+    "The HTTP/3 installer is missing. Repair the application installation.": "Установщик ядра HTTP/3 отсутствует. Восстановите установку приложения.",
+    "HTTP/3 core installation failed. See the setup log and retry.": "Не удалось установить ядро HTTP/3. Проверьте журнал установки и повторите попытку."
 }

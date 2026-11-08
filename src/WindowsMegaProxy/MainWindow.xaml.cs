@@ -41,7 +41,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly ConnectionController connection;
     private IEngine? engine => connection.Engine;
-    private bool busy => connection.IsBusy;
+    private bool busy => connection.IsBusy || preparingCore;
+    private bool preparingCore;
     private bool testing => connection.IsTesting;
     private readonly ObservableCollection<ConnectionRow> connectionRows = new();
     private readonly ListCollectionView connectionView;
@@ -399,6 +400,7 @@ public partial class MainWindow : Window
         updated.Language = (string)((ComboBoxItem)LanguageBox.SelectedItem).Tag;
         updated.Theme = (string)((ComboBoxItem)ThemeBox.SelectedItem).Tag;
         updated.TlsFingerprint = (string)((ComboBoxItem)TlsFingerprintBox.SelectedItem).Tag;
+        updated.Http3Enabled = Http3EnabledBox.IsChecked == true;
         if (!applyingAutostart) updated.LaunchAtSignIn = AutostartBox.IsChecked == true;
         updated.Rules = rules.Select(rule => rule.Copy()).ToList();
         return updated;
@@ -495,6 +497,7 @@ public partial class MainWindow : Window
             DefaultFingerprintItem.Content = Ui.F("Default ({0})", TlsFingerprintBox.Items.Cast<ComboBoxItem>()
                 .First(item => (string)item.Tag == Configuration.DefaultTlsFingerprint).Content.ToString()!.Trim());
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
+            Http3EnabledBox.IsChecked = updated.Http3Enabled;
             ShowAllConnectionsBox.IsChecked = updated.ShowAllConnections;
             if (profilesChanged)
             {
@@ -676,7 +679,10 @@ public partial class MainWindow : Window
             var selected = options.Selected;
             var remove = options.RemoveIds;
             bool applyGlobals = options.ApplyGlobals;
-            var updated = await TrackFileAsync(Task.Run(() => review.Apply(selected, applyGlobals, remove)));
+            bool allowHttp3Enable = applyGlobals && review.EnablesHttp3 && MessageBox.Show(this,
+                Ui.T("The imported configuration enables HTTP/3. Enable it? If you decline, the other selected settings will still be imported."),
+                "HTTP/3", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+            var updated = await TrackFileAsync(Task.Run(() => review.Apply(selected, applyGlobals, remove, allowHttp3Enable)));
             if (quitting) return;
             if (revision != settingsRevision) throw new IOException(Ui.T("Settings changed during import. Review the file again."));
             await CommitSettingsAsync(updated);
@@ -730,6 +736,7 @@ public partial class MainWindow : Window
                     (selected.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() == true || selected.Type == "HTTPS_JUMP" && selected.Proxy["jump"]?["allowInvalidProxyCertificate"]?.GetValue<bool>() == true) &&
                     MessageBox.Show(this, Ui.T("Proxy certificate verification is disabled in this profile. Connect with this exception?"), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
                 await SaveSettingsAsync();
+                if (!await PrepareHttp3CoreAsync(settings)) return;
                 if (settings.ActiveProfile is { Type: "SSH" } ssh && ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() == true &&
                     MessageBox.Show(this, Ui.T("SSH server identity verification is disabled in this profile. Connect with this exception?"), "SSH", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
                 StatusText.Text = Ui.T("Connecting…");
@@ -756,7 +763,7 @@ public partial class MainWindow : Window
         RulesEditable = editable;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, Http3EnabledBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
@@ -990,6 +997,7 @@ public partial class MainWindow : Window
                 if (snapshot.ActiveProfile is { Supported: false } unsupported) throw new InvalidOperationException(unsupported.Availability);
                 if (snapshot.ActiveProfile?.Supported == true) snapshot.DefaultAction = "proxy";
             }
+            if (engine?.Running != true && !await PrepareHttp3CoreAsync(snapshot)) return;
             await connection.RunDiagnosticsAsync(snapshot, async (target, token) =>
             {
                 testToken = token;

@@ -1,10 +1,15 @@
 """Shared paths and standard-library helpers for the Windows development scripts."""
 
 import hashlib
+import json
 import os
+import re
 import shutil
 import subprocess as sp
 import sys
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -44,20 +49,95 @@ def dotnet(*args):
     return sp.run([executable, *args], cwd=ROOT, env=env, stdout=sys.stdout, stderr=sys.stderr, check=True)
 
 
-def download(url, path, expected, algorithm="sha256"):
+class DownloadHttpError(RuntimeError):
+    def __init__(self, url, status, attempts):
+        self.url, self.status = url, status
+        super().__init__(f"Download failed from {urllib.parse.urlsplit(url).hostname}: HTTP {status} after {attempts} attempt(s).")
+
+
+def open_download(url, *, timeout=60, headers=None):
+    host = urllib.parse.urlsplit(url).hostname or "unknown host"
+    request = urllib.request.Request(url, headers=headers) if headers else url
+    for attempt in range(4):
+        try:
+            response = urllib.request.urlopen(request, timeout=timeout)
+            if not response.geturl().startswith("https://"):
+                response.close()
+                raise RuntimeError("Refusing an insecure download redirect.")
+            return response
+        except urllib.error.HTTPError as error:
+            status = error.code
+            response_headers = error.headers or {}
+            details = "; ".join(f"{name}: {response_headers[name]}" for name in
+                                ("Server", "Via", "X-Cache", "X-Azure-Ref", "X-Ms-Request-Id", "X-GitHub-Request-Id",
+                                 "X-GitHub-Edge-Region", "Content-Type", "Retry-After") if response_headers.get(name))
+            try:
+                body = error.read(2048).decode("utf-8", errors="replace")
+            except (OSError, TimeoutError):
+                body = "Response body unavailable."
+            finally:
+                error.close()
+            body = re.sub(r"<[^>]+>", " ", body)
+            body = " ".join("".join(character if character.isprintable() else " " for character in body).split())
+            parsed = urllib.parse.urlsplit(url)
+            source = urllib.parse.urlunsplit((parsed.scheme, parsed.hostname or "", parsed.path, "", ""))
+            print(f"Download from {source}: HTTP {status}. {details}\nResponse: {body}", flush=True)
+            if not 500 <= status < 600 or attempt == 3:
+                raise DownloadHttpError(url, status, attempt + 1) from None
+            delay = 2 ** attempt
+            print(f"Retrying {host} in {delay} second(s), attempt {attempt + 2}/4.", flush=True)
+            time.sleep(delay)
+
+
+def github_asset_url(url):
+    match = re.fullmatch(r"https://github.com/([\w.-]+)/([\w.-]+)/releases/download/([^/?#]+)/([^/?#]+)", url)
+    if match is None:
+        return None
+    owner, repository, tag, filename = match.groups()
+    metadata_url = f"https://api.github.com/repos/{owner}/{repository}/releases/tags/{tag}"
+    with open_download(metadata_url, headers={"Accept": "application/vnd.github+json"}) as response:
+        release = json.load(response)
+    for asset in release.get("assets", []):
+        if asset.get("name") == urllib.parse.unquote(filename) and asset.get("browser_download_url") == url:
+            endpoint = asset.get("url", "")
+            if re.fullmatch(rf"https://api\.github\.com/repos/{re.escape(owner)}/{re.escape(repository)}/releases/assets/[0-9]+", endpoint):
+                return endpoint
+            raise RuntimeError("GitHub returned an untrusted release asset endpoint.")
+    raise RuntimeError("The official GitHub release does not contain the requested asset.")
+
+
+def core_mirrors(package):
+    mirrors = []
+    if "alpha" not in package["version"]:
+        mirrors.append(f"https://dl.sing-box.org/releases/latest/{package['name']}.zip")
+    mirrors.append("https://ghfast.top/" + package["url"])
+    return mirrors
+
+
+def download(url, path, expected, algorithm="sha256", *, headers=None, mirrors=()):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and digest(path, algorithm) == expected.lower():
         return path
     temporary = path.with_name(path.name + ".download")
     try:
-        with urllib.request.urlopen(url, timeout=60) as response, temporary.open("wb") as output:
-            if not response.geturl().startswith("https://"):
-                raise RuntimeError("Refusing an insecure download redirect.")
+        with open_download(url, headers=headers) as response, temporary.open("wb") as output:
             shutil.copyfileobj(response, output)
         if digest(temporary, algorithm) != expected.lower():
             raise RuntimeError(f"Checksum mismatch: {path.name}")
         temporary.replace(path)
+    except (DownloadHttpError, urllib.error.URLError, TimeoutError) as error:
+        for mirror in mirrors:
+            print("Trying a checksum-verified mirror; the pinned hash is unchanged.", flush=True)
+            try:
+                return download(mirror, path, expected, algorithm)
+            except (DownloadHttpError, urllib.error.URLError, TimeoutError):
+                continue
+        endpoint = github_asset_url(url) if isinstance(error, DownloadHttpError) and 500 <= error.status < 600 else None
+        if endpoint is None:
+            raise
+        print("Retrying the same release asset through the official GitHub API; the pinned hash is unchanged.", flush=True)
+        return download(endpoint, path, expected, algorithm, headers={"Accept": "application/octet-stream"})
     finally:
         temporary.unlink(missing_ok=True)
     return path
