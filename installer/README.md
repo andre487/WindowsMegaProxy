@@ -137,7 +137,12 @@ Development/release downloads retry HTTP 5xx four times with 1, 2 and 4 second
 backoff delays, logging a bounded error body and diagnostic headers. After
 exhausted retries on a GitHub release URL, build tools can retrieve the same
 asset through the official GitHub REST API with the original pinned hash.
-Setup applies the same retry policy to core downloads. If the normal release
-URL keeps failing, it resolves an API redirect using Windows WinHTTP, accepts
+Setup applies the same retry policy to core downloads. If the release URL and
+mirrors keep failing, it resolves an API redirect using Windows WinHTTP, accepts
 only the official HTTPS asset hosts, then downloads and hash-checks with Inno.
 Download-rule checks are a separate test executable and are not bundled.
+
+Core downloads prefer GitHub, then dl.sing-box.org for stable builds, then ghfast.top,
+with the official GitHub asset API as the final fallback. Mirrors are third-party
+services; every archive must match the original pinned SHA-256 before extraction.
+Alpha builds skip dl.sing-box.org because it only carries stable archives.

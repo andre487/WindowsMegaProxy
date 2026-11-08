@@ -22,12 +22,13 @@ from common import (
     DownloadHttpError,
     app_name,
     artifact_root,
+    core_mirrors,
     download,
     extract,
     github_asset_url,
     open_download,
 )
-from dependencies import asset
+from dependencies import asset, core_package
 from install import secure_directory
 from service_control import require_production_stopped, stop_service
 
@@ -303,6 +304,44 @@ class ToolsChecks(unittest.TestCase):
         palette = [(255, 0, 0), (0, 0, 255)]
         self.assertEqual(preferred_color(Image.new("RGBA", (2, 2), "white"), palette), -1)
         self.assertEqual(preferred_color(Image.new("RGBA", (2, 2), "blue"), palette), 1)
+
+
+class CoreMirrorTests(unittest.TestCase):
+    def test_versioned_mirror_order(self):
+        stable = core_package()
+        alpha = core_package(http3=True)
+        self.assertEqual(core_mirrors(stable), [
+            f"https://dl.sing-box.org/releases/latest/{stable['name']}.zip",
+            "https://ghfast.top/" + stable["url"],
+        ])
+        self.assertEqual(core_mirrors(alpha), ["https://ghfast.top/" + alpha["url"]])
+
+    def test_mirrors_keep_the_original_hash_and_order(self):
+        content = b"official archive"
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "core.zip"
+            with patch("common.open_download", side_effect=[
+                DownloadHttpError("https://github.com/asset", 504, 4),
+                DownloadHttpError("https://mirror-one/asset", 404, 1),
+                io.BytesIO(content),
+            ]) as request:
+                download("https://github.com/asset", target, hashlib.sha256(content).hexdigest(),
+                         mirrors=["https://mirror-one/asset", "https://mirror-two/asset"])
+                self.assertEqual(target.read_bytes(), content)
+                self.assertEqual([call.args[0] for call in request.call_args_list], [
+                    "https://github.com/asset", "https://mirror-one/asset", "https://mirror-two/asset"])
+
+    def test_corrupt_mirror_is_never_accepted(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "core.zip"
+            with patch("common.open_download", side_effect=[
+                DownloadHttpError("https://github.com/asset", 504, 4), io.BytesIO(b"modified"),
+            ]):
+                with self.assertRaisesRegex(RuntimeError, "Checksum mismatch"):
+                    download("https://github.com/asset", target, "0" * 64,
+                             mirrors=["https://mirror-one/asset"])
+            self.assertFalse(target.exists())
+            self.assertFalse(target.with_suffix(".zip.download").exists())
 
 
 if __name__ == "__main__":

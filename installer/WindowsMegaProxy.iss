@@ -276,8 +276,8 @@ begin
     Download := CreateDownloadPage(CustomMessage('Prerequisites'), 'sing-box', nil);
     try
       Download.Show;
-      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');
-      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');
+      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', '{#StableCoreMirrors}', 'sing-box-stable.zip', '{#StableCoreSHA256}');
+      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', '{#H3CoreMirrors}', 'sing-box-h3.zip', '{#H3CoreSHA256}');
     finally
       Download.Hide;
       Download.Free;

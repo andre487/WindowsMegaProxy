@@ -106,7 +106,15 @@ def github_asset_url(url):
     raise RuntimeError("The official GitHub release does not contain the requested asset.")
 
 
-def download(url, path, expected, algorithm="sha256", *, headers=None):
+def core_mirrors(package):
+    mirrors = []
+    if "alpha" not in package["version"]:
+        mirrors.append(f"https://dl.sing-box.org/releases/latest/{package['name']}.zip")
+    mirrors.append("https://ghfast.top/" + package["url"])
+    return mirrors
+
+
+def download(url, path, expected, algorithm="sha256", *, headers=None, mirrors=()):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and digest(path, algorithm) == expected.lower():
@@ -118,8 +126,14 @@ def download(url, path, expected, algorithm="sha256", *, headers=None):
         if digest(temporary, algorithm) != expected.lower():
             raise RuntimeError(f"Checksum mismatch: {path.name}")
         temporary.replace(path)
-    except DownloadHttpError as error:
-        endpoint = github_asset_url(url) if 500 <= error.status < 600 else None
+    except (DownloadHttpError, urllib.error.URLError, TimeoutError) as error:
+        for mirror in mirrors:
+            print("Trying a checksum-verified mirror; the pinned hash is unchanged.", flush=True)
+            try:
+                return download(mirror, path, expected, algorithm)
+            except (DownloadHttpError, urllib.error.URLError, TimeoutError):
+                continue
+        endpoint = github_asset_url(url) if isinstance(error, DownloadHttpError) and 500 <= error.status < 600 else None
         if endpoint is None:
             raise
         print("Retrying the same release asset through the official GitHub API; the pinned hash is unchanged.", flush=True)

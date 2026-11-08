@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import build
 from authenticode import Signer
-from common import ROOT, cli, digest, download, extract, github_asset_url
+from common import ROOT, cli, core_mirrors, digest, download, extract, github_asset_url
 from dependencies import (
     CORE_VERSION,
     H3_CORE_VERSION,
@@ -99,6 +99,7 @@ def core_installer_definitions(payload):
         core = core_package(http3=http3)
         definitions.update({label + "URL": core["url"], label + "SHA256": core["sha256"], label + "Directory": core["name"],
                             label + "ApiURL": github_asset_url(core["url"]),
+                            label + "Mirrors": "|".join(core_mirrors(core)),
                             label + "ExecutableSHA256": digest(payload / "dependencies" / folder / "sing-box.exe", "sha256"),
                             label + "CronetSHA256": digest(payload / "dependencies" / folder / "libcronet.dll", "sha256")})
     return definitions
@@ -195,8 +196,8 @@ def main():
                       "      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');\n"
                       "      Download.Show;\n      Download.Download;")
             script = script.replace(legacy, "      Download.Show;\n"
-                "      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
-                "      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');")
+                "      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', '{#StableCoreMirrors}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
+                "      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', '{#H3CoreMirrors}', 'sing-box-h3.zip', '{#H3CoreSHA256}');")
         (staging / "WindowsMegaProxy.iss").write_text(script, encoding="utf-8-sig")
         checks = ROOT / "artifacts/installer-checks/download-rules"
         checks.mkdir(parents=True, exist_ok=True)

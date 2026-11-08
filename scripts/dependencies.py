@@ -1,9 +1,9 @@
-"""Official checksum-verified downloads shared by development and installation."""
+"""Checksum-verified downloads shared by development and installation."""
 import json
 import shutil
 from pathlib import Path
 
-from common import SDK_VERSION, download, extract, open_download
+from common import SDK_VERSION, core_mirrors, download, extract, open_download
 
 CORE_VERSION = "1.14.4"
 CORE_HASH = "99185d75d314a07dbba4a130c8ad986cbeb629a07927975636b341ca61f991df"
@@ -31,7 +31,8 @@ def core_package(*, http3=False):
 def install_core(destination, cache, *, http3=False):
     package = core_package(http3=http3)
     name = package["name"]
-    archive = download(package["url"], Path(cache) / f"{name}.zip", package["sha256"])
+    archive = download(package["url"], Path(cache) / f"{name}.zip", package["sha256"],
+                       mirrors=core_mirrors(package))
     expanded = Path(cache) / name
     extract(archive, expanded)
     destination = Path(destination)

@@ -36,8 +36,8 @@ begin
     RaiseException('GitHub returned an untrusted download redirect.');
 end;
 
-procedure DownloadCore(Page: TDownloadWizardPage; Url, ApiUrl, BaseName, Hash: String);
-var Attempt, Delay: Integer; ErrorText: String;
+procedure DownloadCore(Page: TDownloadWizardPage; Url, ApiUrl, Mirrors, BaseName, Hash: String);
+var Attempt, Delay, Separator: Integer; ErrorText: String;
 begin
   Delay := 1000;
   for Attempt := 1 to 4 do begin
@@ -49,7 +49,7 @@ begin
     except
       ErrorText := GetExceptionMessage;
       Log(BaseName + ': ' + ErrorText);
-      if not IsTemporaryHttpError(ErrorText) then RaiseException(ErrorText);
+      if not IsTemporaryHttpError(ErrorText) then Break;
       if Attempt < 4 then begin
         Log('Retrying ' + BaseName + ' in ' + IntToStr(Delay div 1000) + ' second(s).');
         Sleep(Delay);
@@ -57,6 +57,20 @@ begin
       end;
     end;
   end;
+  while Mirrors <> '' do begin
+    Separator := Pos('|', Mirrors);
+    if Separator = 0 then Separator := Length(Mirrors) + 1;
+    Url := Copy(Mirrors, 1, Separator - 1);
+    Delete(Mirrors, 1, Separator);
+    try
+      Log('Trying a mirror for ' + BaseName + '; the pinned hash is unchanged.');
+      DownloadCore(Page, Url, '', '', BaseName, Hash);
+      Exit;
+    except
+      Log(BaseName + ': ' + GetExceptionMessage);
+    end;
+  end;
+  if ApiUrl = '' then RaiseException(ErrorText);
   Log('Using the official GitHub API for ' + BaseName + '; the pinned hash is unchanged.');
   Page.Clear;
   Page.Add(GitHubAssetLocation(ApiUrl), BaseName, Hash);
