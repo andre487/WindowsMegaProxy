@@ -260,7 +260,7 @@ public static partial class Installation
                     CloseClients(root, currentSession: personal);
                     var current = new MachineSettingsStore(personal ? UserInstallation.DataDirectory : null, machine: !personal).Load();
                     var start = new ProcessStartInfo(target) { UseShellExecute = false, CreateNoWindow = true };
-                    foreach (string argument in new[] { "/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES", personal ? "/CURRENTUSER" : "/ALLUSERS",
+                    foreach (string argument in new[] { Process.GetCurrentProcess().SessionId == 0 ? "/VERYSILENT" : "/SILENT", "/NORESTART", "/SUPPRESSMSGBOXES", personal ? "/CURRENTUSER" : "/ALLUSERS",
                         "/MODE=" + prepared.Mode, "/UPDATE=1", "/STAGEDUPDATE=1", "/REOPEN=0", "/MERGETASKS=" + (AppUpdatePolicy.Enabled(current) ? "automaticupdates" : "!automaticupdates") }) start.ArgumentList.Add(argument);
                     using var setup = Process.Start(start) ?? throw new IOException("Could not start the staged installer.");
                     await setup.WaitForExitAsync();
@@ -289,12 +289,16 @@ public static partial class Installation
                     }
                 }
                 CancelPendingUpdate(root, personal);
-                Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.ServiceExecutable)) { Arguments = "--cleanup-installation", UseShellExecute = false, CreateNoWindow = true })?.Dispose();
-                if (Process.GetCurrentProcess().SessionId != 0)
+                lease.Dispose();
+                try
                 {
-                    if (personal) UserInstallation.Launch();
-                    else Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
+                    if (Process.GetCurrentProcess().SessionId != 0)
+                    {
+                        if (personal) UserInstallation.Launch();
+                        else Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
+                    }
                 }
+                finally { Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.ServiceExecutable)) { Arguments = "--cleanup-installation", UseShellExecute = false, CreateNoWindow = true })?.Dispose(); }
             }
             return result;
         }

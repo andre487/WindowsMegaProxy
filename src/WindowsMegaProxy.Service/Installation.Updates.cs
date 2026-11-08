@@ -39,12 +39,18 @@ public static partial class Installation
                 if (Directory.Exists(staging))
                 {
                     CheckDirectory(staging);
-                    using var lease = new FileStream(Path.Combine(staging, "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-                    if (File.Exists(PreparedPath(root))) return 0;
-                    string worker = Path.Combine(staging, "worker");
-                    if (Directory.Exists(worker)) { CheckDirectory(worker); Directory.Delete(worker, true); }
-                    string setup = Path.Combine(staging, "setup.exe");
-                    if (File.Exists(setup)) File.Delete(setup);
+                    FileStream lease;
+                    try { lease = new FileStream(Path.Combine(staging, "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+                    // The active worker requests cleanup after it releases this lock.
+                    catch (IOException error) when ((error.HResult & 0xFFFF) is 32 or 33) { return 0; }
+                    using (lease)
+                    {
+                        if (File.Exists(PreparedPath(root))) return 0;
+                        string worker = Path.Combine(staging, "worker");
+                        if (Directory.Exists(worker)) { CheckDirectory(worker); Directory.Delete(worker, true); }
+                        string setup = Path.Combine(staging, "setup.exe");
+                        if (File.Exists(setup)) File.Delete(setup);
+                    }
                 }
                 // The 0.0.4 update helper exits only after setup; wait for it to release the old EXE.
                 string legacy = Path.Combine(root, "versions");

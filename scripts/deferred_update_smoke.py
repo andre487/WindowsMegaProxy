@@ -76,6 +76,7 @@ def check(setup, logs, destination, data):
     def prepare(mode, index):
         sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
                 f"/LOG={logs / f'deferred-{index}-install.log'}"], check=True, timeout=600)
+        wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "The installer cleanup helper has not released its runtime.", 30)
         shutil.copytree(payload, destination, dirs_exist_ok=True)
         assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == "0.0.0"
         command("--configure-mode", mode)
@@ -158,6 +159,7 @@ def check(setup, logs, destination, data):
         command("--configure-mode", "manual")
         sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
                 f"/LOG={logs / 'deferred-personal-install.log'}"], check=True, timeout=600)
+        wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "The personal cleanup helper has not released its runtime.", 30)
         shutil.copytree(payload, personal_root, dirs_exist_ok=True)
         cache.mkdir(parents=True, exist_ok=True)
         shutil.copy2(setup, cache / "setup.exe")
