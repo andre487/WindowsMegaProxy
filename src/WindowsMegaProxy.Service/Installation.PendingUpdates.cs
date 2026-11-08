@@ -71,7 +71,7 @@ public static partial class Installation
         if (boot) { dynamic trigger = task.Triggers.Create(8); trigger.Enabled = true; }
         dynamic action = task.Actions.Create(0);
         action.Path = WorkerPath(root); action.Arguments = "--run-staged-update";
-        action.WorkingDirectory = Path.GetDirectoryName(WorkerPath(root));
+        action.WorkingDirectory = root;
         scheduler.GetFolder(@"\").RegisterTaskDefinition(UpdateTaskName(root) + (boot ? "" : ".Apply"), task, 6, user, null, logon, UpdateTaskSecurity);
     }
 
@@ -233,6 +233,7 @@ public static partial class Installation
         if (!Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar).Equals(Path.GetDirectoryName(WorkerPath(root)), StringComparison.OrdinalIgnoreCase))
             throw new IOException("The update worker must run from its protected staging directory.");
         CheckDirectory(root); CheckDirectory(UpdateDirectory(root)); CheckDirectory(Path.GetDirectoryName(WorkerPath(root))!);
+        Environment.CurrentDirectory = root;
         FileStream? lease = null;
         for (int attempt = 0; lease is null; attempt++)
         {
@@ -259,7 +260,7 @@ public static partial class Installation
                     WriteUpdateRecord(personal, new(package.Version, "applying"));
                     CloseClients(root, currentSession: personal);
                     var current = new MachineSettingsStore(personal ? UserInstallation.DataDirectory : null, machine: !personal).Load();
-                    var start = new ProcessStartInfo(target) { UseShellExecute = false, CreateNoWindow = true };
+                    var start = new ProcessStartInfo(target) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root };
                     foreach (string argument in new[] { Process.GetCurrentProcess().SessionId == 0 ? "/VERYSILENT" : "/SILENT", "/NORESTART", "/SUPPRESSMSGBOXES", personal ? "/CURRENTUSER" : "/ALLUSERS",
                         "/MODE=" + prepared.Mode, "/UPDATE=1", "/STAGEDUPDATE=1", "/REOPEN=0", "/MERGETASKS=" + (AppUpdatePolicy.Enabled(current) ? "automaticupdates" : "!automaticupdates") }) start.ArgumentList.Add(argument);
                     using var setup = Process.Start(start) ?? throw new IOException("Could not start the staged installer.");
@@ -295,10 +296,10 @@ public static partial class Installation
                     if (Process.GetCurrentProcess().SessionId != 0)
                     {
                         if (personal) UserInstallation.Launch();
-                        else Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
+                        else Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.Executable)) { UseShellExecute = true, WorkingDirectory = root })?.Dispose();
                     }
                 }
-                finally { Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.ServiceExecutable)) { Arguments = "--cleanup-installation", UseShellExecute = false, CreateNoWindow = true })?.Dispose(); }
+                finally { Process.Start(new ProcessStartInfo(Path.Combine(root, AppIdentity.ServiceExecutable)) { Arguments = "--cleanup-installation", UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root })?.Dispose(); }
             }
             return result;
         }
