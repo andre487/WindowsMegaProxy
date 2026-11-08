@@ -70,16 +70,25 @@ public partial class MainWindow : Window
     private (SpeedResult Direct, SpeedResult Profile)? lastSpeedResults;
     private long previousUpload, previousDownload;
     private DateTimeOffset previousTrafficTime;
-    private bool polling, quitting, updatingUi, restartRequested;
+    private bool polling, quitting, updatingUi, restartRequested, activationRequested;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(RestartMessage);
+        IntPtr handle = new WindowInteropHelper(this).Handle;
+        HwndSource.FromHwnd(handle)?.AddHook(RestartMessage);
+        ChangeWindowMessageFilterEx(handle, ChannelControl.ActivateMessage, 1, IntPtr.Zero);
     }
 
     private IntPtr RestartMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (message == ChannelControl.ActivateMessage)
+        {
+            handled = true;
+            activationRequested = true;
+            Dispatcher.BeginInvoke(ShowWindow);
+            return new IntPtr(0x487);
+        }
         if (message != 0x8487) return IntPtr.Zero;
         handled = true;
         Dispatcher.BeginInvoke(async () =>
@@ -248,7 +257,8 @@ public partial class MainWindow : Window
 
     private async void WindowLoaded(object sender, RoutedEventArgs e)
     {
-        if (startInTray) Hide();
+        if (startInTray && !activationRequested) Hide();
+        bool autoConnect = false;
         try
         {
             Settings loaded;
@@ -271,7 +281,7 @@ public partial class MainWindow : Window
             ObserveLogTask(logWriter.SetLimitAsync(settings.LogSizeMb));
             bool enabled = await getAutostart();
             AutostartBox.IsChecked = enabled;
-            if (canEdit && !serviceTesting && settings.AutoConnect && engine?.Running != true) await ToggleAsync();
+            autoConnect = canEdit && !serviceTesting && settings.AutoConnect;
         }
         catch (Exception error)
         {
@@ -286,6 +296,13 @@ public partial class MainWindow : Window
             else ShowError(error);
         }
         finally { SetBusy(busy); }
+        if (quitting) return;
+        try
+        {
+            if (!await ResolveChannelAsync()) return;
+            if (autoConnect && !busy && engine?.Running != true) await ToggleAsync();
+        }
+        catch (Exception error) { ShowError(error); }
     }
 
     private async Task RefreshServiceAsync()
@@ -758,6 +775,7 @@ public partial class MainWindow : Window
             }
             else
             {
+                if (!await ResolveChannelAsync()) return;
                 if (settings.ActiveProfile is { Type: "HTTPS" or "HTTPS_JUMP" or "MASQUE" } selected &&
                     (selected.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() == true || selected.Type == "HTTPS_JUMP" && selected.Proxy["jump"]?["allowInvalidProxyCertificate"]?.GetValue<bool>() == true) &&
                     MessageBox.Show(this, Ui.T("Proxy certificate verification is disabled in this profile. Connect with this exception?"), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
@@ -1323,6 +1341,8 @@ public partial class MainWindow : Window
     private void ShowWindow() { Show(); WindowState = WindowState.Normal; Activate(); }
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ChangeWindowMessageFilterEx(IntPtr window, int message, uint action, IntPtr filter);
     private Icon DisconnectedIcon()
     {
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");

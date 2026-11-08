@@ -133,7 +133,7 @@ class ToolsChecks(unittest.TestCase):
         stop.assert_not_called()
 
     def test_dev_run_builds_only_ui_and_never_installs_service(self):
-        with patch("run.require_production_stopped"), patch("run.configured_mode", return_value="manual"), patch("run.stop_workspace_app"), patch("run.stop_service") as stop, \
+        with patch("run.configured_mode", return_value="manual"), patch("run.stop_workspace_app"), patch("run.stop_service") as stop, \
              patch("run.build.main") as build, patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
             dev_runner.restart()
         stop.assert_called_once_with("WindowsMegaProxy.Dev")
@@ -143,7 +143,7 @@ class ToolsChecks(unittest.TestCase):
 
     def test_dev_run_preserves_login_and_service_modes(self):
         for mode in ("login", "service"):
-            with self.subTest(mode=mode), patch("run.require_production_stopped"), patch("run.configured_mode", return_value=mode), \
+            with self.subTest(mode=mode), patch("run.configured_mode", return_value=mode), \
                  patch("run.sp.run") as deploy, patch("run.build.main") as build, patch("uninstall_dev.cleanup") as cleanup:
                 dev_runner.restart()
             arguments = deploy.call_args.args[0]
@@ -187,14 +187,16 @@ class ToolsChecks(unittest.TestCase):
             stop_service("WindowsMegaProxy")
         control.assert_not_called()
 
-    def test_dev_run_refuses_active_production_before_any_changes(self):
-        with patch("run.require_production_stopped", side_effect=RuntimeError("Production is running")), \
-             patch("run.stop_workspace_app") as stop, patch("run.build.main") as build, patch("run.sp.run") as install:
-            with self.assertRaisesRegex(RuntimeError, "Production"):
-                dev_runner.restart()
-        stop.assert_not_called()
-        build.assert_not_called()
+    def test_dev_run_defers_channel_choice_to_ui_without_stopping_production(self):
+        with patch("service_control.service_state", return_value=4), patch("run.configured_mode", return_value="manual"), \
+             patch("run.stop_workspace_app") as close, patch("run.stop_service") as stop, patch("run.build.main") as build, \
+             patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
+            dev_runner.restart()
+        close.assert_called_once_with(workspace_only=False)
+        stop.assert_called_once_with("WindowsMegaProxy.Dev")
+        build.assert_called_once_with(dev=True, app_only=True)
         install.assert_not_called()
+        self.assertEqual(Path(launch.call_args.args[0][0]).name, "WindowsMegaProxy.Dev.exe")
 
     def test_production_guard_checks_service_and_processes(self):
         for state, processes, blocked in ((4, set(), True), (2, set(), True),

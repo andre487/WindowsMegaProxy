@@ -22,6 +22,7 @@ public sealed partial class Engine : IEngine
     private readonly string stateDirectory;
     private readonly Uri http3ProbeUri;
     private readonly bool allowEnvironmentOverrides;
+    private readonly Func<bool> otherRunning;
     private ProcessJob? job;
     private IDisposable? consoleLease;
     public bool Running => process is { HasExited: false };
@@ -50,9 +51,10 @@ public sealed partial class Engine : IEngine
     }
     public bool HasProbeProfile => SelectedOutbound != "direct";
 
-    public Engine(string? stateDirectory = null, Uri? http3ProbeUri = null, bool allowEnvironmentOverrides = true)
+    public Engine(string? stateDirectory = null, Uri? http3ProbeUri = null, bool allowEnvironmentOverrides = true, Func<bool>? otherRunning = null)
     {
         this.allowEnvironmentOverrides = allowEnvironmentOverrides;
+        this.otherRunning = otherRunning ?? ChannelControl.OtherRunning;
         this.stateDirectory = stateDirectory ?? SettingsStore.DirectoryPath;
         this.http3ProbeUri = http3ProbeUri ?? new Uri("https://example.com/");
     }
@@ -60,10 +62,8 @@ public sealed partial class Engine : IEngine
     private async Task StartSelectedAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
     {
         if (Running) return;
-        if (AppIdentity.IsDev && !testOnly)
-            foreach (string name in new[] { "WindowsMegaProxy", "WindowsMegaProxy.Service" })
-                foreach (var production in Process.GetProcessesByName(name))
-                    using (production) throw new IOException("Production MegaProxy is running. Use stop-prod.cmd before connecting DEV.");
+        if (!testOnly && otherRunning())
+            throw new IOException("The other MegaProxy version is running. Open the application and choose which version to keep active.");
         UsedHttp3Fallback = false;
         var runtime = PortableConfiguration.Copy(settings);
         if (Configuration.UsesProxy(runtime) && runtime.ActiveProfile is { Type: "SSH" } ssh && !(ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false))

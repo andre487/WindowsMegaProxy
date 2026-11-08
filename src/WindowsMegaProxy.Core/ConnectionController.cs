@@ -52,8 +52,10 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
 
     public Task ConnectAsync(Settings settings)
     {
-        if (closing || IsBusy || IsTesting || State == ConnectionState.Connected)
+        if (closing || IsTesting || State == ConnectionState.Disconnecting)
             throw new InvalidOperationException("Another connection operation is in progress.");
+        if (State == ConnectionState.Connecting) return connectionTask;
+        if (Engine?.Running == true) { State = ConnectionState.Connected; Changed?.Invoke(); return Task.CompletedTask; }
         var snapshot = PortableConfiguration.Copy(settings);
         connecting = new CancellationTokenSource();
         State = ConnectionState.Connecting;
@@ -65,16 +67,16 @@ public sealed class ConnectionController(Func<IEngine> createEngine)
     {
         try
         {
-            if (Engine is not null) { await Task.Run(Engine.StopAsync); Engine.Dispose(); Engine = null; }
-            var current = Engine = createEngine();
-            Observe(current);
+            if (Engine is { Persistent: false }) { await Task.Run(Engine.StopAsync); Engine.Dispose(); Engine = null; }
+            var current = Engine;
+            if (current is null) { current = Engine = createEngine(); Observe(current); }
             await Task.Run(() => current.StartAsync(settings, cancellationToken: token), token);
             token.ThrowIfCancellationRequested();
             State = ConnectionState.Connected;
         }
         catch
         {
-            try { if (Engine is not null) await Task.Run(Engine.StopAsync); }
+            try { if (Engine is { Persistent: false }) await Task.Run(Engine.StopAsync); }
             finally { Engine?.Dispose(); Engine = null; if (State != ConnectionState.Disconnecting) State = ConnectionState.Disconnected; }
             throw;
         }

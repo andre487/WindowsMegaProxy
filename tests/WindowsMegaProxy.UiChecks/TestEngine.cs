@@ -7,6 +7,8 @@ using WindowsMegaProxy;
 internal sealed class TestEngine : IEngine
 {
     public bool Running { get; set; }
+    public bool Persistent { get; set; }
+    public int Starts { get; private set; }
     public Settings? AppliedSettings { get; set; }
     public string? AppliedSignature { get; set; }
     public bool Http3Selected { get; set; }
@@ -22,6 +24,7 @@ internal sealed class TestEngine : IEngine
     public event Action<string>? Log;
     public async Task StartAsync(Settings settings, bool testOnly = false, CancellationToken cancellationToken = default)
     {
+        Starts++;
         AppliedSettings = PortableConfiguration.Copy(settings);
         AppliedSignature = Configuration.Signature(settings);
         if (Start is not null) await Start(cancellationToken);

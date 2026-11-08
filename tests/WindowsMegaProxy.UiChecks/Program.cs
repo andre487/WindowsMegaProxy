@@ -60,6 +60,7 @@ internal static partial class Program
                 throw new Exception("Settings were not preserved across operating mode changes.");
             return;
         }
+        if (ChannelFixture.Run(args)) return;
         if (FailoverChecks.RunFixture(args)) return;
         if (args.Contains("--failover-check"))
         {
@@ -1073,6 +1074,10 @@ internal static partial class Program
         Assert(box.SelectedText == selected && !LogAutoScroll.IsFollowing(box), "New log entries preserve the selection and do not scroll away while copying.");
         box.Select(0, 0);
         Layout(window);
+        window.Hide();
+        Assert(ChannelControl.ActivateWindow(new WindowInteropHelper(window).Handle), "A duplicate launch can address the existing window through the activation handshake.");
+        Layout(window);
+        Assert(window.IsVisible, "Activation restores a hidden tray window without starting another connection.");
     }
 
     private static T RuleField<T>(RuleWindow window, string name) =>

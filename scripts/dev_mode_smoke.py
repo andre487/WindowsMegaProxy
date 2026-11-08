@@ -1,7 +1,9 @@
 """Exercise explicit DEV modes and complete cleanup on a disposable runner."""
 import ctypes as ct
 import os
+import shutil
 import subprocess as sp
+import tempfile
 import time
 import winreg
 from pathlib import Path
@@ -47,6 +49,7 @@ def main():
                     raise RuntimeError("DEV did not reopen after configuring sign-in mode.")
                 assert "sing-box-dev.exe" not in running_images(), "Restarting the seeded UI must not start TUN."
                 stop_workspace_app(dev=True, workspace_only=False)
+        check_channel_switch(root)
         sp.run([system_executable("schtasks.exe"), "/Create", "/TN", NAME + "-S-1-5-18", "/SC", "ONSTART", "/RU", "SYSTEM", "/TR", "cmd.exe /c exit 0", "/F"], check=True)
         for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
             for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
@@ -62,6 +65,91 @@ def main():
     finally:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
             winreg.DeleteValue(key, "WindowsMegaProxy")
+
+
+def check_channel_switch(dev_root):
+    if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted":
+        raise RuntimeError("Channel switch checks are restricted to disposable GitHub runners.")
+    setup = next((ROOT / "artifacts/release-preview").glob("*-setup.exe"))
+    production = known_folder(0x26) / "WindowsMegaProxy"
+    assert service_state("WindowsMegaProxy") is None
+    source = ROOT / "tests/WindowsMegaProxy.UiChecks/bin/dev/Release/net10.0-windows"
+    environment = os.environ.copy()
+    environment["DOTNET_ROOT"] = str(ROOT / ".tools/dotnet")
+    environment["DOTNET_MULTILEVEL_LOOKUP"] = "0"
+
+    def start_service(name):
+        sp.run([system_executable("sc.exe"), "start", name], check=True, capture_output=True)
+        for _ in range(100):
+            if service_state(name) == 4:
+                return
+            time.sleep(0.1)
+        raise RuntimeError("The test service did not start.")
+
+    with tempfile.TemporaryDirectory(prefix="channel-fixture-", dir=ROOT / "artifacts") as temporary:
+        directory = Path(temporary)
+        shutil.copytree(source, directory, dirs_exist_ok=True)
+
+        def start_window(name):
+            executable = directory / (name + ".exe")
+            shutil.copy2(source / "WindowsMegaProxy.UiChecks.exe", executable)
+            ready = directory / (name + ".ready")
+            process = sp.Popen([str(executable), "--channel-fixture", str(ready)], env=environment)
+            for _ in range(100):
+                if ready.is_file():
+                    return process
+                if process.poll() is not None:
+                    break
+                time.sleep(0.1)
+            process.kill()
+            process.wait()
+            raise RuntimeError("The isolated channel window did not open.")
+
+        fixture = start_window("WindowsMegaProxy")
+        try:
+            sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=service", "/TASKS="], check=True, timeout=600)
+            dev_ui = dev_root / "WindowsMegaProxy.Dev.exe"
+            prod_ui = production / "WindowsMegaProxy.exe"
+            sp.run([str(dev_ui), "--resolve-channel-conflict", "exit-current"], check=True, timeout=60)
+            assert service_state(NAME) == 1 and service_state("WindowsMegaProxy") == 4 and fixture.poll() is None
+            start_service(NAME)
+            sp.run([str(dev_ui), "--resolve-channel-conflict", "stop-other"], check=True, timeout=60)
+            assert fixture.wait(timeout=10) == 0
+            assert service_state("WindowsMegaProxy") == 1 and service_state(NAME) == 4
+            start_service("WindowsMegaProxy")
+            fixture = start_window(NAME)
+            for _ in range(2):
+                sp.run([str(prod_ui), "--resolve-channel-conflict", "stop-other"], check=True, timeout=60)
+                assert service_state(NAME) == 1 and service_state("WindowsMegaProxy") == 4
+            assert fixture.wait(timeout=10) == 0
+            original = sp.Popen([str(prod_ui), "--tray"])
+            try:
+                for _ in range(100):
+                    if any(pid == original.pid for _, pid in workspace_windows("MegaProxy")):
+                        break
+                    time.sleep(0.1)
+                sp.run([str(prod_ui)], check=True, timeout=30)
+                user = ct.WinDLL("user32", use_last_error=True)
+                user.IsWindowVisible.argtypes = [ct.c_void_p]
+                for _ in range(100):
+                    windows = workspace_windows("MegaProxy")
+                    if any(pid == original.pid and user.IsWindowVisible(window) for window, pid in windows):
+                        break
+                    time.sleep(0.1)
+                assert len(windows) == 1 and windows[0][1] == original.pid and user.IsWindowVisible(windows[0][0])
+                assert original.poll() is None, "A repeated launch must restore the original window, not replace it."
+            finally:
+                stop_workspace_app(dev=False, workspace_only=False)
+                original.wait(timeout=30)
+            assert not running_images() & {"sing-box.exe", "sing-box-dev.exe"}
+            print("Production/DEV channel switching, exit-current, graceful window close and idempotent target state passed; no TUN.")
+        finally:
+            if fixture.poll() is None:
+                fixture.kill()
+                fixture.wait()
+            uninstaller = production / "unins000.exe"
+            if uninstaller.is_file():
+                sp.run([str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], check=True, timeout=120)
 
 
 if __name__ == "__main__":

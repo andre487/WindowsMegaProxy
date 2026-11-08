@@ -1,4 +1,10 @@
 {
+    "Another MegaProxy version is running": "Уже запущена другая версия MegaProxy",
+    "{0} is already running. Choose which version should remain active.": "{0} уже работает. Выберите, какая версия должна остаться активной.",
+    "Stop {0}": "Остановить {0}",
+    "Exit {0}": "Завершить {0}",
+    "Could not stop the selected MegaProxy host. See the local log and retry.": "Не удалось остановить выбранную версию MegaProxy. Подробности — в локальном журнале. Повторите попытку.",
+    "The other MegaProxy host is still running.": "Другая версия MegaProxy всё ещё работает.",
     "Accept-new: the first server key is saved automatically when connecting. A changed key requires confirmation. SSH supports TCP only.": "Accept-new: первый ключ сервера сохраняется автоматически при подключении. Изменение ключа требует подтверждения. SSH поддерживает только TCP.",
     "SSH server key changed": "Ключ SSH-сервера изменился",
     "The server key differs from the saved key. The server may have been reinstalled, or the connection may be intercepted. Verify the new fingerprint before trusting it.": "Ключ сервера отличается от сохранённого. Возможно, сервер переустановлен или соединение перехватывается. Проверьте новый отпечаток перед подтверждением.",

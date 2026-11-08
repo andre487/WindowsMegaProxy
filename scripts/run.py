@@ -13,7 +13,7 @@ from pathlib import Path
 import build
 from common import ROOT, app_name, artifact_root, cli
 from install import elevate, elevated_cli
-from service_control import require_production_stopped, service_state, stop_service
+from service_control import service_state, stop_service
 
 user32 = ct.WinDLL("user32", use_last_error=True)
 kernel32 = ct.WinDLL("kernel32", use_last_error=True)
@@ -109,7 +109,6 @@ def configured_mode():
 
 
 def restart():
-    require_production_stopped()
     mode = configured_mode()
     if mode != "manual":
         print(f"Rebuilding and restarting DEV in {mode} mode...", flush=True)
@@ -118,7 +117,6 @@ def restart():
     stop_workspace_app(workspace_only=False)
     stop_service(app_name(True))
     build.main(dev=True, app_only=True)
-    require_production_stopped()
     env = os.environ.copy()
     env["DOTNET_ROOT"] = str(ROOT / ".tools/dotnet")
     for directory, variable in (("sing-box", "WINDOWSMEGAPROXY_CORE"), ("sing-box-h3", "WINDOWSMEGAPROXY_H3_CORE")):
