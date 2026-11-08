@@ -7,7 +7,7 @@ Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in
 `preview: true`; do not distribute them as trusted updates.
 
 The installer targets Windows 10/11 x64. UI, service and current-user launcher
-are self-contained single-file executables with .NET 10.0.14 pinned in
+use self-contained folder deployment with .NET 10.0.14 pinned in
 Directory.Build.props. No separate .NET installation or WinGet is required.
 Both unmodified upstream sing-box cores are bundled: stable 1.14.4 and
 HTTP/3 1.15.0-alpha.13. Their archive SHA-256 values are pinned at build time;
@@ -19,11 +19,11 @@ existing values.
 Windows OpenSSH Client is a mandatory Windows capability. Setup installs it
 when missing; failure stops setup with an error. Wintun is provided by the
 upstream cores. Python, uv and the .NET SDK remain development-only downloads
-inside the checkout. DEV UI uses a self-contained folder for quick rebuilds;
-service/helper EXEs stay single-file to isolate their runtime from WPF assets.
-Production publishes single-file EXEs. Native .NET libraries are extracted on
-first launch; the SYSTEM service uses a protected cache in its version directory.
-Updating bundled .NET requires an application update.
+inside the checkout. Production and DEV include their .NET runtime as regular
+files; no single-file extraction is used. UI and service share the same desktop
+runtime files. The unprivileged personal-install launcher has its own runtime
+in the user's application directory. Updating bundled .NET requires an
+application update.
 
 The installer defaults to manual launch on a new installation and offers three
 operating modes: manual, elevated sign-in startup, or a Windows service. It
@@ -35,11 +35,13 @@ page can change the mode with administrator approval and restarts the interface.
 Exiting a standalone host stops its core; service-mode clients can close while
 the shared core continues running.
 
-Each installation uses a separate version directory. Existing clients close
-gracefully; the service switches to the new directory. If startup fails, its
-previous executable is restored. Global configuration, personal configuration
-and the shared Wintun driver survive uninstall. DEV is untouched.
-Old version directories are retained for rollback.
+System installations always use `Program Files/WindowsMegaProxy`; protected
+personal runtimes use `Program Files/WindowsMegaProxy.Users/<SID>`. Setup stops
+the service and closes clients before replacing files. Interrupted preparation
+restores the previous operating mode. Successful upgrades remove legacy
+`versions` directories after the old update helper releases them. Global and
+personal configuration and the shared Wintun driver survive uninstall. DEV
+uses its separate fixed directory and registrations.
 
 Global settings use machine-scope DPAPI and a directory restricted to SYSTEM
 and administrators so either elevated desktop hosts or the service can use

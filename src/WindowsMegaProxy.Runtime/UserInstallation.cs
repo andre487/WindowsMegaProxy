@@ -20,9 +20,8 @@ public static class UserInstallation
     public static string ValidateDirectory(string directory, string programFiles, string sid)
     {
         string root = ProtectedRoot(programFiles, sid);
-        string version = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
-        if (!string.Equals(Path.GetDirectoryName(version), Path.Combine(root, "versions"), StringComparison.OrdinalIgnoreCase))
-            throw new IOException("The user runtime must run from its protected version directory.");
+        if (!string.Equals(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar), root, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("The user runtime must run from its protected installation directory.");
         return root;
     }
 

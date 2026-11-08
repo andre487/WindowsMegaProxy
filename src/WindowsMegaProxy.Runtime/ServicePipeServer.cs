@@ -13,6 +13,9 @@ namespace WindowsMegaProxy;
 public sealed class ServicePipeServer(ServiceBroker broker, string pipeName = ServiceProtocol.PipeName,
     bool machine = true, Func<NamedPipeServerStream, ClientAccess>? authenticate = null)
 {
+    // CreateFile also requests ReadAttributes; GenericWrite would allow creating server instances.
+    public const PipeAccessRights ClientRights = PipeAccessRights.ReadData | PipeAccessRights.WriteData |
+        PipeAccessRights.ReadAttributes | PipeAccessRights.ReadPermissions | PipeAccessRights.Synchronize;
     public async Task RunAsync(CancellationToken token)
     {
         using var slots = new SemaphoreSlim(16);
@@ -58,7 +61,7 @@ public sealed class ServicePipeServer(ServiceBroker broker, string pipeName = Se
         if (!machine) acl.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User!, PipeAccessRights.FullControl, AccessControlType.Allow));
         // GenericWrite includes CreateNewInstance for pipes; grant only the individual client rights.
         acl.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
-            PipeAccessRights.ReadData | PipeAccessRights.WriteData | PipeAccessRights.ReadPermissions | PipeAccessRights.Synchronize, AccessControlType.Allow));
+            ClientRights, AccessControlType.Allow));
         return NamedPipeServerStreamAcl.Create(pipeName, PipeDirection.InOut, 16, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | (first ? PipeOptions.FirstPipeInstance : PipeOptions.None), 4096, 4096, acl);
     }

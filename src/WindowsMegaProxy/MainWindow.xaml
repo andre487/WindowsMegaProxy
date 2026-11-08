@@ -184,10 +184,10 @@
                             FontSize="16" />
                     </MenuItem.Header>
                     <MenuItem
-                        Header="{DynamicResource &quot;_Import MegaProxy.json…&quot;}"
+                        Header="{DynamicResource &quot;_Import configuration…&quot;}"
                         Click="ImportClick" />
                     <MenuItem
-                        Header="{DynamicResource &quot;_Export MegaProxy.json…&quot;}"
+                        Header="{DynamicResource &quot;_Export configuration…&quot;}"
                         Click="ExportClick" />
                     <Separator />
                     <MenuItem Header="{DynamicResource &quot;Minimize to _tray&quot;}" Click="HideClick" />

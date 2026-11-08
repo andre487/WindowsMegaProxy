@@ -37,6 +37,7 @@ internal static class UiRecoveryChecks
         timer.Stop();
         try
         {
+            Assert(AppIdentity.IsDev || Field(window, "installScript") is null, "Production does not discover or offer development installation scripts.");
             typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [new Settings { Language = "en" }]);
             Wait(window, (Task)Field(window, "analysisTask")!);
             Wait(window, Invoke(window, "RefreshServiceAsync"));
@@ -44,8 +45,22 @@ internal static class UiRecoveryChecks
                 "An unavailable service cannot overwrite or prematurely migrate settings.");
             Assert(((TextBlock)window.FindName("ServiceStateText")).Visibility == Visibility.Visible,
                 "Service clients display the Windows service state separately from connection state.");
-            Assert(((TextBlock)window.FindName("MessageText")).Text.Contains(AppIdentity.IsDev ? "run.cmd" : "install.cmd --mode service"),
+            Assert(((TextBlock)window.FindName("MessageText")).Text.Contains(AppIdentity.IsDev ? "run.cmd" : "installer") &&
+                (AppIdentity.IsDev || !((TextBlock)window.FindName("MessageText")).Text.Contains(".cmd")),
                 "Repair instructions must target the same build channel.");
+            typeof(MainWindow).GetField("serviceState", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, "Service: running");
+            typeof(MainWindow).GetMethod("UpdateServiceStateView", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+            Assert(((TextBlock)window.FindName("ServiceStateText")).Text == "Service: running, client disconnected",
+                "A running process does not imply that service IPC is available.");
+            var sections = (TabControl)window.FindName("Sections");
+            sections.SelectedIndex = sections.Items.Count - 1;
+            window.Loaded -= (RoutedEventHandler)typeof(MainWindow).GetMethod("WindowLoaded", BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate(typeof(RoutedEventHandler), window);
+            window.Show();
+            Wait(window, Invoke(window, "RefreshLogAsync"));
+            string failureLog = ((TextBox)window.FindName("LogText")).Text;
+            Assert(failureLog.Contains("Read-only mode: service IPC unavailable") && failureLog.Contains("HRESULT=0x") && failureLog.Contains("Pipe="),
+                "An unavailable service leaves actionable diagnostics in the visible local client log.");
+            Assert(((Button)window.FindName("ExportLogButton")).IsEnabled, "Local client diagnostics remain exportable in read-only mode.");
             var first = new RecoveryFixture(store, pipe);
             try
             {

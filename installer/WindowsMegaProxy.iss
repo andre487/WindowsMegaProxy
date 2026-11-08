@@ -56,14 +56,12 @@ russian.ServiceMode=Служба Windows (работает после закры
 
 [Dirs]
 Name: "{app}"; Permissions: admins-full system-full users-readexec; Check: IsAdminInstallMode
-Name: "{app}\versions"; Permissions: admins-full system-full users-readexec; Check: IsAdminInstallMode
 Name: "{code:ProtectedUserBase}"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
 Name: "{code:ProtectedUserRoot}"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
-Name: "{code:ProtectedUserRoot}\versions"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
 
 [Files]
-Source: "{#PayloadDirectory}\*"; DestDir: "{code:VersionPath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion; Check: IsUserInstall
+Source: "{#PayloadDirectory}\*"; DestDir: "{code:RuntimePath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsUserInstall
 
 [Icons]
 Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"
@@ -75,16 +73,15 @@ Root: HKLM; Subkey: "SOFTWARE\WindowsMegaProxy"; Flags: uninsdeletekey; Check: I
 Root: HKCU; Subkey: "SOFTWARE\WindowsMegaProxy\UserInstallation"; Flags: uninsdeletekey; Check: IsUserInstall
 
 [UninstallDelete]
-Type: files; Name: "{code:VersionPath}\user-installation.sid"; Check: IsUserInstall
-Type: dirifempty; Name: "{code:VersionPath}"; Check: IsUserInstall
+Type: files; Name: "{code:RuntimePath}\user-installation.sid"; Check: IsUserInstall
+Type: dirifempty; Name: "{code:RuntimePath}"; Check: IsUserInstall
 
 [Run]
-Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: CanLaunch
-Filename: "{code:LaunchPath}"; Flags: nowait runasoriginaluser; Check: IsUpdateInstall
+Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]
-var TargetVersion: String;
-    OwnerSid: String;
+var OwnerSid, PreviousHelper, PreviousMode: String;
+    Prepared: Boolean;
     ModePage: TInputOptionWizardPage;
     ModeConfigured, ConfigurationFailed: Boolean;
 
@@ -140,11 +137,6 @@ end;
 
 function LaunchPath(Param: String): String; forward;
 
-function CanLaunch: Boolean;
-begin
-  Result := ModeConfigured;
-end;
-
 function IsUpdateInstall: Boolean;
 begin
   Result := ModeConfigured and (ExpandConstant('{param:UPDATE|0}') = '1');
@@ -189,19 +181,15 @@ begin
     ModePage.SelectedValueIndex := 2;
 end;
 
-function VersionPath(Param: String): String;
+function RuntimePath(Param: String): String;
 begin
-  if TargetVersion = '' then
-    if IsAdminInstallMode then
-      TargetVersion := ExpandConstant('{app}\versions\{#VersionDirectory}-') + GetDateTimeString('yyyymmddhhnnss', '-', ':')
-    else
-      TargetVersion := ProtectedUserRoot('') + '\versions\{#VersionDirectory}-' + GetDateTimeString('yyyymmddhhnnss', '-', ':');
-  Result := TargetVersion;
+  if IsAdminInstallMode then Result := ExpandConstant('{app}')
+  else Result := ProtectedUserRoot('');
 end;
 
 function LaunchPath(Param: String): String;
 begin
-  if IsAdminInstallMode then Result := VersionPath('') + '\WindowsMegaProxy.exe'
+  if IsAdminInstallMode then Result := RuntimePath('') + '\WindowsMegaProxy.exe'
   else Result := ExpandConstant('{app}\WindowsMegaProxy.Launcher.exe');
 end;
 
@@ -224,6 +212,71 @@ function DeleteService(Service: THandle): Boolean;
 function CloseServiceHandle(Handle: THandle): Boolean;
   external 'CloseServiceHandle@advapi32.dll stdcall';
 
+procedure StopInstalledService;
+var Manager, Service: THandle; Status: TServiceStatus; Attempt: Integer;
+begin
+  Manager := OpenSCManager('', 'ServicesActive', 1);
+  if Manager = 0 then RaiseException('Could not open Service Control Manager.');
+  try
+    Service := OpenService(Manager, 'WindowsMegaProxy', $24);
+    if Service = 0 then begin
+      if DLLGetLastError <> 1060 then RaiseException('Could not open the MegaProxy service.');
+      Exit;
+    end;
+    try
+      if not QueryServiceStatus(Service, Status) then RaiseException('Could not query the MegaProxy service.');
+      if Status.CurrentState = 1 then Exit;
+      if (Status.CurrentState <> 3) and not ControlService(Service, 1, Status) then RaiseException('Could not stop the MegaProxy service.');
+      for Attempt := 1 to 60 do begin
+        if not QueryServiceStatus(Service, Status) then RaiseException('Could not query the MegaProxy service.');
+        if Status.CurrentState = 1 then Exit;
+        Sleep(500);
+      end;
+      RaiseException('The MegaProxy service did not stop. Close clients and retry.');
+    finally CloseServiceHandle(Service); end;
+  finally CloseServiceHandle(Manager); end;
+end;
+
+procedure PrepareExistingInstallation;
+var Code: Integer; Root: String;
+begin
+  if Prepared then Exit;
+  PreviousMode := 'manual';
+  if IsUserInstall then begin
+    RegQueryStringValue(HKCU64, 'SOFTWARE\WindowsMegaProxy\UserInstallation', 'HelperPath', PreviousHelper);
+    RegQueryStringValue(HKCU64, 'SOFTWARE\WindowsMegaProxy\UserInstallation', 'Mode', PreviousMode);
+  end else begin
+    RegQueryStringValue(HKLM64, 'SOFTWARE\WindowsMegaProxy', 'HelperPath', PreviousHelper);
+    RegQueryStringValue(HKLM64, 'SOFTWARE\WindowsMegaProxy', 'Mode', PreviousMode);
+    if (PreviousHelper = '') and RegQueryStringValue(HKLM64, 'SYSTEM\CurrentControlSet\Services\WindowsMegaProxy', 'ImagePath', PreviousHelper) then begin
+      PreviousHelper := RemoveQuotes(PreviousHelper);
+      PreviousMode := 'service';
+    end;
+  end;
+  Root := RuntimePath('');
+  if PreviousHelper <> '' then begin
+    if (Pos(Lowercase(Root + '\'), Lowercase(PreviousHelper)) <> 1) or
+      (Pos('\..', PreviousHelper) <> 0) or (CompareText(ExtractFileName(PreviousHelper), 'WindowsMegaProxy.Service.exe') <> 0) then
+      RaiseException('The previous installation helper is outside the protected installation directory.');
+    if not FileExists(PreviousHelper) then RaiseException('The previous installation helper is missing. Repair the previous installation first.');
+  end;
+  if IsAdminInstallMode then StopInstalledService;
+  Prepared := True;
+  if (PreviousHelper <> '') and
+    (not ExecAndLogOutput(PreviousHelper, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0)) then
+    RaiseException('Could not close the previous installation. Close MegaProxy in all Windows sessions and retry.');
+end;
+
+procedure DeinitializeSetup;
+var Code: Integer; Command: String;
+begin
+  if Prepared and not ModeConfigured and (PreviousHelper <> '') and FileExists(PreviousHelper) then begin
+    if IsUserInstall then Command := '--configure-user ' else Command := '--configure-mode ';
+    if not ExecAndLogOutput(PreviousHelper, Command + PreviousMode, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
+      Log('Could not restore the previous operating mode after installation was interrupted.');
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer;
 begin
@@ -237,6 +290,7 @@ begin
       if (Code <> 0) or not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then
         RaiseException('OpenSSH Client installation failed. Retry after checking Windows Update access.');
     end;
+    PrepareExistingInstallation;
   except
     Result := GetExceptionMessage;
   end;
@@ -247,16 +301,24 @@ var Code: Integer; Command: String;
 begin
   if Step = ssPostInstall then begin
     ConfigurationFailed := True;
-    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', '--check-dependencies', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
+    if not ExecAndLogOutput(RuntimePath('') + '\WindowsMegaProxy.Service.exe', '--check-dependencies', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
       RaiseException('A bundled core is missing or invalid. See the setup log.');
     if IsAdminInstallMode then Command := '--configure-mode ' else Command := '--configure-user ';
     Command := Command + SelectedMode + ' --automatic-updates ';
     if WizardIsTaskSelected('automaticupdates') then Command := Command + 'true' else Command := Command + 'false';
-    if not ExecAndLogOutput(VersionPath('') + '\WindowsMegaProxy.Service.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
+    if not ExecAndLogOutput(RuntimePath('') + '\WindowsMegaProxy.Service.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
       RaiseException('Could not configure the MegaProxy operating mode. Close MegaProxy in all Windows sessions and retry. See the setup log.');
     end;
     ModeConfigured := True;
     ConfigurationFailed := False;
+  end;
+  if (Step = ssDone) and ModeConfigured then begin
+    { Regular Run entries execute before ssPostInstall has configured the mode. }
+    if not Exec(RuntimePath('') + '\WindowsMegaProxy.Service.exe', '--cleanup-installation', '', SW_HIDE, ewNoWait, Code) then
+      Log('Could not start installation cleanup.');
+    if IsUpdateInstall and WizardSilent then
+      if not ExecAsOriginalUser(LaunchPath(''), '', '', SW_SHOWNORMAL, ewNoWait, Code) then
+        Log('Could not reopen MegaProxy after updating.');
   end;
 end;
 
@@ -267,7 +329,7 @@ begin
   if IsUserInstall then begin
     if not RegQueryStringValue(HKCU64, 'SOFTWARE\WindowsMegaProxy\UserInstallation', 'HelperPath', Executable) then Exit;
     { Never execute a user-writable helper path with the uninstaller's elevated token. }
-    if Pos(Lowercase(ProtectedUserRoot('') + '\versions\'), Lowercase(Executable)) <> 1 then Exit;
+    if Pos(Lowercase(ProtectedUserRoot('') + '\'), Lowercase(Executable)) <> 1 then Exit;
     if Pos('\..', Executable) <> 0 then Exit;
     Result := ExecAndLogOutput(Executable, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) and (Code = 0);
     Exit;
@@ -277,7 +339,7 @@ begin
   if ImagePath <> '' then begin
     Executable := RemoveQuotes(ImagePath);
     if not ExecAndLogOutput(Executable, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then begin
-      MsgBox('Close MegaProxy in all Windows sessions and retry. The .NET Desktop Runtime must remain installed until MegaProxy is removed.', mbError, MB_OK);
+      MsgBox('Close MegaProxy in all Windows sessions and retry.', mbError, MB_OK);
       Exit;
     end;
   end;

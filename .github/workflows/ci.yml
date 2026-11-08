@@ -56,7 +56,7 @@ jobs:
       - name: Test SSH on a local server
         run: ssh-test.cmd
 
-      - name: Publish self-contained single-file applications
+      - name: Publish self-contained application folders
         run: build.cmd
 
       - name: Compile preview installer and verify update packages

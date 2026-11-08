@@ -113,7 +113,7 @@ public static class PortableConfiguration
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException or ArgumentException or OverflowException)
         {
-            throw Invalid(Ui.T("Invalid MegaProxy.json format. Settings were not changed."));
+            throw Invalid(Ui.T("Invalid configuration format. Settings were not changed."));
         }
     }
 

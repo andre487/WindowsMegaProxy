@@ -11,7 +11,8 @@ public partial class MainWindow
     private void UpdateServiceStateView()
     {
         ServiceStateText.Visibility = service is null ? Visibility.Collapsed : Visibility.Visible;
-        ServiceStateText.Text = Ui.T(serviceState);
+        ServiceStateText.Text = Ui.T(serviceState == "Service: running" && !serviceAvailable
+            ? "Service: running, client disconnected" : serviceState);
         var warnings = PodkopCatalog.Warnings(engine?.AppliedSettings);
         RoutingWarningText.Visibility = warnings.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         RoutingWarningText.Text = warnings.Length == 0 ? "" : Ui.F("Unavailable destination lists: {0}. See the log.", string.Join(", ", warnings));

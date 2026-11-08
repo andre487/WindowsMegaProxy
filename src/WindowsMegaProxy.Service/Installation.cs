@@ -16,11 +16,8 @@ public static partial class Installation
     public static string InstallRoot(string directory, string programFiles)
     {
         string root = Path.GetFullPath(Path.Combine(programFiles, AppIdentity.Name));
-        string version = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
-        string versions = Path.Combine(root, "versions") + Path.DirectorySeparatorChar;
-        if (!version.StartsWith(versions, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(Path.GetDirectoryName(version), versions.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-            throw new IOException("The service installer must run from its protected version directory.");
+        if (!string.Equals(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar), root, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("The service installer must run from its protected installation directory.");
         return root;
     }
 
@@ -29,6 +26,11 @@ public static partial class Installation
         try
         {
             string command = args[0];
+            if (command == "--cleanup-installation")
+            {
+                if (args.Length != 1) throw new ArgumentException("Invalid cleanup arguments.");
+                return CleanupInstallationAsync().GetAwaiter().GetResult();
+            }
             if (command == "--check-dependencies")
             {
                 if (args.Length != 1) throw new ArgumentException("Invalid dependency check arguments.");
@@ -68,7 +70,7 @@ public static partial class Installation
             if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
                 throw new UnauthorizedAccessException("Installation requires administrator approval.");
             string root = InstallRoot(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
-            foreach (string path in new[] { root, Path.Combine(root, "versions"), AppContext.BaseDirectory }) CheckDirectory(path);
+            CheckDirectory(root);
             CloseClients(root);
             if (command == "--prepare-uninstall") { ConfigureLogin("manual"); return 0; }
             ProtectDataDirectory(MachineSettingsStore.DefaultDirectory);
@@ -118,7 +120,6 @@ public static partial class Installation
             using (var legacy = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true))
                 legacy?.DeleteValue(ServiceProtocol.Name, false);
             if (command == "--set-mode") Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
-            // shortcut: retain prior version files for rollback until updater retention is implemented.
             return 0;
         }
         catch (Exception error)
@@ -303,11 +304,12 @@ public static partial class Installation
         try
         {
             await ScAsync(previous is null ? "create" : "config", ServiceProtocol.Name, "binPath=", "\"" + executable + "\"", "start=", "auto", "obj=", "LocalSystem");
-            string extraction = Path.Combine(AppContext.BaseDirectory, ".net");
-            ProtectDataDirectory(extraction);
             using (var serviceKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name, true))
-                serviceKey!.SetValue("Environment", (previousEnvironment ?? []).Where(value => !value.StartsWith("DOTNET_BUNDLE_EXTRACT_BASE_DIR=", StringComparison.OrdinalIgnoreCase))
-                    .Append("DOTNET_BUNDLE_EXTRACT_BASE_DIR=" + extraction).ToArray(), RegistryValueKind.MultiString);
+            {
+                string[] environment = (previousEnvironment ?? []).Where(value => !value.StartsWith("DOTNET_BUNDLE_EXTRACT_BASE_DIR=", StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (environment.Length == 0) serviceKey!.DeleteValue("Environment", false);
+                else serviceKey!.SetValue("Environment", environment, RegistryValueKind.MultiString);
+            }
             await ScAsync("failure", ServiceProtocol.Name, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000");
             await ScAsync("start", ServiceProtocol.Name);
             using var ready = new CancellationTokenSource(TimeSpan.FromSeconds(20));

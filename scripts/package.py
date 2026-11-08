@@ -168,8 +168,8 @@ def main():
                     raise ValueError("Published application version differs from the release version.")
                 if not args.preview and product.split("+", 1)[-1] != commit:
                     raise ValueError("Published application was built from a different commit.")
-        if any(".Dev" in file.name or file.name in {"hostfxr.dll", "coreclr.dll", "python.exe"} for file in payload.rglob("*")):
-            raise ValueError("Unexpected development or bundled runtime files.")
+        if any(".Dev" in file.name or file.name == "python.exe" for file in payload.rglob("*")):
+            raise ValueError("Unexpected development files.")
         shutil.copy2(ROOT / "LICENSE", payload / "LICENSE.txt")
         shutil.copy2(ROOT / "installer/THIRD-PARTY-NOTICES.txt", payload / "THIRD-PARTY-NOTICES.txt")
         shutil.copytree(ROOT / "installer/licenses", payload / "licenses")

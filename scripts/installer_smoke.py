@@ -3,13 +3,14 @@ import csv
 import ctypes as ct
 import json
 import os
+import shutil
 import subprocess as sp
 import time
 import winreg
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from common import ROOT, cli, digest, dotnet
+from common import ROOT, cli, digest, dotnet, download
 from install import known_folder
 from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state
@@ -23,7 +24,8 @@ def check_downloaded_cores(version_directory):
         for entry in manifest["components"][name]["files"]:
             assert digest(version_directory / entry["path"], "sha256") == entry["sha256"], "Bundled core must match the pinned release files."
     assert not (version_directory / "WindowsMegaProxy.Http3Core.exe").exists(), "No on-demand installer is needed."
-    assert not (version_directory / "WindowsMegaProxy.runtimeconfig.json").exists(), "Production must use single-file publication."
+    assert (version_directory / "WindowsMegaProxy.runtimeconfig.json").is_file(), "Production must use a self-contained folder."
+    assert (version_directory / "coreclr.dll").is_file(), "The pinned .NET runtime must be bundled."
     environment = os.environ.copy()
     environment["DOTNET_ROOT"] = str(ROOT / "artifacts/nonexistent-dotnet")
     environment["DOTNET_MULTILEVEL_LOOKUP"] = "0"
@@ -32,7 +34,7 @@ def check_downloaded_cores(version_directory):
                     env=environment, capture_output=True, text=True)
     expected_runtime = ET.parse(ROOT / "Directory.Build.props").findtext("PropertyGroup/RuntimeFrameworkVersion")
     assert ".NET: " + expected_runtime in result.stdout
-    assert str(version_directory / "WindowsMegaProxy.Service.exe") in result.stdout or environment["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] in result.stdout, "The process must load its bundled runtime, not an installed system copy."
+    assert str(version_directory / "coreclr.dll").casefold() in result.stdout.casefold(), "The process must load its bundled runtime, not an installed system copy."
 
 
 def main():
@@ -68,8 +70,11 @@ def main():
         if mode == "service":
             assert service_path().strip('"') == current
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\WindowsMegaProxy") as key:
-                environment = winreg.QueryValueEx(key, "Environment")[0]
-                assert "DOTNET_BUNDLE_EXTRACT_BASE_DIR=" + str(Path(current).parent / ".net") in environment, "SYSTEM must extract bundled native libraries into its protected version directory."
+                try:
+                    environment = winreg.QueryValueEx(key, "Environment")[0]
+                except FileNotFoundError:
+                    environment = []
+                assert not any(value.startswith("DOTNET_BUNDLE_EXTRACT_BASE_DIR=") for value in environment), "Folder builds must not extract .NET at startup."
         task = sp.run(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Login", "/XML"], capture_output=True, text=True)
         if mode == "login":
             assert task.returncode == 0, "Login mode must register its task."
@@ -80,9 +85,10 @@ def main():
             assert document.find("t:Triggers/t:LogonTrigger", namespace) is not None
         else:
             assert task.returncode != 0, "Other modes must remove the login task."
-        assert str(destination / "versions").casefold() in current.casefold(), "Service must use a protected version directory."
+        assert Path(current).parent == destination, "Service must use the fixed protected directory."
+        assert not (destination / "versions").exists()
         if previous:
-            assert current != previous, "Repair must not overwrite loaded binaries."
+            assert current == previous, "Repair must keep the same installation path after stopping the service."
             assert (data / "preservation-check.txt").read_text() == "preserved", "Upgrade must preserve global data."
         else:
             (data / "preservation-check.txt").write_text("preserved")
@@ -109,7 +115,57 @@ def main():
     sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'uninstall.log'}"], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
+    check_legacy_upgrade(setups[0], logs, destination, data)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
+
+
+def check_legacy_upgrade(setup, logs, destination, data):
+    previous = download("https://github.com/andre487/WindowsMegaProxy/releases/download/v0.0.4/WindowsMegaProxy-0.0.4-win-x64-setup.exe",
+                        ROOT / ".tools/downloads/WindowsMegaProxy-0.0.4-win-x64-setup.exe",
+                        "3e1651d131b6f64d996533fc26d6018ad44f5e6df3202d66ff37c8a39b0bee13")
+    sp.run([str(previous), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=service",
+            f"/LOG={logs / 'legacy-install.log'}"], check=True, timeout=600)
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
+        helper = winreg.QueryValueEx(key, "HelperPath")[0]
+    assert Path(helper).parent.parent == destination / "versions"
+    kernel = ct.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [ct.c_wchar_p, ct.c_ulong, ct.c_ulong, ct.c_void_p, ct.c_ulong, ct.c_ulong, ct.c_void_p]
+    kernel.CreateFileW.restype = ct.c_void_p
+    kernel.CloseHandle.argtypes = [ct.c_void_p]
+    # Emulate 0.0.4's updater keeping the old service EXE locked until setup exits.
+    locked = kernel.CreateFileW(helper, 0x80000000, 1, None, 3, 0, None)
+    if locked == ct.c_void_p(-1).value:
+        raise ct.WinError(ct.get_last_error())
+    try:
+        sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/UPDATE=1",
+                f"/LOG={logs / 'legacy-upgrade.log'}"], check=True, timeout=600)
+    finally:
+        kernel.CloseHandle(locked)
+    for _ in range(120):
+        if not (destination / "versions").exists():
+            break
+        time.sleep(0.5)
+    client_log = known_folder(0x1c) / "WindowsMegaProxy/logs/current.log"
+    if client_log.is_file():
+        shutil.copy2(client_log, logs / "legacy-upgrade-client.log")
+    assert not (destination / "versions").exists(), "Upgrade must remove legacy versions after the old updater exits."
+    for _ in range(120):
+        if workspace_windows("MegaProxy"):
+            break
+        time.sleep(0.25)
+    assert workspace_windows("MegaProxy"), "Automatic updates must reopen the new application."
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
+        assert Path(winreg.QueryValueEx(key, "HelperPath")[0]).parent == destination
+        assert winreg.QueryValueEx(key, "Mode")[0] == "service"
+    assert service_state("WindowsMegaProxy") == 4
+    assert (data / "preservation-check.txt").read_text() == "preserved"
+    check_downloaded_cores(destination)
+    dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--no-build", "--", "--installed-settings-check", "verify")
+    assert "sing-box.exe" not in running_images()
+    sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+            f"/LOG={logs / 'legacy-upgrade-uninstall.log'}"], check=True, timeout=120)
+    assert service_state("WindowsMegaProxy") is None
+    print("Official 0.0.4 upgrade, locked old updater, fixed paths, settings preservation and legacy cleanup passed; no TUN.")
 
 
 def check_user_install(setup, logs, global_data):
@@ -131,7 +187,8 @@ def check_user_install(setup, logs, global_data):
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             helper = winreg.QueryValueEx(key, "HelperPath")[0]
         check_downloaded_cores(Path(helper).parent)
-        assert str(protected / "versions").casefold() in helper.casefold()
+        assert Path(helper).parent == protected
+        assert not (protected / "versions").exists()
         assert (destination / "WindowsMegaProxy.Launcher.exe").is_file()
         assert not (destination / "WindowsMegaProxy.exe").exists(), "Only the unprivileged launcher belongs in the user-writable install directory."
         assert (global_data / "preservation-check.txt").read_text() == "preserved"

@@ -36,6 +36,8 @@ install.cmd
 
 Production packages bundle a pinned .NET runtime and both proxy cores. Installation requires administrator approval and prepares Windows OpenSSH Client if missing. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
 
+Upgrading from 0.0.4: if service mode shows **Read-only mode**, open MegaProxy once as administrator and use **Settings → Application updates**. The updated installer fixes service access and removes the old version directories while preserving settings.
+
 `install.cmd` defaults to manual launch; use `install.cmd --mode login` or
 `install.cmd --mode service` for the other modes. Standalone hosts run elevated;
 the interface in service mode can run without elevation.

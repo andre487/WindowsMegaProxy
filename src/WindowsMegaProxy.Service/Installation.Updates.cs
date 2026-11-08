@@ -34,11 +34,12 @@ public static partial class Installation
         bool personal = UserInstallation.IsUser;
         string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         string root = personal ? UserInstallation.ValidateDirectory(AppContext.BaseDirectory, programFiles, UserInstallation.Sid) : InstallRoot(AppContext.BaseDirectory, programFiles);
-        foreach (string path in new[] { root, Path.Combine(root, "versions"), AppContext.BaseDirectory }) CheckDirectory(path);
+        CheckDirectory(root);
         string staging = Path.Combine(root, "update");
         ProtectDataDirectory(staging);
         using var lease = new FileStream(Path.Combine(staging, "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         string target = Path.Combine(staging, "setup.exe");
+        bool launched = false;
         try
         {
             string cache = AppUpdateTrust.CacheDirectory;
@@ -61,10 +62,39 @@ public static partial class Installation
             foreach (string argument in new[] { "/SILENT", "/NORESTART", "/SUPPRESSMSGBOXES", personal ? "/CURRENTUSER" : "/ALLUSERS",
                 "/MODE=" + StartupConfiguration.Mode, "/UPDATE=1", "/MERGETASKS=" + (AppUpdatePolicy.Enabled(current) ? "automaticupdates" : "!automaticupdates") }) start.ArgumentList.Add(argument);
             using var process = Process.Start(start) ?? throw new IOException("Could not start the verified update installer.");
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0) throw new IOException("The update installer did not complete successfully.");
+            // Release loaded runtime DLLs before setup overwrites the installation directory.
+            launched = true;
             return 0;
         }
-        finally { File.Delete(target); }
+        finally { if (!launched) File.Delete(target); }
+    }
+
+    private static async Task<int> CleanupInstallationAsync()
+    {
+        if (!StartupConfiguration.IsElevated) throw new UnauthorizedAccessException("Installation cleanup requires administrator approval.");
+        string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        string root = UserInstallation.IsUser ? UserInstallation.ValidateDirectory(AppContext.BaseDirectory, programFiles, UserInstallation.Sid)
+            : InstallRoot(AppContext.BaseDirectory, programFiles);
+        CheckDirectory(root);
+        var log = new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
+        for (int attempt = 0; attempt < 60; attempt++)
+        {
+            try
+            {
+                // The 0.0.4 update helper exits only after setup; wait for it to release the old EXE.
+                string legacy = Path.Combine(root, "versions");
+                if (Directory.Exists(legacy)) { CheckDirectory(legacy); Directory.Delete(legacy, true); }
+                string update = Path.Combine(root, "update", "setup.exe");
+                if (File.Exists(update)) { CheckDirectory(Path.GetDirectoryName(update)!); File.Delete(update); }
+                log.Write("Installation cleanup completed; only the current application version is retained.");
+                return 0;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                if (attempt == 59) { log.Write($"Installation cleanup failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}."); return 1; }
+                await Task.Delay(1000);
+            }
+        }
+        return 1;
     }
 }

@@ -27,10 +27,7 @@ def product_version(path):
 
 
 def publish_options(dev=False):
-    if dev:
-        return ["--self-contained", "true"]
-    return ["--self-contained", "true", "-p:PublishSingleFile=true",
-            "-p:IncludeNativeLibrariesForSelfExtract=true", "-p:DebugType=embedded"]
+    return ["--self-contained", "true", "-p:PublishSingleFile=false", "-p:DebugType=embedded"]
 
 
 def main(dev=False, app_only=False):
