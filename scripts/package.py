@@ -14,6 +14,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import build
+from authenticode import Signer
 from common import ROOT, cli, digest, download, extract
 from dependencies import (
     CORE_VERSION,
@@ -131,7 +132,7 @@ def main():
     runtime = release()["windowsdesktop"]
     runtime_file = asset(runtime, ".exe")
     runtime_download = runtime_installer(cache)
-    with tempfile.TemporaryDirectory(prefix="package-", dir=ROOT / "artifacts") as temporary:
+    with Signer(preview=args.preview) as signer, tempfile.TemporaryDirectory(prefix="package-", dir=ROOT / "artifacts") as temporary:
         staging = Path(temporary)
         payload = staging / "payload"
         payload.mkdir()
@@ -158,6 +159,7 @@ def main():
         shutil.copy2(ROOT / "LICENSE", payload / "LICENSE.txt")
         shutil.copy2(ROOT / "installer/THIRD-PARTY-NOTICES.txt", payload / "THIRD-PARTY-NOTICES.txt")
         shutil.copytree(ROOT / "installer/licenses", payload / "licenses")
+        signer.sign_directory(payload)
         for name, http3 in (("sing-box", False), ("sing-box-h3", True)):
             install_core(payload / "dependencies" / name, cache, http3=http3)
         wintun = download("https://www.wintun.net/builds/wintun-0.14.1.zip", cache / "wintun-0.14.1.zip",
@@ -182,8 +184,11 @@ def main():
         }
         definitions.update(core_installer_definitions(payload))
         (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
-        shutil.copy2(ROOT / "installer/WindowsMegaProxy.iss", staging / "WindowsMegaProxy.iss")
-        sp.run([str(compiler()), "/Qp", str(staging / "WindowsMegaProxy.iss")], check=True)
+        script = (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
+        script = script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\nSignedUninstaller=yes\n", 1)
+        (staging / "WindowsMegaProxy.iss").write_text(script, encoding="utf-8-sig")
+        sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "WindowsMegaProxy.iss")],
+               env=signer.environment, check=True)
         setup = f"WindowsMegaProxy-{app_version}-win-x64-setup.exe"
         components["installer"] = {"version": app_version, "file": setup}
         source = f"WindowsMegaProxy-{app_version}-source.zip"
@@ -195,6 +200,7 @@ def main():
                         url=f"{REPOSITORY}/releases/download/v{app_version}/{file.name}")
         manifest = {"schemaVersion": 1, "version": app_version, "commit": commit, "platform": "win-x64",
                     "preview": args.preview, "serviceProtocol": 3, "components": components,
+                    "authenticodeCertificateSha256": signer.fingerprint,
                     "runtime": {"version": runtime["version"], "url": runtime_file["url"], "sha512": runtime_file["hash"]}}
         signed_manifest(manifest, staging, key)
         names = [item["file"] for item in components.values()] + ["update-manifest.json", "update-manifest.sig", "update-public-key.txt"]

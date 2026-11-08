@@ -113,8 +113,22 @@ update downloads are removed. DEV checks can show releases but never install
 production updates over a development build. The installer also offers an
 automatic-update checkbox, selected by default.
 
-The Windows EXE installer is currently not Authenticode-signed. Manifest signing
-does not replace a Windows code-signing certificate. CI compiles the installer
+Packaged MegaProxy EXE/DLL files and Inno Setup's installer, uninstaller and
+temporary Setup copies are Authenticode-signed. Release builds require the
+permanent certificate pinned in `assets/authenticode-certificate.pem` and a
+SHA-256 timestamp; credentials are documented in [LOCAL-SECRETS.md](LOCAL-SECRETS.md).
+This certificate is self-signed, so Windows does not automatically trust its
+publisher. Ed25519 update-manifest signing remains separate. Preview CI uses
+a disposable certificate without access to production signing secrets.
+Current packaging automation also signs rebuilt older tags; an unsigned
+unpublished checkpoint is rebuilt, while already-published assets remain intact.
+CI compiles the installer
 and tests silent installation, repair and uninstall on a disposable runner,
 without activating TUN. Interactive installation, failure rollback and driver
 activation still need testing in a disposable Windows VM before public release.
+
+Dependencies use Inno's HTTPS downloads with pinned hashes for the official .NET
+installer and sing-box archives. OpenSSH uses the Windows capability installer;
+Wintun is already provided by the upstream core. WinGet is not required: calling
+its CLI would add an App Installer/user-registration dependency, and the CLI is
+not supported under SYSTEM. See [Microsoft's limitations](https://learn.microsoft.com/windows/package-manager/winget/troubleshooting).

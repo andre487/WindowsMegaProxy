@@ -8,12 +8,19 @@ Keep local credentials outside the checkout, in a private per-user directory:
     openai-api-key.txt
     update-signing-key.txt
     virus-total.txt
+    code-signing\
+        code-signing.pfx
+        code-signing-password.txt
+        code-signing-certificate.cer
+        code-signing-thumbprint.txt
 ```
 
 Each file contains only its credential, on one line, without quotes or an
 environment-variable name. These are developer credentials, not proxy profile
 settings: do not put them in MegaProxy.json or the service's ProgramData folder.
-The application and build tools do not automatically read this directory.
+The application does not read this directory. Installer builds automatically
+read the two files in `code-signing` when signing credentials are not supplied
+through the environment.
 
 Create a **new** directory and restrict access before writing credentials.
 Run these commands in a normal PowerShell session as your own user:
@@ -83,6 +90,31 @@ Back it up in a password manager before using it for production. Keep the same
 production key between releases. Use a separate key for local signing experiments;
 ordinary `build-installer.cmd --preview` already uses a disposable key and needs
 none of these files. Manifest signing is separate from Windows Authenticode.
+
+## Windows Authenticode certificate
+
+Back up `code-signing/code-signing.pfx` as a Bitwarden attachment and store
+`code-signing/code-signing-password.txt` as its password. The PFX contains the
+private key and is encrypted with that password. Keep both: GitHub cannot
+export stored secret values for recovery. The certificate expires in November
+2036. The CER and SHA-256 fingerprint files contain public information only.
+
+GitHub release builds use `WINDOWS_SIGNING_PFX` (base64 of the PFX bytes) and
+`WINDOWS_SIGNING_PASSWORD`. The build verifies the certificate against the public
+copy in `assets/authenticode-certificate.pem` and refuses unsigned releases or
+an unexpected signing identity. Do not regenerate this identity for each build.
+
+The certificate is self-signed and does not establish Windows publisher trust.
+The build does not install it into a Windows certificate store. Packaged
+MegaProxy EXE/DLL files, Setup, the uninstaller and temporary Setup copies are
+signed; existing upstream dependencies retain their original signatures/hashes.
+Release signatures require a SHA-256 RFC 3161 timestamp. The temporary signing
+key file is restricted to the current user and SYSTEM, removed after packaging,
+and never passed to GitHub artifact uploads.
+
+Preview builds use the permanent certificate when available locally. On CI or
+machines without the private key, previews use a disposable certificate, without
+timestamping. Pull-request CI never receives the permanent signing secrets.
 
 ## Use files locally
 

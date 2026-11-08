@@ -8,6 +8,8 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import publish_release as release
@@ -19,13 +21,17 @@ COMMIT = "a" * 40
 REPO = "owner/project"
 
 
-def fixture(directory, extra=b""):
+def fixture(directory, extra=b"", *, authenticode=True):
     directory.mkdir(parents=True, exist_ok=True)
     components = {}
     for component, name in release.package_names(TAG).items():
         (directory / name).write_bytes(component.encode() + extra)
         components[component] = {"file": name, "version": TAG[1:], "sha256": release.digest(directory / name), "size": (directory / name).stat().st_size}
-    signed_manifest({"schemaVersion": 1, "version": TAG[1:], "commit": COMMIT, "preview": False, "components": components}, directory, Ed25519PrivateKey.generate())
+    certificate = x509.load_pem_x509_certificate(release.PUBLIC_CERTIFICATE.read_bytes())
+    manifest = {"schemaVersion": 1, "version": TAG[1:], "commit": COMMIT, "preview": False, "components": components}
+    if authenticode:
+        manifest["authenticodeCertificateSha256"] = certificate.fingerprint(hashes.SHA256()).hex()
+    signed_manifest(manifest, directory, Ed25519PrivateKey.generate())
     checksums(directory, sorted(set(release.package_names(TAG).values()) | (release.METADATA - {"SHA256SUMS"})))
     rows = [row(path) for path in vt.targets(directory)]
     vt.write_report(directory, rows, True)
@@ -240,6 +246,28 @@ class ReleaseRetryTests(unittest.TestCase):
             with patch.object(release, "release_state", return_value={"draft": True, "assets": []}), patch.object(release, "gh", side_effect=gh):
                 self.assertTrue(release.restore(destination, REPO, TAG, COMMIT, "123"))
             self.assertEqual((destination / "update-manifest.json").read_bytes(), (source / "update-manifest.json").read_bytes())
+
+    def test_unsigned_checkpoint_is_rebuilt_instead_of_reused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source, destination = Path(temporary) / "source", Path(temporary) / "restored"
+            fixture(source, authenticode=False)
+            def gh(*args):
+                if args[0] == "api":
+                    return json.dumps({"artifacts": [{"name": "release-packages", "expired": False}]})
+                shutil.copytree(source, Path(args[args.index("--dir") + 1]), dirs_exist_ok=True)
+                return ""
+            with patch.object(release, "release_state", return_value=None), patch.object(release, "gh", side_effect=gh):
+                self.assertFalse(release.restore(destination, REPO, TAG, COMMIT, "123"))
+            self.assertFalse(destination.exists())
+
+    def test_unsigned_packages_cannot_create_a_new_release(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            fixture(directory, authenticode=False)
+            with patch.object(release, "release_state", return_value=None), patch.object(release, "gh") as gh:
+                with self.assertRaisesRegex(RuntimeError, "Windows certificate"):
+                    release.publish(directory, REPO, TAG, COMMIT, Path("unused"))
+            gh.assert_not_called()
 
 
 if __name__ == "__main__":

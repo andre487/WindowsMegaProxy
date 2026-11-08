@@ -10,15 +10,24 @@ import subprocess as sp
 import tempfile
 from pathlib import Path
 
+from cryptography import x509
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 import virus_total as vt
+from authenticode import PUBLIC_CERTIFICATE
 
 START = "<!-- megaproxy-virustotal -->"
 END = "<!-- /megaproxy-virustotal -->"
 METADATA = {"SHA256SUMS", "update-manifest.json", "update-manifest.sig", "update-public-key.txt"}
 REPORTS = {"VIRUSTOTAL.md", "VIRUSTOTAL.json"}
+
+
+def has_current_authenticode(directory):
+    expected = x509.load_pem_x509_certificate(PUBLIC_CERTIFICATE.read_bytes()).fingerprint(hashes.SHA256()).hex()
+    manifest = json.loads((directory / "update-manifest.json").read_text(encoding="utf-8"))
+    return manifest.get("authenticodeCertificateSha256") == expected
 
 
 def gh(*args):
@@ -135,6 +144,8 @@ def restore(directory, repo, tag, commit, run_id=None):
                 restored = True
                 if "virustotal-" + tag in existing:
                     gh("run", "download", str(run_id), "--repo", repo, "--name", "virustotal-" + tag, "--dir", str(staging))
+        if restored and (state is None or state["draft"]) and not has_current_authenticode(staging):
+            return False
         if not restored:
             return False
         directory.mkdir(parents=True, exist_ok=True)
@@ -153,6 +164,8 @@ def release_notes(body, report):
 def publish(directory, repo, tag, commit, notes_path):
     names = verify(directory, tag, commit, reports=True) | REPORTS
     state = release_state(repo, tag)
+    if (state is None or state["draft"]) and not has_current_authenticode(directory):
+        raise RuntimeError("New releases require packages signed with the current Windows certificate.")
     with tempfile.TemporaryDirectory(prefix="megaproxy-publish-") as temporary:
         temporary = Path(temporary)
         if state is not None and not state["draft"]:
