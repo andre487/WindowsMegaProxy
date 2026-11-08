@@ -1,5 +1,5 @@
 name: Published update check
-run-name: Verify automatic update from 0.0.7 to ${{ inputs.version }}
+run-name: Verify automatic update from 0.0.8 to ${{ inputs.version }}
 
 on:
   workflow_dispatch:

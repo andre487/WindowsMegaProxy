@@ -32,9 +32,9 @@ def main():
     def check(*arguments):
         dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", *arguments)
 
-    previous = download("https://github.com/andre487/WindowsMegaProxy/releases/download/v0.0.7/WindowsMegaProxy-0.0.7-win-x64-setup.exe",
-                        ROOT / ".tools/downloads/WindowsMegaProxy-0.0.7-win-x64-setup.exe",
-                        "7c745bd03744a6d74e213c1ca02ffd95363bb36d07f2a03b72454835d542e743")
+    previous = download("https://github.com/andre487/WindowsMegaProxy/releases/download/v0.0.8/WindowsMegaProxy-0.0.8-win-x64-setup.exe",
+                        ROOT / ".tools/downloads/WindowsMegaProxy-0.0.8-win-x64-setup.exe",
+                        "6335d9d644a35961110bf0c944af487303a5d432d6d41ffb396af13dbbe4fff5")
     try:
         sp.run([str(previous), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual",
                 "/MERGETASKS=automaticupdates", f"/LOG={logs / 'previous-install.log'}"], check=True, timeout=600)

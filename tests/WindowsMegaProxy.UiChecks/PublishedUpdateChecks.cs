@@ -39,6 +39,7 @@ internal static class PublishedUpdateChecks
         RequireRunner();
         _ = AppUpdateTrust.ParseVersion(version);
         string executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsMegaProxy", "WindowsMegaProxy.exe");
+        string installedVersion = FileVersionInfo.GetVersionInfo(executable).ProductVersion!.Split('+')[0];
         using var original = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = false })!;
         T Wait<T>(Func<T?> read, string description) where T : class
         {
@@ -67,7 +68,7 @@ internal static class PublishedUpdateChecks
             "The old client did not automatically download the published update.");
         if (Find(window, "UpdateVersionText")?.Current.Name.Contains(version, StringComparison.Ordinal) != true)
             throw new Exception("The client downloaded an unexpected update version.");
-        Console.WriteLine("The installed 0.0.7 client automatically downloaded and verified update " + version + ".");
+        Console.WriteLine("The installed " + installedVersion + " client automatically downloaded and verified update " + version + ".");
         ((InvokePattern)install.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         if (!original.WaitForExit(30000)) throw new Exception("The old UI did not release its installation files.");
         using var reopened = Wait(() => Process.GetProcessesByName("WindowsMegaProxy").FirstOrDefault(process =>
