@@ -131,6 +131,7 @@ def main():
 
 
 def check_service_tray(destination):
+    user32.IsWindowVisible.argtypes = [ct.c_void_p]
     client = sp.Popen([str(destination / "WindowsMegaProxy.exe"), "--tray"])
     try:
         for _ in range(120):
