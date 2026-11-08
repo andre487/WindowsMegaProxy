@@ -12,6 +12,7 @@ public partial class MainWindow
 {
     private readonly AppUpdateManager? appUpdates;
     private readonly bool automaticUpdateChecks;
+    private readonly Func<Task> installAppUpdate;
     private readonly CancellationTokenSource updatesStopping = new();
     private Task updateOperation = Task.CompletedTask;
     private bool checkingAppUpdate, installingAppUpdate, changingUpdatePreference;
@@ -110,15 +111,22 @@ public partial class MainWindow
         {
             await FlushSettingsFormAsync();
             await FlushSettingsAsync();
-            string helper = Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable);
-            if (!File.Exists(helper)) throw new IOException("The protected update installer helper is missing.");
-            var start = new ProcessStartInfo(helper) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = AppContext.BaseDirectory };
-            start.ArgumentList.Add("--install-update");
-            using var process = Process.Start(start) ?? throw new IOException("Could not start the update helper.");
-            await process.WaitForExitAsync();
-            if (!quitting && process.ExitCode != 0) throw new IOException("Could not install the application update.");
+            await installAppUpdate();
+            // Setup must replace our loaded DLLs; never offer a second launch after handoff.
+            if (!quitting) await QuitAsync();
         }
         catch (Exception error) { if (!quitting) ShowError(error); }
         finally { installingAppUpdate = false; if (!quitting) UpdateAppUpdatesView(); }
+    }
+
+    private static async Task StartAppUpdateInstallerAsync()
+    {
+        string helper = Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable);
+        if (!File.Exists(helper)) throw new IOException("The protected update installer helper is missing.");
+        var start = new ProcessStartInfo(helper) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = AppContext.BaseDirectory };
+        start.ArgumentList.Add("--install-update");
+        using var process = Process.Start(start) ?? throw new IOException("Could not start the update helper.");
+        await process.WaitForExitAsync();
+        if (process.ExitCode != 0) throw new IOException("Could not install the application update. See the application log for details.");
     }
 }
