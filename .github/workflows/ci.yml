@@ -99,6 +99,10 @@ jobs:
               Copy-Item -LiteralPath $source -Destination (Join-Path $target ([guid]::NewGuid().ToString())) -Recurse
             }
           }
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1026; StartTime=(Get-Date).AddMinutes(-15)} -ErrorAction SilentlyContinue |
+            Where-Object Message -Match 'WindowsMegaProxy.SetupUI' |
+            Select-Object -ExpandProperty Message |
+            Out-File -Encoding utf8 (Join-Path $target 'bootstrapper-runtime.log')
 
       - name: Test all DEV modes and complete startup cleanup
         run: scripts\tools.cmd scripts\dev_mode_smoke.py

@@ -203,13 +203,20 @@ internal static class Program
         {
             ValidateHelper(previous.Helper);
             await Require(previous.Helper, Personal ? "--configure-user" : "--configure-mode", previous.Mode);
-            DeployLauncher(Path.GetDirectoryName(previous.Helper)!);
-            CreateShortcuts(Path.GetDirectoryName(previous.Helper)!, false);
             using var registration = Hive.CreateSubKey(KeyPath);
             if (previous.BuildId is not null) registration.SetValue("SetupBuildId", previous.BuildId);
             if (previous.Directory is not null) registration.SetValue("SetupDirectory", previous.Directory);
         }
-        else RemoveShortcuts();
+        try
+        {
+            if (previous.Helper is null) RemoveShortcuts();
+            else
+            {
+                DeployLauncher(Path.GetDirectoryName(previous.Helper)!);
+                CreateShortcuts(Path.GetDirectoryName(previous.Helper)!, false);
+            }
+        }
+        catch (Exception error) { Console.Error.WriteLine("Previous runtime restored; shortcut recovery failed: " + error.Message); }
         if (previous.LegacyRegistration.Count != 0)
         {
             using var key = Hive.CreateSubKey(LegacyUninstall);

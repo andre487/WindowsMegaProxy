@@ -135,6 +135,24 @@ def main():
                     assert winreg.QueryValueEx(key, "Mode")[0] == "service", "A failed mode change must preserve the previous mode."
             finally:
                 sp.run(["sc.exe", "sdset", "WindowsMegaProxy", original], check=True, capture_output=True)
+            # Fail after the new runtime is configured, then verify actual rollback to the old service.
+            shortcut = known_folder(0x17) / "MegaProxy.lnk"
+            backup = shortcut.with_suffix(".rollback-check")
+            shortcut.rename(backup)
+            shortcut.mkdir()
+            try:
+                rollback = sp.run([str(setups[0]), "/repair", "/quiet", "/norestart", "/permachine", "InstallSSH=0", "Mode=manual",
+                                   "/log", str(logs / "post-config-rollback.log")], timeout=180)
+                assert rollback.returncode != 0, "Failure after configuration must fail setup."
+                assert service_state("WindowsMegaProxy") == 4
+                assert service_path().strip('"') == current, "Rollback must restore the previous service executable."
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
+                    assert winreg.QueryValueEx(key, "HelperPath")[0] == current
+                    assert winreg.QueryValueEx(key, "Mode")[0] == "service"
+                assert legacy_registration(winreg.HKEY_LOCAL_MACHINE), "Rollback must preserve the previous uninstall registration."
+            finally:
+                shortcut.rmdir()
+                backup.rename(shortcut)
         previous = current
         time.sleep(1)
     rejected_scope = sp.run([str(setups[0]), "/install", "/quiet", "/norestart", "/peruser", "InstallSSH=0",

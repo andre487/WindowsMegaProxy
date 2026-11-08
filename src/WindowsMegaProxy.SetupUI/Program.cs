@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using WixToolset.BootstrapperApplicationApi;
@@ -20,12 +22,19 @@ internal static class Program
             try
             {
                 Application.EnableVisualStyles();
+                IntPtr native = LoadLibrary(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mbanative.dll"));
+                if (native == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+                FreeLibrary(native);
+                IntPtr callback = Marshal.GetComInterfaceForObject(new SetupApplication(), typeof(IBootstrapperApplication));
+                Marshal.Release(callback);
                 foreach (string language in new[] { "en", "ru" })
                 {
                     System.Threading.Thread.CurrentThread.CurrentUICulture = new CultureInfo(language);
                     using var window = new SetupWindow(null, "0.0.0");
                     window.CheckUi(args[1], language);
                 }
+                File.Delete(Path.Combine(args[1], "failure.txt"));
+                File.WriteAllText(Path.Combine(args[1], "result.txt"), "Native setup UI language, scope and maintenance checks passed.");
                 return 0;
             }
             catch (Exception error) { File.WriteAllText(Path.Combine(args[1], "failure.txt"), error.ToString()); return 1; }
@@ -33,9 +42,14 @@ internal static class Program
         ManagedBootstrapperApplication.Run(new SetupApplication());
         return 0;
     }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr LoadLibrary(string path);
+    [DllImport("kernel32.dll")] private static extern bool FreeLibrary(IntPtr module);
 }
 
-internal sealed class SetupApplication : BootstrapperApplication
+[ComVisible(true)]
+[ClassInterface(ClassInterfaceType.None)]
+public sealed class SetupApplication : BootstrapperApplication
 {
     private IBootstrapperCommand command = null!;
     private SetupWindow window = null!;
@@ -49,13 +63,17 @@ internal sealed class SetupApplication : BootstrapperApplication
     {
         base.OnCreate(args);
         command = args.Command;
-        foreach (var item in command.ParseCommandLine().Variables)
+        try
         {
-            if (item.Key is not ("Mode" or "AutomaticUpdates" or "InstallSSH" or "DesktopShortcut" or "LaunchAfterSetup"))
-                throw new ArgumentException("Unknown setup variable: " + item.Key);
-            Validate(item.Key, item.Value);
-            arguments[item.Key] = item.Value;
+            foreach (var item in command.ParseCommandLine().Variables)
+            {
+                if (item.Key is not ("Mode" or "AutomaticUpdates" or "InstallSSH" or "DesktopShortcut" or "LaunchAfterSetup"))
+                    throw new ArgumentException("Unknown setup variable: " + item.Key);
+                Validate(item.Key, item.Value);
+                arguments[item.Key] = item.Value;
+            }
         }
+        catch (Exception error) { engine.Log(LogLevel.Error, error.ToString()); args.HResult = unchecked((int)0x80070057); }
     }
 
     protected override void Run()
@@ -325,7 +343,7 @@ internal sealed class SetupWindow : Form
         status.Text = code == 0 ? T("SuccessHeader") : code == 3010 ? T("SuccessRestartText") : T("FailureHeader") + " (0x" + code.ToString("X8", CultureInfo.InvariantCulture) + ")";
         close.Enabled = true; close.Text = T("SuccessCloseButton"); install.Enabled = false; remove.Enabled = false;
         log.Visible = true;
-        log.LinkClicked += (_, _) => System.Diagnostics.Process.Start("notepad.exe", "\"" + path + "\"")?.Dispose();
+        log.LinkClicked += (_, _) => System.Diagnostics.Process.Start(Path.Combine(Environment.SystemDirectory, "notepad.exe"), "\"" + path + "\"")?.Dispose();
     }
 
     internal void CheckUi(string directory, string language)
