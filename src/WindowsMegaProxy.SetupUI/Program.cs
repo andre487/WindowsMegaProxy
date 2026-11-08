@@ -13,34 +13,45 @@ using WixToolset.BootstrapperApplicationApi;
 
 internal static class Program
 {
-    [STAThread]
+    // Burn initializes COM as MTA; BootstrapperApplication creates its own STA UI thread.
+    [MTAThread]
     private static int Main(string[] args)
     {
         if (args.Length == 2 && args[0] == "--ui-checks")
         {
-            Directory.CreateDirectory(args[1]);
-            try
-            {
-                Application.EnableVisualStyles();
-                IntPtr native = LoadLibrary(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mbanative.dll"));
-                if (native == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
-                FreeLibrary(native);
-                IntPtr callback = Marshal.GetComInterfaceForObject(new SetupApplication(), typeof(IBootstrapperApplication));
-                Marshal.Release(callback);
-                foreach (string language in new[] { "en", "ru" })
-                {
-                    System.Threading.Thread.CurrentThread.CurrentUICulture = new CultureInfo(language);
-                    using var window = new SetupWindow(null, "0.0.0");
-                    window.CheckUi(args[1], language);
-                }
-                File.Delete(Path.Combine(args[1], "failure.txt"));
-                File.WriteAllText(Path.Combine(args[1], "result.txt"), "Native setup UI language, scope and maintenance checks passed.");
-                return 0;
-            }
-            catch (Exception error) { File.WriteAllText(Path.Combine(args[1], "failure.txt"), error.ToString()); return 1; }
+            int result = 1;
+            var uiThread = new System.Threading.Thread(() => result = CheckUi(args[1]));
+            uiThread.SetApartmentState(System.Threading.ApartmentState.STA);
+            uiThread.Start();
+            uiThread.Join();
+            return result;
         }
         ManagedBootstrapperApplication.Run(new SetupApplication());
         return 0;
+    }
+
+    private static int CheckUi(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        try
+        {
+            Application.EnableVisualStyles();
+            IntPtr native = LoadLibrary(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mbanative.dll"));
+            if (native == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            FreeLibrary(native);
+            IntPtr callback = Marshal.GetComInterfaceForObject(new SetupApplication(), typeof(IBootstrapperApplication));
+            Marshal.Release(callback);
+            foreach (string language in new[] { "en", "ru" })
+            {
+                System.Threading.Thread.CurrentThread.CurrentUICulture = new CultureInfo(language);
+                using var window = new SetupWindow(null, "0.0.0");
+                window.CheckUi(directory, language);
+            }
+            File.Delete(Path.Combine(directory, "failure.txt"));
+            File.WriteAllText(Path.Combine(directory, "result.txt"), "Native setup UI language, scope and maintenance checks passed.");
+            return 0;
+        }
+        catch (Exception error) { File.WriteAllText(Path.Combine(directory, "failure.txt"), error.ToString()); return 1; }
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr LoadLibrary(string path);
