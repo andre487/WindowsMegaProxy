@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
+        <AssemblyTitle>MegaProxy</AssemblyTitle>
+        <Description>MegaProxy installation</Description>
         <ApplicationIcon>../WindowsMegaProxy/Assets/app.ico</ApplicationIcon>
         <MegaProxyDev>false</MegaProxyDev>
     </PropertyGroup>

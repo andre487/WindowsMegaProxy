@@ -47,7 +47,8 @@ def build_installer(staging, payload, definitions, runtime_download):
                 raise ValueError("Installer payload cannot contain symbolic links.")
             if file.is_file() and "dependencies" not in file.relative_to(payload).parts:
                 archive.write(file, file.relative_to(payload).as_posix())
-    (resources / "setup.json").write_text(json.dumps(setup_manifest(payload, definitions["AppVersion"], definitions["VersionDirectory"])), encoding="utf-8")
+    manifest = setup_manifest(payload, definitions["AppVersion"], definitions["VersionDirectory"])
+    (resources / "setup.json").write_text(json.dumps(manifest), encoding="utf-8")
     setup = staging / "setup-engine"
     dotnet("publish", str(ROOT / "src/WindowsMegaProxy.Setup"), "-c", "Release", "-r", "win-x64",
            "--self-contained", "false", "-o", str(setup), f"-p:InstallerResources={resources}")
@@ -56,7 +57,9 @@ def build_installer(staging, payload, definitions, runtime_download):
     wix("build", ROOT / "installer/wix/Registration.wxs", "-arch", "x64", "-d", f"AppVersion={definitions['AppVersion']}", "-o", registration)
     output = staging / f"WindowsMegaProxy-{definitions['AppVersion']}-win-x64-setup.exe"
     arguments = ["build", ROOT / "installer/wix/Bundle.wxs", "-arch", "x64", "-o", output]
-    values = definitions | {"SetupDirectory": str(setup), "RegistrationPackage": str(registration), "RuntimeInstaller": str(runtime_download)}
+    values = definitions | {"SetupDirectory": str(setup), "SetupBuildId": manifest["buildId"],
+                            "InstallSize": sum(file.stat().st_size for file in payload.rglob("*") if file.is_file()),
+                            "RegistrationPackage": str(registration), "RuntimeInstaller": str(runtime_download)}
     for name, value in values.items():
         arguments.extend(["-d", f"{name}={value}"])
     for extension in EXTENSIONS:

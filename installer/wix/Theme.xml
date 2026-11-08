@@ -44,26 +44,27 @@
             </Button>
         </Page>
         <Page Name="Options">
-            <Label X="16" Y="88" Width="-16" Height="24" FontId="2">Installation options</Label>
+            <Label X="16" Y="88" Width="-16" Height="24" FontId="2">#(loc.SetupOptions)</Label>
             <RadioButtons Name="WixStdBAScope">
-                <RadioButton X="16" Y="122" Width="-16" Height="20" Value="PerMachine" FontId="3">All users: shared configuration and Windows service support</RadioButton>
-                <RadioButton X="16" Y="148" Width="-16" Height="20" Value="PerUser" FontId="3">Current user: personal configuration, no Windows service</RadioButton>
+                <RadioButton X="16" Y="122" Width="-16" Height="20" Value="PerMachine" FontId="3">#(loc.SystemScope)</RadioButton>
+                <RadioButton X="16" Y="148" Width="-16" Height="20" Value="PerUser" FontId="3">#(loc.PersonalScope)</RadioButton>
             </RadioButtons>
-            <Label X="16" Y="182" Width="-16" Height="20" FontId="3">Operating mode</Label>
+            <Label X="16" Y="182" Width="-16" Height="20" FontId="3">#(loc.OperatingMode)</Label>
             <RadioButtons Name="Mode">
-                <RadioButton X="16" Y="208" Width="-16" Height="20" Value="preserve" FontId="3">Keep current mode (manual for a new installation)</RadioButton>
-                <RadioButton X="16" Y="234" Width="-16" Height="20" Value="manual" FontId="3">Manual launch</RadioButton>
-                <RadioButton X="16" Y="260" Width="-16" Height="20" Value="login" FontId="3">At Windows sign-in (administrator)</RadioButton>
-                <RadioButton X="16" Y="286" Width="-16" Height="20" Value="service" FontId="3" EnableCondition="WixStdBAScope = &quot;PerMachine&quot;">Windows service</RadioButton>
+                <RadioButton X="16" Y="208" Width="-16" Height="20" Value="preserve" FontId="3">#(loc.PreserveMode)</RadioButton>
+                <RadioButton X="16" Y="234" Width="-16" Height="20" Value="manual" FontId="3">#(loc.ManualMode)</RadioButton>
+                <RadioButton X="16" Y="260" Width="-16" Height="20" Value="login" FontId="3">#(loc.LoginMode)</RadioButton>
+                <RadioButton X="16" Y="286" Width="-16" Height="20" Value="service" FontId="3" EnableCondition="WixStdBAScope = &quot;PerMachine&quot;">#(loc.ServiceMode)</RadioButton>
             </RadioButtons>
-            <Label X="16" Y="320" Width="-16" Height="20" FontId="3">Automatic application updates</Label>
+            <Label X="16" Y="320" Width="-16" Height="20" FontId="3">#(loc.AutomaticUpdates)</Label>
             <RadioButtons Name="AutomaticUpdates">
-                <RadioButton X="16" Y="346" Width="-16" Height="20" Value="preserve" FontId="3">Keep current preference (enabled for a new installation)</RadioButton>
-                <RadioButton X="16" Y="372" Width="-16" Height="20" Value="true" FontId="3">Check and download automatically</RadioButton>
-                <RadioButton X="16" Y="398" Width="-16" Height="20" Value="false" FontId="3">Disable automatic updates</RadioButton>
+                <RadioButton X="16" Y="346" Width="-16" Height="20" Value="preserve" FontId="3">#(loc.PreserveUpdates)</RadioButton>
+                <RadioButton X="16" Y="372" Width="-16" Height="20" Value="true" FontId="3">#(loc.EnableUpdates)</RadioButton>
+                <RadioButton X="16" Y="398" Width="-16" Height="20" Value="false" FontId="3">#(loc.DisableUpdates)</RadioButton>
             </RadioButtons>
-            <Checkbox Name="InstallSSH" X="16" Y="438" Width="-16" Height="20" FontId="3" TabStop="yes">Install Windows OpenSSH Client if missing</Checkbox>
-            <Checkbox Name="DesktopShortcut" X="16" Y="466" Width="-16" Height="20" FontId="3" TabStop="yes">Create a desktop shortcut</Checkbox>
+            <Checkbox Name="InstallSSH" X="16" Y="438" Width="-16" Height="20" FontId="3" TabStop="yes">#(loc.InstallSSH)</Checkbox>
+            <Checkbox Name="DesktopShortcut" X="16" Y="466" Width="-16" Height="20" FontId="3" TabStop="yes">#(loc.DesktopShortcut)</Checkbox>
+            <Checkbox Name="LaunchAfterSetup" X="16" Y="494" Width="-16" Height="20" FontId="3" TabStop="yes">#(loc.LaunchAfterSetup)</Checkbox>
             <Button Name="OptionsOkButton" X="-102" Y="-16" Width="80" Height="26" FontId="0" TabStop="yes">
                 <Text>#(loc.OptionsOkButton)</Text>
                 <ChangePageAction Page="Install" />

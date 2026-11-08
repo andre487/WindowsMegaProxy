@@ -15,8 +15,12 @@
                 LicenseUrl="https://github.com/andre487/WindowsMegaProxy/blob/main/LICENSE"
                 Theme="hyperlinkLargeLicense"
                 ThemeFile="$(var.RepositoryRoot)\installer\wix\Theme.xml"
+                LocalizationFile="$(var.RepositoryRoot)\installer\wix\Strings.en-US.wxl"
                 LogoFile="$(var.RepositoryRoot)\src\WindowsMegaProxy\Assets\toolbar.png"
                 ShowVersion="yes" />
+            <Payload
+                Name="1049\thm.wxl"
+                SourceFile="$(var.RepositoryRoot)\installer\wix\Strings.ru-RU.wxl" />
         </BootstrapperApplication>
         <Variable Name="Mode" Type="string" Value="preserve" bal:Overridable="yes" />
         <Variable Name="AutomaticUpdates" Type="string" Value="preserve" bal:Overridable="yes" />
@@ -43,6 +47,8 @@
             <MsiPackage Id="RegistrationPackage" SourceFile="$(var.RegistrationPackage)" Compressed="yes" />
             <ExePackage
                 Id="MegaProxyPackage"
+                CacheId="MegaProxy.$(var.SetupBuildId)"
+                InstallSize="$(var.InstallSize)"
                 SourceFile="$(var.SetupDirectory)\WindowsMegaProxy.Setup.exe"
                 PerMachine="yes"
                 DetectCondition="WixBundleInstalled"

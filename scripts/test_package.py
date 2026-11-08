@@ -1,7 +1,9 @@
 import base64
 import json
+import re
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +22,20 @@ from package import archive, checksums, merge, signed_manifest, version
 
 
 class PackageTests(unittest.TestCase):
+    def test_installer_translations_cover_the_theme_in_both_languages(self):
+        namespace = {"w": "http://wixtoolset.org/schemas/v4/wxl"}
+        theme = (package.ROOT / "installer/wix/Theme.xml").read_text(encoding="utf-8")
+        required = set(re.findall(r"#\(loc\.([A-Za-z0-9]+)\)", theme))
+        catalogs = []
+        for language in ("en-US", "ru-RU"):
+            path = package.ROOT / f"installer/wix/Strings.{language}.wxl"
+            values = {entry.attrib["Id"]: entry.attrib["Value"] for entry in ET.parse(path).findall("w:String", namespace)}
+            self.assertTrue(required <= values.keys())
+            self.assertTrue(all(values.values()))
+            self.assertNotIn("???", path.read_text(encoding="utf-8"))
+            catalogs.append(values.keys())
+        self.assertEqual(*catalogs)
+
     def test_wix_manifest_pins_only_official_cores_including_license_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             payload = Path(temporary)

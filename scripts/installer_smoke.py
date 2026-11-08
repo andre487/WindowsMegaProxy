@@ -25,7 +25,7 @@ def check_downloaded_cores(version_directory):
     snapshot = version_directory / "installer-state/rollback.json"
     acl_file = ROOT / "artifacts/installer-checks" / (version_directory.name + "-acl.txt")
     sp.run(["icacls.exe", str(snapshot), "/save", str(acl_file), "/q"], check=True, capture_output=True)
-    descriptor = acl_file.read_text(encoding="utf-16")
+    descriptor = acl_file.read_text(encoding="utf-16-le").lstrip("\ufeff")
     allowed = set(re.findall(r"\(A;[^)]*;;;([^)]*)\)", descriptor))
     assert allowed == {"BA", "SY"}, "Rollback configuration snapshots must be readable only by administrators and SYSTEM."
 

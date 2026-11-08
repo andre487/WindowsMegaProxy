@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WiX standard strings: .NET Foundation and contributors, MS-RL; modified for MegaProxy. -->
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="ru-ru" Language="1049">
+    <String Id="Caption" Value="Установка [WixBundleName]" />
+    <String Id="Title" Value="[WixBundleName]" />
+    <String Id="CheckingForUpdatesLabel" Value="Проверка обновлений" />
+    <String Id="UpdateButton" Value="Обновить до версии [WixStdBAUpdateAvailable]" />
+    <String Id="InstallHeader" Value="Добро пожаловать" />
+    <String Id="InstallMessage" Value="Программа установит [WixBundleName] на компьютер. Нажмите «Установить», чтобы продолжить." />
+    <String Id="InstallMessageOptions" Value="Программа установит [WixBundleName] на компьютер. Нажмите «Параметры», чтобы выбрать область установки, режим работы и дополнительные компоненты." />
+    <String Id="InstallVersion" Value="Версия [WixBundleVersion]" />
+    <String Id="ConfirmCancelMessage" Value="Отменить установку?" />
+    <String Id="ExecuteUpgradeRelatedBundleMessage" Value="Предыдущая версия" />
+    <String Id="HelpHeader" Value="Справка по установке" />
+    <String Id="HelpText" Value="/install | /repair | /uninstall — установка, восстановление или удаление.&#xA;/permachine | /peruser — для всех пользователей или текущего пользователя.&#xA;/passive | /quiet — минимальный интерфейс или установка без интерфейса.&#xA;/norestart — без перезагрузки.&#xA;/log файл.log — сохранить журнал.&#xA;Mode=manual|login|service — режим работы.&#xA;InstallSSH=0 — не устанавливать OpenSSH.&#xA;AutomaticUpdates=false — отключить автоматические обновления." />
+    <String Id="HelpCloseButton" Value="Закрыть" />
+    <String Id="InstallLicenseLinkText" Value="&lt;a href=&quot;#&quot;&gt;Условия лицензии&lt;/a&gt; [WixBundleName]." />
+    <String Id="InstallAcceptCheckbox" Value="Я принимаю условия лицензии" />
+    <String Id="InstallOptionsButton" Value="Параметры" />
+    <String Id="InstallInstallButton" Value="Установить" />
+    <String Id="InstallCancelButton" Value="Отмена" />
+    <String Id="OptionsHeader" Value="Параметры установки" />
+    <String Id="OptionsLocationLabel" Value="Каталог установки:" />
+    <String Id="OptionsPerUserScopeText" Value="Только для текущего пользователя" />
+    <String Id="OptionsPerMachineScopeText" Value="Для всех пользователей" />
+    <String Id="OptionsBrowseButton" Value="Обзор" />
+    <String Id="OptionsOkButton" Value="ОК" />
+    <String Id="OptionsCancelButton" Value="Отмена" />
+    <String Id="ProgressHeader" Value="Ход установки" />
+    <String Id="ProgressLabel" Value="Выполняется:" />
+    <String Id="OverallProgressPackageText" Value="Подготовка…" />
+    <String Id="ProgressCancelButton" Value="Отмена" />
+    <String Id="ModifyHeader" Value="Обслуживание приложения" />
+    <String Id="ModifyRepairButton" Value="Восстановить" />
+    <String Id="ModifyUninstallButton" Value="Удалить" />
+    <String Id="ModifyCancelButton" Value="Отмена" />
+    <String Id="SuccessHeader" Value="Готово" />
+    <String Id="SuccessCacheHeader" Value="Кеширование завершено" />
+    <String Id="SuccessInstallHeader" Value="Установка завершена" />
+    <String Id="SuccessLayoutHeader" Value="Файлы скачаны" />
+    <String Id="SuccessModifyHeader" Value="Изменения применены" />
+    <String Id="SuccessRepairHeader" Value="Восстановление завершено" />
+    <String Id="SuccessUninstallHeader" Value="Удаление завершено" />
+    <String Id="SuccessUnsafeUninstallHeader" Value="Удаление завершено" />
+    <String Id="SuccessLaunchButton" Value="Запустить" />
+    <String Id="SuccessRestartText" Value="Перед использованием приложения необходимо перезагрузить компьютер." />
+    <String Id="SuccessUninstallRestartText" Value="Для завершения удаления необходимо перезагрузить компьютер." />
+    <String Id="SuccessRestartButton" Value="Перезагрузить" />
+    <String Id="SuccessCloseButton" Value="Закрыть" />
+    <String Id="FailureHeader" Value="Ошибка установки" />
+    <String Id="FailureCacheHeader" Value="Ошибка кеширования" />
+    <String Id="FailureInstallHeader" Value="Ошибка установки" />
+    <String Id="FailureLayoutHeader" Value="Ошибка скачивания" />
+    <String Id="FailureModifyHeader" Value="Ошибка применения изменений" />
+    <String Id="FailureRepairHeader" Value="Ошибка восстановления" />
+    <String Id="FailureUninstallHeader" Value="Ошибка удаления" />
+    <String Id="FailureUnsafeUninstallHeader" Value="Ошибка удаления" />
+    <String Id="FailureHyperlinkLogText" Value="Не удалось завершить операцию. Исправьте ошибку и повторите попытку. Подробности: &lt;a href=&quot;#&quot;&gt;журнал установки&lt;/a&gt;." />
+    <String Id="FailureRestartText" Value="Для завершения отката необходимо перезагрузить компьютер." />
+    <String Id="FailureRestartButton" Value="Перезагрузить" />
+    <String Id="FailureCloseButton" Value="Закрыть" />
+    <String Id="FilesInUseTitle" Value="Файлы используются" />
+    <String Id="FilesInUseLabel" Value="Следующие приложения используют файлы, которые требуется обновить:" />
+    <String Id="FilesInUseNetfxCloseRadioButton" Value="Закрыть приложения." />
+    <String Id="FilesInUseCloseRadioButton" Value="Закрыть приложения и попытаться запустить их снова." />
+    <String Id="FilesInUseDontCloseRadioButton" Value="Не закрывать приложения. Потребуется перезагрузка." />
+    <String Id="FilesInUseRetryButton" Value="Повторить" />
+    <String Id="FilesInUseIgnoreButton" Value="Пропустить" />
+    <String Id="FilesInUseExitButton" Value="Выход" />
+    <String Id="SetupOptions" Value="Параметры установки" />
+    <String Id="SystemScope" Value="Все пользователи: общая конфигурация, доступен режим службы" />
+    <String Id="PersonalScope" Value="Текущий пользователь: личная конфигурация, без режима службы" />
+    <String Id="OperatingMode" Value="Режим работы" />
+    <String Id="PreserveMode" Value="Сохранить текущий режим (ручной при первой установке)" />
+    <String Id="ManualMode" Value="Ручной запуск" />
+    <String Id="LoginMode" Value="При входе в Windows (администратор)" />
+    <String Id="ServiceMode" Value="Служба Windows" />
+    <String Id="AutomaticUpdates" Value="Автоматическое обновление приложения" />
+    <String Id="PreserveUpdates" Value="Сохранить настройку (включено при первой установке)" />
+    <String Id="EnableUpdates" Value="Проверять и скачивать автоматически" />
+    <String Id="DisableUpdates" Value="Отключить автоматические обновления" />
+    <String Id="InstallSSH" Value="Установить клиент Windows OpenSSH, если его нет" />
+    <String Id="DesktopShortcut" Value="Создать ярлык на рабочем столе" />
+    <String Id="LaunchAfterSetup" Value="Запустить MegaProxy после установки" />
+</WixLocalization>
