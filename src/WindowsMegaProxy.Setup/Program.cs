@@ -326,19 +326,19 @@ internal static class Program
     private static void Protect(string path)
     {
         RejectReparseChain(path);
-        if (!Directory.Exists(path))
-        {
-            string parent = Path.GetDirectoryName(path)!;
-            if (!string.Equals(parent, ProgramFiles, StringComparison.OrdinalIgnoreCase)) CheckProtected(parent);
-            Directory.CreateDirectory(path);
-        }
-        CheckProtected(path);
         var security = new DirectorySecurity();
         security.SetOwner(Administrators);
         security.SetAccessRuleProtection(true, false);
         foreach (var sid in new[] { Administrators, SystemAccount, Users })
             security.AddAccessRule(new FileSystemAccessRule(sid, sid.Equals(Users) ? FileSystemRights.ReadAndExecute : FileSystemRights.FullControl,
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+        if (!Directory.Exists(path))
+        {
+            string parent = Path.GetDirectoryName(path)!;
+            if (!string.Equals(parent, ProgramFiles, StringComparison.OrdinalIgnoreCase)) CheckProtected(parent);
+            new DirectoryInfo(path).Create(security);
+        }
+        CheckProtected(path);
         new DirectoryInfo(path).SetAccessControl(security);
     }
 

@@ -24,7 +24,7 @@
         <Variable Name="InstallSSH" Type="numeric" Value="1" bal:Overridable="yes" />
         <Variable Name="DesktopShortcut" Type="numeric" Value="0" bal:Overridable="yes" />
         <Variable Name="LaunchAfterSetup" Type="numeric" Value="0" bal:Overridable="yes" />
-        <Variable Name="OwnerProfile" Type="formatted" Value="[LocalAppDataFolder]" />
+        <Variable Name="OwnerProfile" Type="formatted" Value="[LocalAppDataFolder]." />
         <netfx:DotNetCoreSearch Variable="DesktopRuntime" RuntimeType="desktop" Platform="x64" MajorVersion="10" />
         <bal:Condition
             Message="MegaProxy requires Windows 10 version 1809 or later (x64)."
