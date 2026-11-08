@@ -13,7 +13,7 @@ from pathlib import Path
 from common import ROOT, cli, digest, dotnet, download
 from deferred_update_smoke import check as check_deferred_updates
 from install import known_folder
-from run import stop_workspace_app, workspace_windows
+from run import stop_workspace_app, user32, workspace_windows
 from service_control import running_images, service_state
 
 
@@ -77,6 +77,13 @@ def main():
                     environment = []
                 assert not any(value.startswith("DOTNET_BUNDLE_EXTRACT_BASE_DIR=") for value in environment), "Folder builds must not extract .NET at startup."
         task = sp.run(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Login", "/XML"], capture_output=True, text=True)
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run") as startup:
+            try:
+                tray_startup = winreg.QueryValueEx(startup, "WindowsMegaProxy")[0]
+            except FileNotFoundError:
+                tray_startup = None
+        expected_tray = f'"{destination / "WindowsMegaProxy.exe"}" --tray' if mode == "service" else None
+        assert tray_startup == expected_tray, "Service mode must start a non-elevated tray client for each user; other modes must remove it."
         if mode == "login":
             assert task.returncode == 0, "Login mode must register its task."
             document = ET.fromstring(task.stdout)
@@ -97,6 +104,7 @@ def main():
         assert "sing-box.exe" not in running_images(), "An unconfigured installation must not activate TUN."
         assert service_state("WindowsMegaProxy.Dev") is None, "Installer must not register DEV."
         if attempt == 3:
+            check_service_tray(destination)
             check_failed_update_helper(Path(current), logs)
             security = sp.check_output(["sc.exe", "sdshow", "WindowsMegaProxy"], text=True)
             original = next(line.strip() for line in security.splitlines() if line.strip().startswith("D:"))
@@ -120,6 +128,34 @@ def main():
     check_legacy_upgrade(setups[0], logs, destination, data)
     check_deferred_updates(setups[0], logs, destination, data)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
+
+
+def check_service_tray(destination):
+    user32.IsWindowVisible.argtypes = [ct.c_void_p]
+    client = sp.Popen([str(destination / "WindowsMegaProxy.exe"), "--tray"])
+    try:
+        for _ in range(120):
+            windows = workspace_windows("MegaProxy")
+            if windows and not user32.IsWindowVisible(windows[0][0]):
+                break
+            assert client.poll() is None, "The tray client must remain running."
+            time.sleep(0.25)
+        else:
+            raise RuntimeError("The service client did not start hidden in the tray.")
+        sp.run([str(destination / "WindowsMegaProxy.exe")], check=True, timeout=30)
+        for _ in range(120):
+            windows = workspace_windows("MegaProxy")
+            if windows and user32.IsWindowVisible(windows[0][0]):
+                break
+            time.sleep(0.25)
+        else:
+            raise RuntimeError("An explicit launch did not restore the tray client.")
+        assert client.poll() is None and len(windows) == 1 and windows[0][1] == client.pid
+    finally:
+        stop_workspace_app(dev=False, workspace_only=False)
+        client.wait(timeout=30)
+    assert service_state("WindowsMegaProxy") == 4, "Closing the tray client must leave the service running."
+    assert "sing-box.exe" not in running_images(), "The seeded tray client must not activate TUN."
 
 
 def check_failed_update_helper(helper, logs):

@@ -127,8 +127,11 @@ public static partial class Installation
                 key.SetValue("Mode", mode);
                 key.SetValue("HelperPath", Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable));
             }
-            using (var legacy = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true))
-                legacy?.DeleteValue(ServiceProtocol.Name, false);
+            using (var startup = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"))
+            {
+                if (mode == "service") startup.SetValue(ServiceProtocol.Name, $"\"{Path.Combine(root, AppIdentity.Executable)}\" --tray");
+                else startup.DeleteValue(ServiceProtocol.Name, false);
+            }
             if (command == "--set-mode") Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
             return 0;
         }

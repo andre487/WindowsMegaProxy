@@ -35,6 +35,12 @@ def main():
             assert service_state(NAME) == (4 if mode == "service" else None)
             tasks, _ = startup_records()
             assert bool(tasks) == (mode == "login")
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, RUN_KEY) as startup:
+                try:
+                    tray_startup = winreg.QueryValueEx(startup, NAME)[0]
+                except FileNotFoundError:
+                    tray_startup = None
+            assert tray_startup == (f'"{root / (NAME + ".exe")}" --tray' if mode == "service" else None)
             dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "-p:MegaProxyDev=true", "--no-build", "--", "--installed-settings-check", "seed" if mode == "manual" else "verify")
             assert "sing-box-dev.exe" not in running_images(), "Unconfigured DEV must never start TUN."
             if mode == "login":
