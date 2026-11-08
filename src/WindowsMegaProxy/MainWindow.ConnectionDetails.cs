@@ -33,6 +33,7 @@ public partial class MainWindow
             if (char.IsHighSurrogate(name[length - 1])) length--;
             name = name[..length] + "…";
         }
-        tray.Text = heading + (name.Length == 0 ? "" : "\n" + name) + suffix;
+        string text = heading + (name.Length == 0 ? "" : "\n" + name) + suffix;
+        if (tray.Text != text) tray.Text = text;
     }
 }
