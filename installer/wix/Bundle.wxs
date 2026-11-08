@@ -19,7 +19,8 @@
         <Variable Name="InstallSSH" Type="numeric" Value="1" />
         <Variable Name="DesktopShortcut" Type="numeric" Value="0" />
         <Variable Name="LaunchAfterSetup" Type="numeric" Value="0" />
-        <Variable Name="OwnerProfile" Type="formatted" Value="[LocalAppDataFolder]." />
+        <Variable Name="IsUninstall" Type="numeric" Value="0" />
+        <Variable Name="OwnerSid" Type="string" Value="" Hidden="yes" />
         <netfx:DotNetCoreSearch Variable="DesktopRuntime" RuntimeType="desktop" Platform="x64" MajorVersion="10" />
         <Chain>
             <ExePackage
@@ -41,9 +42,9 @@
                 SourceFile="$(var.SetupDirectory)\WindowsMegaProxy.Setup.exe"
                 PerMachine="yes"
                 DetectCondition="WixBundleInstalled"
-                InstallArguments="install [WixBundlePlannedScope] &quot;[OwnerProfile]&quot; [Mode] [AutomaticUpdates] [InstallSSH] [DesktopShortcut] [WixBundleAction] [LaunchAfterSetup]"
-                RepairArguments="install [WixBundlePlannedScope] &quot;[OwnerProfile]&quot; [Mode] [AutomaticUpdates] [InstallSSH] [DesktopShortcut] [WixBundleAction] [LaunchAfterSetup]"
-                UninstallArguments="remove [WixBundlePlannedScope] &quot;[OwnerProfile]&quot; preserve preserve 0 0 [WixBundleAction] 0">
+                InstallArguments="install [WixBundlePlannedScope] &quot;[OwnerSid]&quot; [Mode] [AutomaticUpdates] [InstallSSH] [DesktopShortcut] [IsUninstall] [LaunchAfterSetup]"
+                RepairArguments="install [WixBundlePlannedScope] &quot;[OwnerSid]&quot; [Mode] [AutomaticUpdates] [InstallSSH] [DesktopShortcut] [IsUninstall] [LaunchAfterSetup]"
+                UninstallArguments="remove [WixBundlePlannedScope] &quot;[OwnerSid]&quot; preserve preserve 0 0 [IsUninstall] 0">
                 <Payload SourceFile="$(var.SetupDirectory)\WindowsMegaProxy.Setup.dll" />
                 <Payload SourceFile="$(var.SetupDirectory)\WindowsMegaProxy.Setup.deps.json" />
                 <Payload SourceFile="$(var.SetupDirectory)\WindowsMegaProxy.Setup.runtimeconfig.json" />

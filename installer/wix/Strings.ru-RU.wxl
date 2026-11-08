@@ -12,7 +12,7 @@
     <String Id="ConfirmCancelMessage" Value="Отменить установку?" />
     <String Id="ExecuteUpgradeRelatedBundleMessage" Value="Предыдущая версия" />
     <String Id="HelpHeader" Value="Справка по установке" />
-    <String Id="HelpText" Value="/install | /repair | /uninstall — установка, восстановление или удаление.&#xA;/permachine | /peruser — для всех пользователей или текущего пользователя.&#xA;/passive | /quiet — минимальный интерфейс или установка без интерфейса.&#xA;/norestart — без перезагрузки.&#xA;/log файл.log — сохранить журнал.&#xA;Mode=manual|login|service — режим работы.&#xA;InstallSSH=0 — не устанавливать OpenSSH.&#xA;AutomaticUpdates=false — отключить автоматические обновления." />
+    <String Id="HelpText" Value="/install | /repair | /uninstall — установка, восстановление или удаление.&#xA;Scope=PerMachine | Scope=PerUser — для всех пользователей или текущего пользователя.&#xA;/passive | /quiet — минимальный интерфейс или установка без интерфейса.&#xA;/norestart — без перезагрузки.&#xA;/log файл.log — сохранить журнал.&#xA;Mode=manual|login|service — режим работы.&#xA;InstallSSH=0 — не устанавливать OpenSSH.&#xA;AutomaticUpdates=false — отключить автоматические обновления." />
     <String Id="HelpCloseButton" Value="Закрыть" />
     <String Id="InstallLicenseLinkText" Value="&lt;a href=&quot;#&quot;&gt;Условия лицензии&lt;/a&gt; [WixBundleName]." />
     <String Id="InstallAcceptCheckbox" Value="Я принимаю условия лицензии" />

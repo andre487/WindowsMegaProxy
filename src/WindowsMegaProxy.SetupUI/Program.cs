@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using WixToolset.BootstrapperApplicationApi;
@@ -75,6 +76,7 @@ public sealed class SetupApplication : BootstrapperApplication
     {
         base.OnCreate(args);
         command = args.Command;
+        engine.SetVariableString("OwnerSid", WindowsIdentity.GetCurrent().User!.Value, false);
         try
         {
             foreach (var item in command.ParseCommandLine().Variables)
@@ -165,6 +167,7 @@ public sealed class SetupApplication : BootstrapperApplication
                 Validate(item.Key, item.Value);
                 engine.SetVariableString(item.Key, item.Value, false);
             }
+            engine.SetVariableNumeric("IsUninstall", action == LaunchAction.Uninstall ? 1 : 0);
             busy = true;
             cancel = false;
             window.Begin();

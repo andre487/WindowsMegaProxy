@@ -158,6 +158,20 @@ def main():
     rejected_scope = sp.run([str(setups[0]), "/install", "/quiet", "/norestart", "Scope=PerUser", "InstallSSH=0",
                              "/log", str(logs / "scope-change-rejected.log")], timeout=120)
     assert rejected_scope.returncode != 0, "Changing scope must require uninstall instead of silently modifying another installation."
+    kernel = ct.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [ct.c_wchar_p, ct.c_uint, ct.c_uint, ct.c_void_p, ct.c_uint, ct.c_uint, ct.c_void_p]
+    kernel.CreateFileW.restype = ct.c_void_p
+    kernel.CloseHandle.argtypes = [ct.c_void_p]
+    locked = kernel.CreateFileW(str(Path(current).with_name("WindowsMegaProxy.Runtime.dll")), 0x80000000, 3, None, 3, 0, None)
+    if locked == ct.c_void_p(-1).value:
+        raise ct.WinError(ct.get_last_error())
+    try:
+        failure = sp.run([str(setups[0]), "/uninstall", "/quiet", "/norestart", "Scope=PerMachine",
+                          "/log", str(logs / "uninstall-locked.log")], timeout=120)
+        assert failure.returncode != 0, "A locked runtime must fail removal without losing retry information."
+        assert registered_bundles(winreg.HKEY_LOCAL_MACHINE) == 1
+    finally:
+        kernel.CloseHandle(locked)
     sp.run([str(setups[0]), "/uninstall", "/quiet", "/norestart", "Scope=PerMachine", "/log", str(logs / "uninstall.log")], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
     assert registered_bundles(winreg.HKEY_LOCAL_MACHINE) == 0, "System uninstall must remove its Programs and Features entry."

@@ -18,7 +18,7 @@ using Microsoft.Win32.SafeHandles;
 
 internal sealed record CorePackage(string Folder, string Url, string Sha256, string Directory, Dictionary<string, string> Files);
 internal sealed record SetupManifest(string Version, string BuildId, string VersionDirectory, CorePackage[] Cores);
-internal sealed record Snapshot(string? Helper, string Mode, byte[]? Settings, string? BuildId, string? Directory, Dictionary<string, string> LegacyRegistration);
+internal sealed record Snapshot(string? Helper, string Mode, byte[]? Settings, string? BuildId, string? Directory, bool UninstallPrepared, Dictionary<string, string> LegacyRegistration);
 
 internal static class Program
 {
@@ -46,11 +46,11 @@ internal static class Program
             if (args.Length != 9 || args[0] is not ("install" or "remove") || args[1] is not ("1" or "2") ||
                 args[3] is not ("preserve" or "manual" or "login" or "service") ||
                 args[4] is not ("preserve" or "true" or "false") || args[5] is not ("0" or "1") ||
-                args[6] is not ("0" or "1") || !int.TryParse(args[7], out int action) || args[8] is not ("0" or "1"))
+                args[6] is not ("0" or "1") || args[7] is not ("0" or "1") || args[8] is not ("0" or "1"))
                 throw new ArgumentException("Invalid setup arguments.");
             if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
                 throw new UnauthorizedAccessException("Administrator approval is required for the protected network runtime.");
-            if (!string.Equals(Path.GetFullPath(args[2]).TrimEnd(Path.DirectorySeparatorChar), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+            if (args[2] != Sid)
                 throw new UnauthorizedAccessException("Approve installation with the same administrator account that started setup.");
             Personal = args[1] == "2";
             if (Personal && args[3] == "service") throw new ArgumentException("Windows service mode is unavailable for a personal installation.");
@@ -69,7 +69,7 @@ internal static class Program
                 var manifest = ReadResource<SetupManifest>("setup.json");
                 Console.WriteLine($"Setup {manifest.Version}; scope {(Personal ? "user" : "system")}; action {args[0]}.");
                 if (args[0] == "install") await Install(manifest, args[3], args[4], args[5] == "1", args[6] == "1", args[8] == "1");
-                else await Remove(manifest, rollback: action != 3);
+                else await Remove(manifest, rollback: args[7] != "1");
                 Console.WriteLine("Setup completed.");
                 return 0;
             }
@@ -112,7 +112,7 @@ internal static class Program
                 if (result != 0) throw new IOException("OpenSSH installation did not complete. Restart Windows if required, or opt out of SSH support and retry. Exit code: " + result);
             }
             var snapshot = new Snapshot(oldHelper, oldMode, ReadSettings(), previousKey?.GetValue("SetupBuildId") as string,
-                previousKey?.GetValue("SetupDirectory") as string, LegacyValues());
+                previousKey?.GetValue("SetupDirectory") as string, previousKey?.GetValue("SetupUninstallPrepared") is 1, LegacyValues());
             string stateDirectory = Path.Combine(directory, "installer-state");
             // Machine-scope DPAPI snapshots must never inherit the runtime's Users:read ACL.
             Protect(stateDirectory, readable: false);
@@ -131,6 +131,7 @@ internal static class Program
                 using var key = Hive.CreateSubKey(KeyPath);
                 key.SetValue("SetupBuildId", manifest.BuildId);
                 key.SetValue("SetupDirectory", directory);
+                key.DeleteValue("SetupUninstallPrepared", false);
                 using (var legacy = Hive.OpenSubKey(LegacyUninstall))
                 {
                     if (legacy is not null && !string.Equals((legacy.GetValue("InstallLocation") as string)?.TrimEnd(Path.DirectorySeparatorChar),
@@ -203,9 +204,12 @@ internal static class Program
         {
             ValidateHelper(previous.Helper);
             await Require(previous.Helper, Personal ? "--configure-user" : "--configure-mode", previous.Mode);
-            using var registration = Hive.CreateSubKey(KeyPath);
-            if (previous.BuildId is not null) registration.SetValue("SetupBuildId", previous.BuildId);
-            if (previous.Directory is not null) registration.SetValue("SetupDirectory", previous.Directory);
+        }
+        using (var registration = Hive.CreateSubKey(KeyPath))
+        {
+            if (previous.BuildId is not null) registration.SetValue("SetupBuildId", previous.BuildId); else registration.DeleteValue("SetupBuildId", false);
+            if (previous.Directory is not null) registration.SetValue("SetupDirectory", previous.Directory); else registration.DeleteValue("SetupDirectory", false);
+            if (previous.UninstallPrepared) registration.SetValue("SetupUninstallPrepared", 1); else registration.DeleteValue("SetupUninstallPrepared", false);
         }
         try
         {
@@ -234,11 +238,13 @@ internal static class Program
     {
         using var key = Hive.OpenSubKey(KeyPath);
         if (key?.GetValue("SetupBuildId") as string != manifest.BuildId) return; // Superseded bundles must not remove the active version.
-        string helper = key.GetValue("HelperPath") as string ?? throw new IOException("Missing active helper.");
-        ValidateHelper(helper);
+        string helper = key.GetValue("HelperPath") as string ?? Path.Combine(key.GetValue("SetupDirectory") as string ?? throw new IOException("Missing setup directory."), "WindowsMegaProxy.Service.exe");
         string directory = Path.GetDirectoryName(helper)!;
+        if (!string.Equals(Path.GetDirectoryName(Path.GetFullPath(directory)), Path.Combine(Root, "versions"), StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Invalid installed runtime directory.");
         if (rollback)
         {
+            ValidateHelper(helper);
             string path = Path.Combine(directory, "installer-state", "rollback.json");
             RejectReparseChain(path);
             var snapshot = JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(path), Json) ?? throw new IOException("Missing rollback state.");
@@ -246,7 +252,13 @@ internal static class Program
             DeleteVersion(directory);
             return;
         }
-        await Require(helper, "--remove-installation");
+        if (key.GetValue("SetupUninstallPrepared") is not 1)
+        {
+            ValidateHelper(helper);
+            await Require(helper, "--remove-installation");
+            using var prepared = Hive.CreateSubKey(KeyPath);
+            prepared.SetValue("SetupUninstallPrepared", 1);
+        }
         RemoveShortcuts();
         if (Personal) Unelevated(() =>
         {
@@ -254,10 +266,15 @@ internal static class Program
                 File.Delete(Path.Combine(LauncherDirectory, name));
             if (Directory.Exists(LauncherDirectory) && !Directory.EnumerateFileSystemEntries(LauncherDirectory).Any()) Directory.Delete(LauncherDirectory);
         });
-        if (Personal) Hive.DeleteSubKeyTree(KeyPath, false);
         string versions = Path.Combine(Root, "versions");
         if (Directory.Exists(versions))
             foreach (string version in Directory.GetDirectories(versions)) DeleteVersion(version);
+        if (Personal) Hive.DeleteSubKeyTree(KeyPath, false);
+        else
+        {
+            using var registration = Hive.OpenSubKey(KeyPath, true);
+            foreach (string name in new[] { "SetupBuildId", "SetupDirectory", "SetupUninstallPrepared" }) registration?.DeleteValue(name, false);
+        }
         // Keep configuration, setup logs, shared runtimes and Wintun. They are not owned exclusively by this bundle.
     }
 

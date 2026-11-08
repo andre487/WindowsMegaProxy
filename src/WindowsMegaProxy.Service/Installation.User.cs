@@ -17,7 +17,7 @@ public static partial class Installation
         string root = UserInstallation.ValidateDirectory(AppContext.BaseDirectory,
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), UserInstallation.Sid);
         foreach (string path in new[] { Path.GetDirectoryName(root)!, root, Path.Combine(root, "versions"), AppContext.BaseDirectory }) CheckDirectory(path);
-        CloseClients(root, currentSession: true);
+        CloseClients(root, currentSession: !uninstall);
         dynamic scheduler = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")!)!;
         scheduler.Connect();
         dynamic folder = scheduler.GetFolder(@"\");
@@ -30,7 +30,13 @@ public static partial class Installation
             {
                 DeleteTask(folder, name + ".Login");
                 DeleteTask(folder, name);
-                Registry.CurrentUser.DeleteSubKeyTree(UserInstallation.RegistryPath, false);
+                if (command == "--prepare-uninstall") Registry.CurrentUser.DeleteSubKeyTree(UserInstallation.RegistryPath, false);
+                else
+                {
+                    using var registration = Registry.CurrentUser.OpenSubKey(UserInstallation.RegistryPath, true);
+                    registration?.DeleteValue("Mode", false);
+                    registration?.DeleteValue("HelperPath", false);
+                }
                 return 0;
             }
             SettingsStore.WriteAtomic(Path.Combine(AppContext.BaseDirectory, UserInstallation.Marker), UserInstallation.Sid);

@@ -61,7 +61,7 @@ public static partial class Installation
                 ConfigureLogin("manual");
                 // Personal installations have their own subkey and may coexist with this one.
                 using var registration = Registry.LocalMachine.OpenSubKey(StartupConfiguration.RegistryPath, true);
-                foreach (string name in new[] { "Mode", "HelperPath", "SetupBuildId", "SetupDirectory" }) registration?.DeleteValue(name, false);
+                foreach (string name in new[] { "Mode", "HelperPath" }) registration?.DeleteValue(name, false);
                 return 0;
             }
             ProtectDataDirectory(MachineSettingsStore.DefaultDirectory);
