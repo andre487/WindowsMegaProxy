@@ -4,7 +4,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>disable</ImplicitUsings>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <Version>0.0.9</Version>
+        <Version>0.0.10</Version>
         <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
         <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
         <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
@@ -13,6 +13,6 @@
         <DefineConstants>$(DefineConstants);MEGAPROXY_DEV</DefineConstants>
         <BaseIntermediateOutputPath>obj/dev/</BaseIntermediateOutputPath>
         <BaseOutputPath>bin/dev/</BaseOutputPath>
-        <Version>0.0.9-dev</Version>
+        <Version>0.0.10-dev</Version>
     </PropertyGroup>
 </Project>
