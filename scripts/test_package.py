@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 import package
 import prepare_release
 import wix_package
-from dependencies import CORE_HASH, H3_CORE_HASH, core_package
+from dependencies import core_package
 from package import archive, checksums, merge, signed_manifest, version
 
 
@@ -38,24 +38,6 @@ class PackageTests(unittest.TestCase):
                 for name, expected in core["files"].items():
                     self.assertEqual(expected, package.digest(payload / "dependencies" / core["folder"] / name, "sha256"))
             self.assertNotEqual(manifest["buildId"], wix_package.setup_manifest(payload, "0.0.2", "0.0.2-test")["buildId"])
-
-    def test_installer_core_downloads_pin_official_archives_and_extracted_files(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            payload = Path(temporary)
-            for name in ("sing-box", "sing-box-h3"):
-                directory = payload / "dependencies" / name
-                directory.mkdir(parents=True)
-                (directory / "sing-box.exe").write_bytes(b"official executable fixture")
-                (directory / "libcronet.dll").write_bytes(b"official library fixture")
-            definitions = package.core_installer_definitions(payload)
-            for label, http3, expected_hash in (("StableCore", False, CORE_HASH), ("H3Core", True, H3_CORE_HASH)):
-                upstream = core_package(http3=http3)
-                self.assertEqual(definitions[label + "URL"], upstream["url"])
-                self.assertTrue(upstream["url"].startswith("https://github.com/SagerNet/sing-box/releases/download/v"))
-                self.assertEqual(definitions[label + "SHA256"], expected_hash)
-                self.assertEqual(definitions[label + "Directory"], upstream["name"])
-                self.assertEqual(definitions[label + "ExecutableSHA256"], package.digest(payload / "dependencies/sing-box/sing-box.exe", "sha256"))
-                self.assertNotEqual(definitions[label + "ExecutableSHA256"], definitions[label + "CronetSHA256"])
 
     def test_production_signing_key_must_match_the_key_pinned_in_the_application(self):
         with tempfile.TemporaryDirectory() as temporary:

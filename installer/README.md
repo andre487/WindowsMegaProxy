@@ -68,8 +68,8 @@ use the administrator's filtered token when UAC is enabled.
 
 Existing Inno registrations are retired only after successful configuration, while
 configuration and previous version directories are preserved. Approval must use
-the same administrator account that started setup. The former Inno definition is
-retained only as migration reference; release builds do not use Inno Setup.
+the same administrator account that started setup. The former Inno definition remains in Git history; release builds do not use
+Inno Setup.
 
 Build tools are downloaded into `.tools` and `artifacts/wix-cache`; Visual Studio
 is not required. The build explicitly accepts the [WiX 7 OSMF EULA](https://docs.firegiant.com/wix/osmf/)

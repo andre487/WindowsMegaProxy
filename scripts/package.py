@@ -20,7 +20,6 @@ from dependencies import (
     CORE_VERSION,
     H3_CORE_VERSION,
     asset,
-    core_package,
     install_core,
     release,
     runtime_installer,
@@ -77,16 +76,6 @@ def signed_manifest(manifest, directory, key):
 
 def checksums(directory, names):
     (directory / "SHA256SUMS").write_text("".join(f"{digest(directory / name, 'sha256')}  {name}\n" for name in names), encoding="ascii", newline="\n")
-
-
-def core_installer_definitions(payload):
-    definitions = {}
-    for label, folder, http3 in (("StableCore", "sing-box", False), ("H3Core", "sing-box-h3", True)):
-        core = core_package(http3=http3)
-        definitions.update({label + "URL": core["url"], label + "SHA256": core["sha256"], label + "Directory": core["name"],
-                            label + "ExecutableSHA256": digest(payload / "dependencies" / folder / "sing-box.exe", "sha256"),
-                            label + "CronetSHA256": digest(payload / "dependencies" / folder / "libcronet.dll", "sha256")})
-    return definitions
 
 
 def main():
@@ -167,7 +156,6 @@ def main():
             "RuntimeVersion": runtime["version"], "RuntimeURL": runtime_file["url"],
             "RuntimeSHA256": digest(runtime_download, "sha256"),
         }
-        definitions.update(core_installer_definitions(payload))
         wix_package.build_installer(staging, payload, definitions, runtime_download)
         setup = f"WindowsMegaProxy-{app_version}-win-x64-setup.exe"
         components["installer"] = {"version": app_version, "file": setup}

@@ -3,6 +3,7 @@ import csv
 import ctypes as ct
 import json
 import os
+import re
 import subprocess as sp
 import time
 import winreg
@@ -21,6 +22,12 @@ def check_downloaded_cores(version_directory):
         for entry in manifest["components"][name]["files"]:
             path = version_directory / entry["path"]
             assert path.is_file() and digest(path, "sha256") == entry["sha256"], "Downloaded core differs from the verified official package."
+    snapshot = version_directory / "installer-state/rollback.json"
+    acl_file = ROOT / "artifacts/installer-checks" / (version_directory.name + "-acl.txt")
+    sp.run(["icacls.exe", str(snapshot), "/save", str(acl_file), "/q"], check=True, capture_output=True)
+    descriptor = acl_file.read_text(encoding="utf-16")
+    allowed = set(re.findall(r"\(A;[^)]*;;;([^)]*)\)", descriptor))
+    assert allowed == {"BA", "SY"}, "Rollback configuration snapshots must be readable only by administrators and SYSTEM."
 
 
 def main():

@@ -106,12 +106,15 @@ internal static class Program
             if (ssh && !File.Exists(Path.Combine(Environment.SystemDirectory, "OpenSSH", "ssh-keyscan.exe")))
             {
                 int result = await Execute(Path.Combine(Environment.SystemDirectory, "dism.exe"), TimeSpan.FromMinutes(15),
-                    "/Online", "/Add-Capability", "/CapabilityName:OpenSSH.Client~~~~0.0.1.0", "/NoRestart");
+                    "/English", "/Online", "/Add-Capability", "/CapabilityName:OpenSSH.Client~~~~0.0.1.0", "/NoRestart");
                 if (result != 0) throw new IOException("OpenSSH installation did not complete. Restart Windows if required, or opt out of SSH support and retry. Exit code: " + result);
             }
             var snapshot = new Snapshot(oldHelper, oldMode, ReadSettings(), previousKey?.GetValue("SetupBuildId") as string,
                 previousKey?.GetValue("SetupDirectory") as string, LegacyValues());
-            string transaction = Path.Combine(directory, "setup-rollback.json");
+            string stateDirectory = Path.Combine(directory, "installer-state");
+            // Machine-scope DPAPI snapshots must never inherit the runtime's Users:read ACL.
+            Protect(stateDirectory, readable: false);
+            string transaction = Path.Combine(stateDirectory, "rollback.json");
             File.WriteAllText(transaction, JsonSerializer.Serialize(snapshot, Json));
             string helper = Path.Combine(directory, "WindowsMegaProxy.Service.exe");
             var arguments = new List<string> { Personal ? "--configure-user" : "--configure-mode", mode };
@@ -219,7 +222,7 @@ internal static class Program
         string directory = Path.GetDirectoryName(helper)!;
         if (rollback)
         {
-            string path = Path.Combine(directory, "setup-rollback.json");
+            string path = Path.Combine(directory, "installer-state", "rollback.json");
             RejectReparseChain(path);
             var snapshot = JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(path), Json) ?? throw new IOException("Missing rollback state.");
             await Restore(snapshot, directory);
@@ -323,13 +326,13 @@ internal static class Program
                 throw new UnauthorizedAccessException("An unprivileged account can modify the installation directory.");
     }
 
-    private static void Protect(string path)
+    private static void Protect(string path, bool readable = true)
     {
         RejectReparseChain(path);
         var security = new DirectorySecurity();
         security.SetOwner(Administrators);
         security.SetAccessRuleProtection(true, false);
-        foreach (var sid in new[] { Administrators, SystemAccount, Users })
+        foreach (var sid in readable ? new[] { Administrators, SystemAccount, Users } : new[] { Administrators, SystemAccount })
             security.AddAccessRule(new FileSystemAccessRule(sid, sid.Equals(Users) ? FileSystemRights.ReadAndExecute : FileSystemRights.FullControl,
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
         if (!Directory.Exists(path))
