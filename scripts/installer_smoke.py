@@ -27,7 +27,12 @@ def check_downloaded_cores(version_directory):
     environment = os.environ.copy()
     environment["DOTNET_ROOT"] = str(ROOT / "artifacts/nonexistent-dotnet")
     environment["DOTNET_MULTILEVEL_LOOKUP"] = "0"
-    sp.run([str(version_directory / "WindowsMegaProxy.Service.exe"), "--check-dependencies"], check=True, timeout=30, env=environment)
+    environment["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] = str(ROOT / "artifacts/installer-checks/runtime-cache" / version_directory.name)
+    result = sp.run([str(version_directory / "WindowsMegaProxy.Service.exe"), "--check-dependencies"], check=True, timeout=30,
+                    env=environment, capture_output=True, text=True)
+    expected_runtime = ET.parse(ROOT / "Directory.Build.props").findtext("PropertyGroup/RuntimeFrameworkVersion")
+    assert ".NET: " + expected_runtime in result.stdout
+    assert str(version_directory / "WindowsMegaProxy.Service.exe") in result.stdout or environment["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] in result.stdout, "The process must load its bundled runtime, not an installed system copy."
 
 
 def main():

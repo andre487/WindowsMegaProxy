@@ -38,7 +38,10 @@ public static partial class Installation
                             throw new IOException("A bundled sing-box dependency is missing. Repair the installation.");
                 if (!File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh-keyscan.exe")))
                     throw new IOException("Windows OpenSSH Client is required. Repair the installation.");
-                Console.WriteLine($"Bundled cores: {Configuration.CoreVersion}, {Configuration.Http3CoreVersion}. .NET: {Environment.Version}; runtime: {RuntimeEnvironment.GetRuntimeDirectory()}");
+                using var self = Process.GetCurrentProcess();
+                string runtime = self.Modules.Cast<ProcessModule>().FirstOrDefault(module => string.Equals(module.ModuleName, "coreclr.dll", StringComparison.OrdinalIgnoreCase))?.FileName
+                    ?? Environment.ProcessPath!; // Single-file hosts link CoreCLR statically.
+                Console.WriteLine($"Bundled cores: {Configuration.CoreVersion}, {Configuration.Http3CoreVersion}. .NET: {Environment.Version}; runtime: {runtime}");
                 return 0;
             }
             if (command == "--install-update")
