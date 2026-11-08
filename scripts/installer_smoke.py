@@ -1,6 +1,7 @@
 """Install/repair/uninstall only on an empty disposable GitHub-hosted runner."""
 import csv
 import ctypes as ct
+import json
 import os
 import subprocess as sp
 import time
@@ -8,17 +9,25 @@ import winreg
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from common import ROOT, cli, dotnet
+from common import ROOT, cli, digest, dotnet
 from install import known_folder
 from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state
 
 
 def check_downloaded_cores(version_directory):
-    assert not (version_directory / "dependencies/sing-box").exists(), "Stable core must come from WinGet."
-    assert not (version_directory / "dependencies/sing-box-h3").exists(), "HTTP/3 must be installed on demand."
-    assert (version_directory / "WindowsMegaProxy.Http3Core.exe").is_file(), "The signed on-demand installer is required."
-    sp.run([str(version_directory / "WindowsMegaProxy.Service.exe"), "--check-dependencies"], check=True, timeout=30)
+    manifest = json.loads((ROOT / "artifacts/release-preview/update-manifest.json").read_text(encoding="utf-8"))
+    for name in ("sing-box", "sing-box-h3"):
+        assert (version_directory / "dependencies" / name / "sing-box.exe").is_file(), "Both pinned cores must be bundled."
+        assert (version_directory / "dependencies" / name / "libcronet.dll").is_file()
+        for entry in manifest["components"][name]["files"]:
+            assert digest(version_directory / entry["path"], "sha256") == entry["sha256"], "Bundled core must match the pinned release files."
+    assert not (version_directory / "WindowsMegaProxy.Http3Core.exe").exists(), "No on-demand installer is needed."
+    assert not (version_directory / "WindowsMegaProxy.runtimeconfig.json").exists(), "Production must use single-file publication."
+    environment = os.environ.copy()
+    environment["DOTNET_ROOT"] = str(ROOT / "artifacts/nonexistent-dotnet")
+    environment["DOTNET_MULTILEVEL_LOOKUP"] = "0"
+    sp.run([str(version_directory / "WindowsMegaProxy.Service.exe"), "--check-dependencies"], check=True, timeout=30, env=environment)
 
 
 def main():
@@ -53,6 +62,9 @@ def main():
         assert service_state("WindowsMegaProxy") == (4 if mode == "service" else None), "Only service mode may register a service."
         if mode == "service":
             assert service_path().strip('"') == current
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\WindowsMegaProxy") as key:
+                environment = winreg.QueryValueEx(key, "Environment")[0]
+                assert "DOTNET_BUNDLE_EXTRACT_BASE_DIR=" + str(Path(current).parent / ".net") in environment, "SYSTEM must extract bundled native libraries into its protected version directory."
         task = sp.run(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Login", "/XML"], capture_output=True, text=True)
         if mode == "login":
             assert task.returncode == 0, "Login mode must register its task."

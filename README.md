@@ -34,7 +34,7 @@ build.cmd
 install.cmd
 ```
 
-Installation requires administrator approval and downloads .NET and network cores from official sources. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
+Production packages bundle a pinned .NET runtime and both proxy cores. Installation requires administrator approval and prepares Windows OpenSSH Client if missing. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
 
 `install.cmd` defaults to manual launch; use `install.cmd --mode login` or
 `install.cmd --mode service` for the other modes. Standalone hosts run elevated;
@@ -44,7 +44,7 @@ Choose an operating mode in the native installer or application settings. Manual
 
 For development, run `stop-prod.cmd`, then `run.cmd` from an administrator terminal (or approve UAC). DEV has separate processes, icons and settings. In manual mode, `run.cmd` rebuilds and starts directly from `artifacts/dev/app`; login/service modes rebuild the isolated protected DEV installation and restart it. The selected mode is preserved. It refuses to start while production is running. `cleanup-dev.cmd` (also `uninstall-dev.cmd`) explicitly removes DEV services, startup entries and installed binaries while preserving settings. `build.cmd --dev` only builds DEV.
 
-SSH key verification requires the Windows OpenSSH Client optional feature.
+Windows OpenSSH Client is a mandatory system component prepared by the installer.
 
 `run-trace-probe.cmd` builds and runs the standalone console test: Cloudflare trace followed by repeated 50 MB download/upload measurements with HTTP latency and a one-second pause. It shows the latest three results; press Enter to stop. The existing `trace-probe.cmd` command remains available.
 
@@ -52,7 +52,7 @@ SSH key verification requires the Windows OpenSSH Client optional feature.
 
 Early preview. HTTP/3 is experimental. SSH Jump and passphrase-protected SSH keys are not yet supported. Automatic failover to SSH requires a previously verified server key.
 
-See [antivirus classifications and upstream-core reports](docs/ANTIVIRUS.md) for known Kaspersky and DeepInstinct results.
+See [antivirus notes and official dependency sources](docs/ANTIVIRUS.md) for possible false positives and upstream sing-box classifications.
 
 ## License
 

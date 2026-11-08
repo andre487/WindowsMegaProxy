@@ -131,9 +131,11 @@ def main():
     output = ROOT / "artifacts" / ("release-preview" if args.preview else "release")
     output.mkdir(parents=True, exist_ok=True)
     cache = ROOT / ".tools/downloads"
-    runtime = release()["windowsdesktop"]
-    runtime_file = asset(runtime, ".exe")
-    runtime_download = runtime_installer(cache)
+    installer_source = (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
+    legacy_runtime = ET.parse(ROOT / "Directory.Build.props").findtext("PropertyGroup/RuntimeFrameworkVersion") is None
+    runtime = release()["windowsdesktop"] if legacy_runtime else {"version": ET.parse(ROOT / "Directory.Build.props").findtext("PropertyGroup/RuntimeFrameworkVersion"), "bundled": True}
+    runtime_file = asset(runtime, ".exe") if legacy_runtime else None
+    runtime_download = runtime_installer(cache) if legacy_runtime else None
     with Signer(preview=args.preview) as signer, tempfile.TemporaryDirectory(prefix="package-", dir=ROOT / "artifacts") as temporary:
         staging = Path(temporary)
         payload = staging / "payload"
@@ -147,20 +149,37 @@ def main():
         if not (launcher / "WindowsMegaProxy.Launcher.exe").is_file():
             raise RuntimeError("The current-user launcher is missing; run build.cmd.")
         merge(launcher, payload / "launcher")
-        for name in ("WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe"):
+        for name in ("WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "launcher/WindowsMegaProxy.Launcher.exe"):
             if not (payload / name).is_file():
                 raise ValueError("Production executable missing from payload.")
-            assembly = name.removesuffix(".exe")
-            dependencies = json.loads((payload / f"{assembly}.deps.json").read_text(encoding="utf-8-sig"))
-            if f"{assembly}/{app_version}" not in dependencies["libraries"]:
-                raise ValueError("Published application version differs from the release version.")
-            if not args.preview and commit.encode("ascii") not in (payload / f"{assembly}.dll").read_bytes():
-                raise ValueError("Published application was built from a different commit.")
+            executable = payload / name
+            assembly = executable.stem
+            dependency_file = executable.with_suffix(".deps.json")
+            if dependency_file.exists():
+                dependencies = json.loads(dependency_file.read_text(encoding="utf-8-sig"))
+                if f"{assembly}/{app_version}" not in dependencies["libraries"]:
+                    raise ValueError("Published application version differs from the release version.")
+                information = executable.with_suffix(".dll").read_bytes()
+                if not args.preview and commit.encode("ascii") not in information:
+                    raise ValueError("Published application was built from a different commit.")
+            else:
+                product = build.product_version(payload / name)
+                if product.split("+", 1)[0] != app_version:
+                    raise ValueError("Published application version differs from the release version.")
+                if not args.preview and product.split("+", 1)[-1] != commit:
+                    raise ValueError("Published application was built from a different commit.")
         if any(".Dev" in file.name or file.name in {"hostfxr.dll", "coreclr.dll", "python.exe"} for file in payload.rglob("*")):
             raise ValueError("Unexpected development or bundled runtime files.")
         shutil.copy2(ROOT / "LICENSE", payload / "LICENSE.txt")
         shutil.copy2(ROOT / "installer/THIRD-PARTY-NOTICES.txt", payload / "THIRD-PARTY-NOTICES.txt")
         shutil.copytree(ROOT / "installer/licenses", payload / "licenses")
+        if not legacy_runtime:
+            for package, filename, output_name in (
+                ("microsoft.netcore.app.runtime.win-x64", "LICENSE.TXT", "dotnet-LICENSE.txt"),
+                ("microsoft.netcore.app.runtime.win-x64", "THIRD-PARTY-NOTICES.TXT", "dotnet-THIRD-PARTY-NOTICES.txt"),
+                ("microsoft.windowsdesktop.app.runtime.win-x64", "LICENSE", "WindowsDesktop-LICENSE.txt"),
+            ):
+                shutil.copy2(ROOT / ".tools/nuget" / package / runtime["version"] / filename, payload / "licenses" / output_name)
         signer.sign_directory(payload)
         for name, http3 in (("sing-box", False), ("sing-box-h3", True)):
             install_core(payload / "dependencies" / name, cache, http3=http3)
@@ -171,7 +190,7 @@ def main():
             (payload / "licenses/Wintun-LICENSE.txt").write_bytes(upstream.read(license_file))
         components = {}
         for component, directory, prefix, exclude, component_version in (
-            ("app", payload, "", ("dependencies",), app_version),
+            ("app", payload, "", ("dependencies",) if legacy_runtime else (), app_version),
             ("sing-box", payload / "dependencies/sing-box", "dependencies/sing-box/", (), CORE_VERSION),
             ("sing-box-h3", payload / "dependencies/sing-box-h3", "dependencies/sing-box-h3/", (), H3_CORE_VERSION),
         ):
@@ -181,8 +200,8 @@ def main():
         definitions = {
             "AppVersion": app_version, "VersionDirectory": f"{app_version}-{commit[:12]}",
             "RepositoryRoot": str(ROOT), "PayloadDirectory": str(payload), "ReleaseDirectory": str(staging),
-            "RuntimeVersion": runtime["version"], "RuntimeURL": runtime_file["url"],
-            "RuntimeSHA256": digest(runtime_download, "sha256"),
+            "RuntimeVersion": runtime["version"], "RuntimeURL": runtime_file["url"] if runtime_file else "",
+            "RuntimeSHA256": digest(runtime_download, "sha256") if runtime_download else "",
             "H3CoreVersion": H3_CORE_VERSION,
         }
         definitions.update(core_installer_definitions(payload))
@@ -191,16 +210,15 @@ def main():
         script = script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\nSignedUninstaller=yes\n", 1)
         helper = Path(__file__).resolve().parent.parent / "installer/Downloads.iss"
         shutil.copy2(helper, staging / "Downloads.iss")
-        automation = Path(__file__).resolve().parent.parent
-        shutil.copy2(automation / "installer/Winget.iss", staging / "Winget.iss")
-        h3_script = (automation / "installer/Http3Core.iss").read_text(encoding="utf-8-sig")
-        h3_script = h3_script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\n", 1)
-        (staging / "Http3Core.iss").write_text(h3_script, encoding="utf-8-sig")
-        sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "Http3Core.iss")],
-               env=signer.environment, check=True)
-        app = components["app"]
-        app["files"] = archive(payload, staging / app["file"], exclude=("dependencies",))
-        if '#include "Downloads.iss"' not in script and '#include "Winget.iss"' not in script:
+        if '#include "Winget.iss"' in script:
+            shutil.copy2(ROOT / "installer/Winget.iss", staging / "Winget.iss")
+            h3_script = (ROOT / "installer/Http3Core.iss").read_text(encoding="utf-8-sig")
+            h3_script = h3_script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\n", 1)
+            (staging / "Http3Core.iss").write_text(h3_script, encoding="utf-8-sig")
+            sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "Http3Core.iss")], env=signer.environment, check=True)
+            app = components["app"]
+            app["files"] = archive(payload, staging / app["file"], exclude=("dependencies",))
+        if "{#StableCoreURL}" in script and '#include "Downloads.iss"' not in script:
             script = script.replace("[Code]\n", '[Code]\n#include "Downloads.iss"\n', 1)
             legacy = ("      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
                       "      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');\n"
@@ -235,7 +253,7 @@ def main():
         manifest = {"schemaVersion": 1, "version": app_version, "commit": commit, "platform": "win-x64",
                     "preview": args.preview, "serviceProtocol": 3, "components": components,
                     "authenticodeCertificateSha256": signer.fingerprint,
-                    "runtime": {"version": runtime["version"], "url": runtime_file["url"], "sha512": runtime_file["hash"]}}
+                    "runtime": {"version": runtime["version"], "url": runtime_file["url"], "sha512": runtime_file["hash"]} if legacy_runtime else runtime}
         signed_manifest(manifest, staging, key)
         names = [item["file"] for item in components.values()] + ["update-manifest.json", "update-manifest.sig", "update-public-key.txt"]
         checksums(staging, names)

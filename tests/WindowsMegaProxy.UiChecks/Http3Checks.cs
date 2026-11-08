@@ -91,7 +91,7 @@ internal static class Http3Checks
                     profile.Proxy["username"] = "test"; profile.Proxy["password"] = "secret";
                     profile.Proxy["allowInvalidProxyCertificate"] = true;
                     profile.Proxy["preferHttp3"] = true;
-                    var settings = new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy", Http3Enabled = true, TlsFingerprint = "chrome" };
+                    var settings = new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy", TlsFingerprint = "chrome" };
                     using var engine = new Engine(directory, probeUri);
                     var messages = new List<string>();
                     engine.Log += message => { lock (messages) messages.Add(message); };
@@ -135,7 +135,7 @@ internal static class Http3Checks
                     {
                         try
                         {
-                            await jump.StartAsync(new Settings { Profiles = [chain], ActiveProfileId = chain.Id, DefaultAction = "proxy", Http3Enabled = true }, true, token);
+                            await jump.StartAsync(new Settings { Profiles = [chain], ActiveProfileId = chain.Id, DefaultAction = "proxy" }, true, token);
                             using var client = jump.CreateProbeClient(true);
                             Assert(await client.GetStringAsync(probeUri, token) == "fixture", "HTTPS Jump transfers actual bytes through both authenticated proxy hops.");
                             Assert(jump.Http3Selected == h3 && jump.UsedHttp3Fallback == !h3, "Both Jump hops use H3 together or fall back together to the stable TCP core.");
@@ -158,7 +158,7 @@ internal static class Http3Checks
                     {
                         try
                         {
-                            await badJump.StartAsync(new Settings { Profiles = [chain], ActiveProfileId = chain.Id, DefaultAction = "proxy", Http3Enabled = true }, true, token);
+                            await badJump.StartAsync(new Settings { Profiles = [chain], ActiveProfileId = chain.Id, DefaultAction = "proxy" }, true, token);
                             using var client = badJump.CreateProbeClient(true);
                             bool rejected = false;
                             try { _ = await client.GetStringAsync(probeUri, token); }
@@ -235,7 +235,7 @@ internal static class Http3Checks
         using var engine = new Engine(directory);
         try
         {
-            await engine.StartAsync(new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy", Http3Enabled = true }, true, token);
+            await engine.StartAsync(new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy" }, true, token);
             Assert(await engine.CheckHttp3Async(token) == "" && !engine.Http3Selected, "Hide HTTP/3 diagnostics when the SOCKS5 server rejects UDP.");
             await rejection;
         }

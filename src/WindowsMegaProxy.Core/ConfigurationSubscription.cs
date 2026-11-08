@@ -113,12 +113,6 @@ public static class ConfigurationSubscription
         document.Remove("subscription");
         string? selection = current.ActiveProfileId;
         var result = PortableConfiguration.Import(document.ToJsonString(), current);
-        // Background subscriptions cannot confirm enabling an optional transport.
-        if (!current.Http3Enabled && result.Http3Enabled)
-        {
-            result.Http3Enabled = false;
-            result.WindowsOptions["http3Enabled"] = false;
-        }
         result.Profiles.RemoveAll(profile => owned.Contains(profile.Id) && !importedIds.Contains(profile.Id));
         PruneFailover(result);
         result.ActiveProfileId = result.Profiles.Any(profile => profile.Id == selection) ? selection

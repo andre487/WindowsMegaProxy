@@ -9,24 +9,26 @@ signature and hash rather than assuming every warning is a false positive.
 
 Antivirus products may classify sing-box as a proxy/tunnelling tool, riskware or
 suspicious software. These classifications can also affect unmodified upstream
-builds. Installing through a package manager does not remove antivirus checks.
+builds, including classifications reported by Kaspersky and DeepInstinct.
+Detections vary by core and engine version. Installing through a package manager
+does not remove antivirus checks.
 MegaProxy uses upstream binaries without modifying or re-signing them:
 
-- Stable: `SagerNet.sing-box` through WinGet, using the
-  [WinGet manifest](https://github.com/microsoft/winget-pkgs/tree/master/manifests/s/SagerNet/sing-box)
-  and its archive hash. The package downloads the official SagerNet release.
-- Optional HTTP/3 alpha: the
-  [official sing-box 1.15.0-alpha.13 Windows archive](https://github.com/SagerNet/sing-box/releases/download/v1.15.0-alpha.13/sing-box-1.15.0-alpha.13-windows-amd64.zip),
-  downloaded only after confirmation. Archive and extracted executable/library
-  SHA-256 hashes are pinned. Fallback mirrors must provide the same verified bytes.
+Both cores are bundled with the application and installer. They are downloaded
+at build time from the official SagerNet release URLs:
 
-Neither core is bundled in the application ZIP or installer. Wintun is supplied
-by the upstream core; MegaProxy does not build its own kernel driver.
+- [Stable sing-box 1.14.4](https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-windows-amd64.zip).
+- [HTTP/3 sing-box 1.15.0-alpha.13](https://github.com/SagerNet/sing-box/releases/download/v1.15.0-alpha.13/sing-box-1.15.0-alpha.13-windows-amd64.zip).
+
+Archive hashes are pinned; fallback mirrors must provide the same verified bytes.
+No WinGet installation or runtime core download is involved. The .NET runtime is
+also bundled at a pinned version. Wintun is supplied by the upstream cores;
+MegaProxy does not build its own kernel driver. OpenSSH Client is a mandatory
+Windows capability installed by Setup when missing.
 
 ## Signatures
 
-MegaProxy EXE/DLL files, Setup, its temporary copies, the on-demand H3 installer
-and uninstaller are Authenticode-signed with the persistent self-signed certificate
+MegaProxy EXE files, Setup, its temporary copies and uninstaller are Authenticode-signed with the persistent self-signed certificate
 in [`assets/authenticode-certificate.pem`](../assets/authenticode-certificate.pem).
 This does not establish Windows publisher trust. Production signing uses SHA-256
 and an RFC 3161 timestamp. Ed25519 manifest signatures and package hashes remain

@@ -275,6 +275,11 @@ foreach (string fingerprint in Configuration.TlsFingerprints)
 var h3Profile = profile.Copy(); h3Profile.Proxy["type"] = "MASQUE";
 var h3Settings = new Settings { Profiles = [h3Profile], ActiveProfileId = h3Profile.Id, DefaultAction = "proxy", TlsFingerprint = "chrome" };
 Assert(h3Profile.Supported && Configuration.RequiresHttp3(h3Settings), "Explicit MASQUE selects the HTTP/3 core.");
+var legacyH3 = PortableConfiguration.Export(h3Settings);
+legacyH3["windows"]!["http3Enabled"] = false;
+var legacyH3Settings = PortableConfiguration.Import(legacyH3.ToJsonString(), new Settings());
+Assert(Configuration.RequiresHttp3(legacyH3Settings), "An obsolete global H3 switch must not disable a profile transport.");
+Assert(!PortableConfiguration.Export(legacyH3Settings)["windows"]!.AsObject().ContainsKey("http3Enabled"), "Exports omit the obsolete global H3 switch.");
 var h3Config = Configuration.Build(h3Settings, 9999, "test");
 Assert(h3Config["outbounds"]![0]!["version"]!.GetValue<int>() == 3 && h3Config["outbounds"]![0]!["disable_version_fallback"]!.GetValue<bool>(), "MASQUE requires HTTP/3 without implicit TCP downgrade.");
 Assert(h3Config["outbounds"]![0]!["tls"]!["utls"] is null, "HTTP/3 never receives unsupported TCP uTLS options.");

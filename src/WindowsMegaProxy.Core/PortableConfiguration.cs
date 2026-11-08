@@ -80,6 +80,7 @@ public static class PortableConfiguration
             {
                 windows.Remove(ConfigurationSubscription.StateKey);
                 windows.Remove(PodkopCatalog.WarningKey);
+                windows.Remove("http3Enabled");
                 candidate.WindowsOptions = Merge(candidate.WindowsOptions, windows);
                 if (!windows.ContainsKey("version") || windows["version"]?.GetValue<int>() == 1)
                 {
@@ -91,7 +92,6 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("language")) candidate.Language = String(windows, "language");
                     if (windows.ContainsKey("theme")) candidate.Theme = String(windows, "theme");
                     if (windows.ContainsKey("tlsFingerprint")) candidate.TlsFingerprint = String(windows, "tlsFingerprint");
-                    if (windows.ContainsKey("http3Enabled")) candidate.Http3Enabled = windows["http3Enabled"]!.GetValue<bool>();
                     if (windows.ContainsKey("launchAtSignIn")) candidate.LaunchAtSignIn = windows["launchAtSignIn"]!.GetValue<bool>();
                     if (windows.ContainsKey("rules")) candidate.Rules = windows["rules"]!.Deserialize<List<RoutingRule>>(PortableOptions) ?? throw Invalid(Ui.T("Invalid Windows rules."));
                 }
@@ -136,6 +136,7 @@ public static class PortableConfiguration
         var windows = (JsonObject)settings.WindowsOptions.DeepClone();
         windows.Remove(ConfigurationSubscription.StateKey);
         windows.Remove(PodkopCatalog.WarningKey);
+        windows.Remove("http3Enabled");
         if (!windows.ContainsKey("version") || windows["version"]?.GetValue<int>() == 1)
         {
             windows["version"] = 1;
@@ -147,7 +148,6 @@ public static class PortableConfiguration
             windows["language"] = settings.Language;
             windows["theme"] = settings.Theme;
             windows["tlsFingerprint"] = settings.TlsFingerprint;
-            windows["http3Enabled"] = settings.Http3Enabled;
             windows["launchAtSignIn"] = settings.LaunchAtSignIn ?? false;
             windows["rules"] = JsonSerializer.SerializeToNode(settings.Rules, PortableOptions);
         }

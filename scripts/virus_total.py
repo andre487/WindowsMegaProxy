@@ -52,7 +52,7 @@ class Client:
         req = urllib.request.Request(url, data=body, headers=headers)
         try:
             with self.opener.open(
-                req, timeout=min(120, self.deadline - time.monotonic())
+                req, timeout=min(600 if body is not None else 120, self.deadline - time.monotonic())
             ) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:

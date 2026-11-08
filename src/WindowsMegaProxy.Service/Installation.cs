@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -30,8 +31,14 @@ public static partial class Installation
             string command = args[0];
             if (command == "--check-dependencies")
             {
-                if (args.Length != 1 || CoreInstallation.Stable() is null)
-                    throw new IOException("The machine-wide SagerNet.sing-box package is missing. Install it with WinGet.");
+                if (args.Length != 1) throw new ArgumentException("Invalid dependency check arguments.");
+                foreach (string directory in new[] { "sing-box", "sing-box-h3" })
+                    foreach (string name in new[] { AppIdentity.CoreExecutable, "libcronet.dll" })
+                        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "dependencies", directory, name)))
+                            throw new IOException("A bundled sing-box dependency is missing. Repair the installation.");
+                if (!File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh-keyscan.exe")))
+                    throw new IOException("Windows OpenSSH Client is required. Repair the installation.");
+                Console.WriteLine($"Bundled cores: {Configuration.CoreVersion}, {Configuration.Http3CoreVersion}. .NET: {Environment.Version}; runtime: {RuntimeEnvironment.GetRuntimeDirectory()}");
                 return 0;
             }
             if (command == "--install-update")
@@ -278,6 +285,7 @@ public static partial class Installation
     {
         using var registry = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name);
         string? previous = registry?.GetValue("ImagePath") as string;
+        string[]? previousEnvironment = registry?.GetValue("Environment") as string[];
         bool running = previouslyRunning;
         if (previous is not null)
         {
@@ -292,6 +300,11 @@ public static partial class Installation
         try
         {
             await ScAsync(previous is null ? "create" : "config", ServiceProtocol.Name, "binPath=", "\"" + executable + "\"", "start=", "auto", "obj=", "LocalSystem");
+            string extraction = Path.Combine(AppContext.BaseDirectory, ".net");
+            ProtectDataDirectory(extraction);
+            using (var serviceKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name, true))
+                serviceKey!.SetValue("Environment", (previousEnvironment ?? []).Where(value => !value.StartsWith("DOTNET_BUNDLE_EXTRACT_BASE_DIR=", StringComparison.OrdinalIgnoreCase))
+                    .Append("DOTNET_BUNDLE_EXTRACT_BASE_DIR=" + extraction).ToArray(), RegistryValueKind.MultiString);
             await ScAsync("failure", ServiceProtocol.Name, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000");
             await ScAsync("start", ServiceProtocol.Name);
             using var ready = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -316,6 +329,11 @@ public static partial class Installation
                 else
                 {
                     await ScAsync("config", ServiceProtocol.Name, "binPath=", previous);
+                    using (var serviceKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name, true))
+                    {
+                        if (previousEnvironment is null) serviceKey!.DeleteValue("Environment", false);
+                        else serviceKey!.SetValue("Environment", previousEnvironment, RegistryValueKind.MultiString);
+                    }
                     if (running) await ScAsync("start", ServiceProtocol.Name);
                 }
             }

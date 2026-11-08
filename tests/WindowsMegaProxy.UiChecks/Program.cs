@@ -90,8 +90,6 @@ internal static partial class Program
         }
         if (args.Contains("--engine-check")) { CheckEngineAsync().GetAwaiter().GetResult(); return; }
         if (args.Contains("--app-update-check")) { AppUpdateChecks.RunAsync().GetAwaiter().GetResult(); return; }
-        if (args.Contains("--core-installation-check")) { CoreInstallationChecks.RunAsync().GetAwaiter().GetResult(); return; }
-        CoreInstallationChecks.RunAsync().GetAwaiter().GetResult();
         AppUpdateChecks.RunAsync().GetAwaiter().GetResult();
         ControllerChecks.RunAsync().GetAwaiter().GetResult();
         ConfigurationRefreshChecks.RunAsync().GetAwaiter().GetResult();
