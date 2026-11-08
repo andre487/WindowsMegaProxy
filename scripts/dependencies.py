@@ -1,10 +1,9 @@
 """Official checksum-verified downloads shared by development and installation."""
 import json
 import shutil
-import urllib.request
 from pathlib import Path
 
-from common import SDK_VERSION, download, extract
+from common import SDK_VERSION, download, extract, open_download
 
 CORE_VERSION = "1.14.4"
 CORE_HASH = "99185d75d314a07dbba4a130c8ad986cbeb629a07927975636b341ca61f991df"
@@ -13,7 +12,7 @@ H3_CORE_HASH = "7cff6a39687a12d51b289bd57a203723629eb8fd42f6668601b4484456436bc9
 
 
 def release():
-    with urllib.request.urlopen("https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json", timeout=30) as response:
+    with open_download("https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json", timeout=30) as response:
         metadata = json.load(response)
     return next(item for item in metadata["releases"] if any(sdk["version"] == SDK_VERSION for sdk in item.get("sdks", [])))
 

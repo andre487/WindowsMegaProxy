@@ -3,6 +3,7 @@ import hashlib
 import io
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -15,7 +16,7 @@ import run as dev_runner
 import stop_prod
 import uninstall_dev
 from artwork import preferred_color
-from common import ROOT, app_name, artifact_root, download, extract
+from common import ROOT, app_name, artifact_root, download, extract, open_download
 from dependencies import asset
 from install import secure_directory
 from service_control import require_production_stopped, stop_service
@@ -229,6 +230,33 @@ class ToolsChecks(unittest.TestCase):
                  {"rid": "win-x64", "url": "https://example/x64.zip"},
                  {"rid": "win-x64", "url": "https://example/x64.exe"}]
         self.assertEqual(asset({"files": files}, ".exe"), files[2])
+
+    def test_download_retries_5xx_with_exponential_backoff_and_logs_gateway_details(self):
+        url = "https://example.invalid/asset"
+        errors = [urllib.error.HTTPError(url, status, "gateway", {"Server": "test-gateway", "X-Azure-Ref": "trace-id"},
+                                        io.BytesIO(b"<html>Upstream timed out</html>")) for status in (503, 504)]
+        response = unittest.mock.Mock()
+        response.geturl.return_value = url
+        output = io.StringIO()
+        with patch("urllib.request.urlopen", side_effect=[*errors, response]) as network, \
+                patch("common.time.sleep") as sleep, redirect_stdout(output):
+            self.assertIs(open_download(url), response)
+        self.assertEqual(network.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+        self.assertIn("Server: test-gateway", output.getvalue())
+        self.assertIn("X-Azure-Ref: trace-id", output.getvalue())
+        self.assertIn("Upstream timed out", output.getvalue())
+
+    def test_download_retries_are_bounded_and_4xx_are_not_retried(self):
+        url = "https://example.invalid/asset"
+        for status, attempts in ((504, 4), (404, 1), (403, 1)):
+            errors = [urllib.error.HTTPError(url, status, "error", {}, io.BytesIO(b"failure")) for _ in range(attempts)]
+            with patch("urllib.request.urlopen", side_effect=errors) as network, \
+                    patch("common.time.sleep") as sleep, redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, f"HTTP {status}"):
+                    open_download(url)
+            self.assertEqual(network.call_count, attempts)
+            self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4] if status == 504 else [])
 
     def test_flag_palette_and_neutral_pixels(self):
         palette = [(255, 0, 0), (0, 0, 255)]

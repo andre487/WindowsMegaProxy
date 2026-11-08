@@ -2,9 +2,13 @@
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess as sp
 import sys
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -44,6 +48,36 @@ def dotnet(*args):
     return sp.run([executable, *args], cwd=ROOT, env=env, stdout=sys.stdout, stderr=sys.stderr, check=True)
 
 
+def open_download(url, *, timeout=60):
+    host = urllib.parse.urlsplit(url).hostname or "unknown host"
+    for attempt in range(4):
+        try:
+            response = urllib.request.urlopen(url, timeout=timeout)
+            if not response.geturl().startswith("https://"):
+                response.close()
+                raise RuntimeError("Refusing an insecure download redirect.")
+            return response
+        except urllib.error.HTTPError as error:
+            status = error.code
+            headers = error.headers or {}
+            details = "; ".join(f"{name}: {headers[name]}" for name in
+                                ("Server", "Via", "X-Cache", "X-Azure-Ref", "X-Ms-Request-Id", "Retry-After") if headers.get(name))
+            try:
+                body = error.read(2048).decode("utf-8", errors="replace")
+            except (OSError, TimeoutError):
+                body = "Response body unavailable."
+            finally:
+                error.close()
+            body = re.sub(r"<[^>]+>", " ", body)
+            body = " ".join("".join(character if character.isprintable() else " " for character in body).split())
+            print(f"Download from {host}: HTTP {status}. {details}\nResponse: {body}", flush=True)
+            if not 500 <= status < 600 or attempt == 3:
+                raise RuntimeError(f"Download failed from {host}: HTTP {status} after {attempt + 1} attempt(s).") from None
+            delay = 2 ** attempt
+            print(f"Retrying {host} in {delay} second(s), attempt {attempt + 2}/4.", flush=True)
+            time.sleep(delay)
+
+
 def download(url, path, expected, algorithm="sha256"):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,9 +85,7 @@ def download(url, path, expected, algorithm="sha256"):
         return path
     temporary = path.with_name(path.name + ".download")
     try:
-        with urllib.request.urlopen(url, timeout=60) as response, temporary.open("wb") as output:
-            if not response.geturl().startswith("https://"):
-                raise RuntimeError("Refusing an insecure download redirect.")
+        with open_download(url) as response, temporary.open("wb") as output:
             shutil.copyfileobj(response, output)
         if digest(temporary, algorithm) != expected.lower():
             raise RuntimeError(f"Checksum mismatch: {path.name}")
