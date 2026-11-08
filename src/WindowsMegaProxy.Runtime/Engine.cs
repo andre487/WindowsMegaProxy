@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
@@ -129,12 +130,27 @@ public sealed partial class Engine : IEngine
         if (Running) return;
         Http3Selected = Configuration.RequiresHttp3(settings);
         var executable = CoreExecutable(Http3Selected);
-        if (!File.Exists(executable)) throw new FileNotFoundException("The core is not installed. For development run setup.cmd and run.cmd; for installation run install-dependencies.cmd with the app directory.");
+        if (!File.Exists(executable)) throw new FileNotFoundException(AppIdentity.IsDev
+            ? "The development core is missing. Run setup.cmd and run.cmd."
+            : "The bundled network core is missing. Repair the application using the installer.");
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         var secret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var config = Configuration.Build(settings, port, secret);
+        if (!testOnly)
+        {
+            var addresses = await Task.Run(() =>
+            {
+                var networks = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(adapter => !string.Equals(adapter.Name, AppIdentity.DisplayName, StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
+                    .Select(address => TunAddresses.Network(address.Address, address.PrefixLength));
+                return TunAddresses.Select(networks, AppIdentity.IsDev);
+            }, cancellationToken).ConfigureAwait(false);
+            config["inbounds"]![0]!["address"] = new JsonArray(addresses.Ipv4, addresses.Ipv6);
+            Log?.Invoke($"TUN interface {AppIdentity.DisplayName}: IPv4={addresses.Ipv4}; IPv6={addresses.Ipv6}.");
+        }
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
         foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken).ConfigureAwait(false);
         foreach (var ruleSet in config["route"]!["rule_set"]!.AsArray())

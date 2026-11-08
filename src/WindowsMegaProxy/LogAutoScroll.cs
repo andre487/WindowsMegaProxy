@@ -22,20 +22,45 @@ public static class LogAutoScroll
     private static void EnabledChanged(DependencyObject owner, DependencyPropertyChangedEventArgs e)
     {
         if (owner is not TextBox box) return;
-        if ((bool)e.NewValue) box.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Scrolled));
-        else box.RemoveHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Scrolled));
+        if ((bool)e.NewValue)
+        {
+            box.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Scrolled));
+            box.SelectionChanged += SelectionChanged;
+            DataObject.AddCopyingHandler(box, Copying);
+        }
+        else
+        {
+            box.RemoveHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Scrolled));
+            box.SelectionChanged -= SelectionChanged;
+            DataObject.RemoveCopyingHandler(box, Copying);
+        }
+    }
+
+    private static void SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        var box = (TextBox)sender;
+        if (!(bool)box.GetValue(ChangingProperty)) box.SetValue(FollowingProperty, box.SelectionLength == 0 && AtBottom(box));
+    }
+
+    private static void Copying(object sender, DataObjectCopyingEventArgs e)
+    {
+        if (sender is not TextBox box || box.SelectionLength == 0) return;
+        string text = box.SelectedText.ReplaceLineEndings(Environment.NewLine);
+        e.DataObject.SetData(DataFormats.UnicodeText, text);
+        e.DataObject.SetData(DataFormats.Text, text);
     }
 
     private static void Scrolled(object sender, ScrollChangedEventArgs e)
     {
         var box = (TextBox)sender;
         if ((bool)box.GetValue(ChangingProperty)) return;
-        if (e.ExtentHeightChange == 0 && e.ViewportHeightChange == 0) box.SetValue(FollowingProperty, AtBottom(box));
+        if (e.ExtentHeightChange == 0 && e.ViewportHeightChange == 0) box.SetValue(FollowingProperty, box.SelectionLength == 0 && AtBottom(box));
         else if (IsFollowing(box)) box.ScrollToVerticalOffset(double.MaxValue);
     }
 
     public static void Replace(TextBox box, string text)
     {
+        text = text.ReplaceLineEndings(Environment.NewLine);
         if (box.Text == text) return;
         string previous = box.Text;
         int overlap = Overlap(previous, text);
@@ -86,7 +111,7 @@ public static class LogAutoScroll
 
     private static void Change(TextBox box, Action update)
     {
-        bool following = IsFollowing(box);
+        bool following = IsFollowing(box) && box.SelectionLength == 0;
         double offset = box.VerticalOffset;
         double horizontal = box.HorizontalOffset;
         box.SetValue(ChangingProperty, true);
@@ -94,6 +119,7 @@ public static class LogAutoScroll
         (box.GetValue(ScrollProperty) as DispatcherOperation)?.Abort();
         box.SetValue(ScrollProperty, box.Dispatcher.BeginInvoke(() =>
         {
+            following &= box.SelectionLength == 0;
             if (following) box.ScrollToVerticalOffset(double.MaxValue);
             else box.ScrollToVerticalOffset(offset);
             box.ScrollToHorizontalOffset(horizontal);

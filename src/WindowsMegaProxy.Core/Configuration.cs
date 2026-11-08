@@ -135,6 +135,7 @@ public static class Configuration
         };
         foreach (var rule in settings.Rules.Where(rule => rule.Enabled))
             rules.Add(BuildRule(rule));
+        var tunAddresses = TunAddresses.Select([], AppIdentity.IsDev);
         if (settings.BypassLan)
             rules.Add(new JsonObject { ["ip_is_private"] = true, ["action"] = "route", ["outbound"] = "direct" });
         if (settings.DefaultAction == "block") rules.Add(new JsonObject { ["action"] = "reject" });
@@ -154,7 +155,7 @@ public static class Configuration
             ["inbounds"] = new JsonArray(new JsonObject
             {
                 ["type"] = "tun", ["tag"] = "tun", ["interface_name"] = AppIdentity.DisplayName,
-                ["address"] = new JsonArray("172.29.0.1/30", "fd87:6d65:6761::1/126"),
+                ["address"] = new JsonArray(tunAddresses.Ipv4, tunAddresses.Ipv6),
                 ["mtu"] = 1500, ["auto_route"] = true, ["strict_route"] = proxyDefault,
                 ["dns_mode"] = proxyDefault ? "hijack" : "disabled"
             }),

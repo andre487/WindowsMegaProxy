@@ -1060,8 +1060,18 @@ internal static partial class Program
         {
             box.Text = previous;
             LogAutoScroll.Replace(box, next);
-            Assert(box.Text == next, "Incremental log replacement handles rolling tails, repeated prefixes, empty text and Unicode.");
+            Assert(box.Text == next.ReplaceLineEndings(Environment.NewLine), "Incremental log replacement handles rolling tails, repeated prefixes, empty text, Unicode and Windows line endings.");
         }
+        LogAutoScroll.Replace(box, "prefix alpha\nbravo\r\ncharlie suffix"); Layout(window);
+        box.Select("prefix al".Length, "pha\r\nbravo\r\nchar".Length);
+        string selected = box.SelectedText;
+        Assert(selected == "pha\r\nbravo\r\nchar", "Log selection can start and end inside lines and include their original line breaks.");
+        var clipboard = new DataObject(DataFormats.UnicodeText, "placeholder");
+        box.RaiseEvent(new DataObjectCopyingEventArgs(clipboard, false));
+        Assert(clipboard.GetData(DataFormats.UnicodeText) as string == selected, "Copy exports only the selected multi-line fragment with Windows line endings.");
+        LogAutoScroll.Append(box, "\r\nnew entry while copying"); Layout(window);
+        Assert(box.SelectedText == selected && !LogAutoScroll.IsFollowing(box), "New log entries preserve the selection and do not scroll away while copying.");
+        box.Select(0, 0);
         Layout(window);
     }
 
