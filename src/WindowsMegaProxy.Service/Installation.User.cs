@@ -9,7 +9,7 @@ public static partial class Installation
     {
         if (!StartupConfiguration.IsElevated) throw new UnauthorizedAccessException("User installation requires administrator approval.");
         string command = args[0];
-        bool uninstall = command == "--prepare-uninstall";
+        bool uninstall = command is "--prepare-uninstall" or "--remove-installation";
         if (uninstall ? args.Length != 1 : command is not ("--configure-user" or "--set-mode"))
             throw new ArgumentException("Invalid user installation arguments.");
         bool? automaticUpdates = uninstall ? null : ReadAutomaticUpdates(args);

@@ -83,6 +83,23 @@ jobs:
       - name: Test installer on disposable runner without activating TUN
         run: scripts\tools.cmd scripts\installer_smoke.py
 
+      - name: Collect protected installer logs
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:GITHUB_WORKSPACE 'artifacts/installer-checks'
+          New-Item -ItemType Directory -Force $target | Out-Null
+          $sources = @("$env:ProgramFiles\WindowsMegaProxy\installer-logs")
+          $personal = "$env:ProgramFiles\WindowsMegaProxy.Users"
+          if (Test-Path -LiteralPath $personal) {
+            $sources += Get-ChildItem -LiteralPath $personal -Directory | ForEach-Object { Join-Path $_.FullName 'installer-logs' }
+          }
+          foreach ($source in $sources) {
+            if (Test-Path -LiteralPath $source) {
+              Copy-Item -LiteralPath $source -Destination (Join-Path $target ([guid]::NewGuid().ToString())) -Recurse
+            }
+          }
+
       - name: Test all DEV modes and complete startup cleanup
         run: scripts\tools.cmd scripts\dev_mode_smoke.py
 
@@ -96,6 +113,6 @@ jobs:
             artifacts/**/failure.txt
             artifacts/ui-checks/*.png
             artifacts/ui-checks-dev/*.png
-            artifacts/installer-checks/*.log
+            artifacts/installer-checks/**
           if-no-files-found: warn
           retention-days: 7

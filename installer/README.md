@@ -6,7 +6,7 @@ Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in
 `artifacts/release-preview`. Preview manifests use disposable keys and have
 `preview: true`; do not distribute them as trusted updates.
 
-The installer targets Windows 10/11 x64, requires one administrator approval,
+The WiX 7 + Burn installer targets Windows 10/11 x64, requires administrator approval,
 and installs the UI and mode-management helper into Program Files. Both pinned official
 sing-box packages, including libcronet and embedded signed Wintun, are downloaded
 from SagerNet's official GitHub releases during installation and application
@@ -22,8 +22,13 @@ tools only. Prerequisites are prepared before changing an existing service.
 
 The installer defaults to manual launch on a new installation and offers three
 operating modes: manual, elevated sign-in startup, or a Windows service. It
-preserves the chosen mode on upgrade. Silent installations can select
-`/MODE=manual`, `/MODE=login` or `/MODE=service`. Manual and login modes register
+preserves the chosen mode on upgrade. Silent installations use `/quiet /norestart WixStdBAScope=PerMachine` (or
+`PerUser`), with `Mode=manual`, `Mode=login` or `Mode=service`. Use `/repair`
+for an existing installation and `/uninstall` to remove it. `InstallSSH=0`
+opts out of OpenSSH, `AutomaticUpdates=false` opts out of automatic updates,
+and `DesktopShortcut=1` creates a desktop shortcut. Mode and update preferences
+are preserved when their variables are omitted. New installations default to
+manual mode with automatic updates enabled. Manual and login modes register
 no Windows service; login mode uses a highest-privilege interactive logon task
 for the administrator who selected it, without storing a password. The settings
 page can change the mode with administrator approval and restarts the interface.
@@ -47,6 +52,30 @@ operating mode registration and installed binaries. Production is untouched.
 IPC v3 carries rule names and enabled state. Update the interface and service
 together; the installation helper can still read a v2 service during legacy
 configuration migration.
+
+## Installer implementation
+
+The native C++ WiX standard bootstrapper runs without .NET. Burn downloads the
+checksum-verified Desktop Runtime, installs a small dual-scope registration MSI,
+and starts the managed setup engine elevated. The MSI gives Burn a native choice
+of per-user or per-machine registration; the engine deploys immutable version
+folders and invokes the existing service helper. Core downloads and OpenSSH
+preparation finish before that helper switches the active runtime. Failed
+configuration keeps the previous runtime; Burn rollback can restore the previous
+helper and settings. Setup logs are retained under the protected installation
+root's `installer-logs` directory. User-writable launcher and shortcut operations
+use the administrator's filtered token when UAC is enabled.
+
+Existing Inno registrations are retired only after successful configuration, while
+configuration and previous version directories are preserved. Approval must use
+the same administrator account that started setup. The former Inno definition is
+retained only as migration reference; release builds do not use Inno Setup.
+
+Build tools are downloaded into `.tools` and `artifacts/wix-cache`; Visual Studio
+is not required. The build explicitly accepts the [WiX 7 OSMF EULA](https://docs.firegiant.com/wix/osmf/)
+as authorized for this noncommercial project. Reassess the fee terms if the
+project becomes revenue-generating. WiX runtime/theme license text is included
+in `licenses/WiX-LICENSE.txt`.
 
 ## Release
 
@@ -111,7 +140,7 @@ verifies and stages the installer before elevation can execute it, preserves
 installation scope/mode and restarts the client. Old, partial and installed
 update downloads are removed. DEV checks can show releases but never install
 production updates over a development build. The installer also offers an
-automatic-update checkbox, selected by default.
+automatic-update preference, enabled by default on a new installation.
 
 The Windows EXE installer is currently not Authenticode-signed. Manifest signing
 does not replace a Windows code-signing certificate. CI compiles the installer

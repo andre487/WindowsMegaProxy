@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix
+    xmlns="http://wixtoolset.org/schemas/v4/wxs"
+    xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+    <Bundle
+        Name="MegaProxy installer diagnostic control"
+        Manufacturer="MegaProxy"
+        Version="0.0.0"
+        UpgradeCode="94440A4F-482A-4541-9DB6-F45E3412463A">
+        <BootstrapperApplication>
+            <bal:WixStandardBootstrapperApplication
+                LicenseUrl=""
+                Theme="hyperlinkLicense"
+                SuppressOptionsUI="yes" />
+        </BootstrapperApplication>
+        <Chain>
+            <MsiPackage SourceFile="$(var.PackagePath)" Compressed="yes" />
+        </Chain>
+    </Bundle>
+</Wix>

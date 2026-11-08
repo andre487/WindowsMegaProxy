@@ -14,11 +14,31 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 import package
 import prepare_release
+import wix_package
 from dependencies import CORE_HASH, H3_CORE_HASH, core_package
 from package import archive, checksums, merge, signed_manifest, version
 
 
 class PackageTests(unittest.TestCase):
+    def test_wix_manifest_pins_only_official_cores_including_license_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            for folder in ("sing-box", "sing-box-h3"):
+                directory = payload / "dependencies" / folder
+                directory.mkdir(parents=True)
+                for name in ("sing-box.exe", "libcronet.dll", "LICENSE"):
+                    (directory / name).write_bytes((folder + name).encode())
+            manifest = wix_package.setup_manifest(payload, "0.0.2", "0.0.2-test")
+            for core, http3 in zip(manifest["cores"], (False, True)):
+                upstream = core_package(http3=http3)
+                self.assertEqual(core["url"], upstream["url"])
+                self.assertEqual(core["sha256"], upstream["sha256"])
+                self.assertEqual(core["directory"], upstream["name"])
+                self.assertEqual(set(core["files"]), {"sing-box.exe", "libcronet.dll", "LICENSE"})
+                for name, expected in core["files"].items():
+                    self.assertEqual(expected, package.digest(payload / "dependencies" / core["folder"] / name, "sha256"))
+            self.assertNotEqual(manifest["buildId"], wix_package.setup_manifest(payload, "0.0.2", "0.0.2-test")["buildId"])
+
     def test_installer_core_downloads_pin_official_archives_and_extracted_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             payload = Path(temporary)

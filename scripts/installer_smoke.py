@@ -44,9 +44,9 @@ def main():
 
     previous = None
     for attempt, mode in enumerate(("manual", "login", "service", "service", "manual"), 1):
-        arguments = [str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", f"/LOG={logs / f'install-{attempt}.log'}"]
+        arguments = [str(setups[0]), "/install" if attempt == 1 else "/repair", "/quiet", "/norestart", "WixStdBAScope=PerMachine", "InstallSSH=0", "AutomaticUpdates=false", "/log", str(logs / f"install-{attempt}.log")]
         if attempt != 1:
-            arguments.append("/MODE=" + mode)
+            arguments.append("Mode=" + mode)
         sp.run(arguments, check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
@@ -81,7 +81,7 @@ def main():
             denied = original[:first_entry] + "(D;;WP;;;BA)" + original[first_entry:]
             sp.run(["sc.exe", "sdset", "WindowsMegaProxy", denied], check=True, capture_output=True)
             try:
-                failure = sp.run([str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=manual", f"/LOG={logs / 'mode-change-failed.log'}"], timeout=120)
+                failure = sp.run([str(setups[0]), "/repair", "/quiet", "/norestart", "WixStdBAScope=PerMachine", "InstallSSH=0", "Mode=manual", "/log", str(logs / "mode-change-failed.log")], timeout=120)
                 assert failure.returncode != 0, "A failed mode configuration must fail the installer."
                 assert service_state("WindowsMegaProxy") == 4, "A denied mode change must preserve the running service."
                 with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
@@ -91,7 +91,7 @@ def main():
         previous = current
         time.sleep(1)
     check_user_install(setups[0], logs, data)
-    sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'uninstall.log'}"], check=True, timeout=120)
+    sp.run([str(setups[0]), "/uninstall", "/quiet", "/norestart", "WixStdBAScope=PerMachine", "/log", str(logs / "uninstall.log")], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
@@ -110,8 +110,8 @@ def check_user_install(setup, logs, global_data):
         system_helper = winreg.QueryValueEx(key, "HelperPath")[0]
     previous = None
     for mode in ("manual", "login", "manual"):
-        sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=" + mode,
-                f"/LOG={logs / f'user-{mode}.log'}"], check=True, timeout=600)
+        sp.run([str(setup), "/repair" if previous else "/install", "/quiet", "/norestart", "WixStdBAScope=PerUser", "InstallSSH=0", "AutomaticUpdates=false", "Mode=" + mode,
+                "/log", str(logs / f"user-{mode}.log")], check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             helper = winreg.QueryValueEx(key, "HelperPath")[0]
@@ -154,10 +154,10 @@ def check_user_install(setup, logs, global_data):
             stop_workspace_app(dev=False, workspace_only=False)
             assert "sing-box.exe" not in running_images(), "The fixture must never activate TUN."
         previous = helper
-    rejected = sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=service",
-                       f"/LOG={logs / 'user-service-rejected.log'}"], timeout=120)
+    rejected = sp.run([str(setup), "/repair", "/quiet", "/norestart", "WixStdBAScope=PerUser", "InstallSSH=0", "Mode=service",
+                       "/log", str(logs / "user-service-rejected.log")], timeout=120)
     assert rejected.returncode != 0, "A current-user install must reject service mode."
-    sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'user-uninstall.log'}"], check=True, timeout=120)
+    sp.run([str(setup), "/uninstall", "/quiet", "/norestart", "WixStdBAScope=PerUser", "/log", str(logs / "user-uninstall.log")], check=True, timeout=120)
     for task_name in (name, name + ".Login"):
         assert sp.run(["schtasks.exe", "/Query", "/TN", task_name], capture_output=True).returncode != 0
     assert (local / "WindowsMegaProxy/Personal/settings.json").is_file(), "Personal settings must survive uninstall."

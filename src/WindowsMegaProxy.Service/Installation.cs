@@ -44,7 +44,7 @@ public static partial class Installation
                 SettingsStore.Save(reply.Settings);
                 return 0;
             }
-            if (command is not ("--install-service" or "--prepare-uninstall" or "--configure-mode" or "--set-mode")) throw new ArgumentException("Unknown installation command.");
+            if (command is not ("--install-service" or "--prepare-uninstall" or "--remove-installation" or "--configure-mode" or "--set-mode")) throw new ArgumentException("Unknown installation command.");
             bool changingMode = command is "--configure-mode" or "--set-mode";
             bool? automaticUpdates = changingMode ? ReadAutomaticUpdates(args) : null;
             if (!changingMode && args.Length != 1) throw new ArgumentException("Invalid installation arguments.");
@@ -55,6 +55,15 @@ public static partial class Installation
             foreach (string path in new[] { root, Path.Combine(root, "versions"), AppContext.BaseDirectory }) CheckDirectory(path);
             CloseClients(root);
             if (command == "--prepare-uninstall") { ConfigureLogin("manual"); return 0; }
+            if (command == "--remove-installation")
+            {
+                RemoveServiceAsync().GetAwaiter().GetResult();
+                ConfigureLogin("manual");
+                // Personal installations have their own subkey and may coexist with this one.
+                using var registration = Registry.LocalMachine.OpenSubKey(StartupConfiguration.RegistryPath, true);
+                foreach (string name in new[] { "Mode", "HelperPath", "SetupBuildId", "SetupDirectory" }) registration?.DeleteValue(name, false);
+                return 0;
+            }
             ProtectDataDirectory(MachineSettingsStore.DefaultDirectory);
             bool previouslyRunning;
             using (var registration = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + ServiceProtocol.Name))

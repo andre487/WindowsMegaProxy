@@ -58,11 +58,11 @@ public static partial class Installation
             await AppUpdateTrust.VerifyInstallerAsync(target, package, CancellationToken.None);
             Settings current = personal ? new MachineSettingsStore(UserInstallation.DataDirectory, machine: false).Load() : new MachineSettingsStore().Load();
             var start = new ProcessStartInfo(target) { UseShellExecute = false };
-            foreach (string argument in new[] { "/SILENT", "/NORESTART", "/SUPPRESSMSGBOXES", personal ? "/CURRENTUSER" : "/ALLUSERS",
-                "/MODE=" + StartupConfiguration.Mode, "/UPDATE=1", "/MERGETASKS=" + (AppUpdatePolicy.Enabled(current) ? "automaticupdates" : "!automaticupdates") }) start.ArgumentList.Add(argument);
+            foreach (string argument in new[] { "/passive", "/norestart", "WixStdBAScope=" + (personal ? "PerUser" : "PerMachine"),
+                "Mode=" + StartupConfiguration.Mode, "LaunchAfterSetup=1", "AutomaticUpdates=" + AppUpdatePolicy.Enabled(current).ToString().ToLowerInvariant() }) start.ArgumentList.Add(argument);
             using var process = Process.Start(start) ?? throw new IOException("Could not start the verified update installer.");
             await process.WaitForExitAsync();
-            if (process.ExitCode != 0) throw new IOException("The update installer did not complete successfully.");
+            if (process.ExitCode is not (0 or 3010)) throw new IOException("The update installer did not complete successfully.");
             return 0;
         }
         finally { File.Delete(target); }

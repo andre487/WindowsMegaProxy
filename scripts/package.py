@@ -14,6 +14,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import build
+import wix_package
 from common import ROOT, cli, digest, download, extract
 from dependencies import (
     CORE_VERSION,
@@ -25,8 +26,6 @@ from dependencies import (
     runtime_installer,
 )
 
-INNO_VERSION = "6.7.4"
-INNO_HASH = "a549929319f9120716677c685535ca4671e4b937b5fdc87e2585f32d8eb30e8c"
 REPOSITORY = "https://github.com/andre487/WindowsMegaProxy"
 
 
@@ -78,18 +77,6 @@ def signed_manifest(manifest, directory, key):
 
 def checksums(directory, names):
     (directory / "SHA256SUMS").write_text("".join(f"{digest(directory / name, 'sha256')}  {name}\n" for name in names), encoding="ascii", newline="\n")
-
-
-def compiler():
-    destination = ROOT / ".tools/inno"
-    executable = destination / "ISCC.exe"
-    if not executable.exists():
-        installer = download(f"https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-{INNO_VERSION}.exe",
-                             ROOT / f".tools/downloads/innosetup-{INNO_VERSION}.exe", INNO_HASH)
-        sp.run([str(installer), "/PORTABLE=1", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/NOICONS", f"/DIR={destination}"], check=True)
-    if not executable.is_file():
-        raise RuntimeError("Inno Setup compiler is missing.")
-    return executable
 
 
 def core_installer_definitions(payload):
@@ -181,9 +168,7 @@ def main():
             "RuntimeSHA256": digest(runtime_download, "sha256"),
         }
         definitions.update(core_installer_definitions(payload))
-        (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
-        shutil.copy2(ROOT / "installer/WindowsMegaProxy.iss", staging / "WindowsMegaProxy.iss")
-        sp.run([str(compiler()), "/Qp", str(staging / "WindowsMegaProxy.iss")], check=True)
+        wix_package.build_installer(staging, payload, definitions, runtime_download)
         setup = f"WindowsMegaProxy-{app_version}-win-x64-setup.exe"
         components["installer"] = {"version": app_version, "file": setup}
         source = f"WindowsMegaProxy-{app_version}-source.zip"

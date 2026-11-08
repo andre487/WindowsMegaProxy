@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <ApplicationIcon>../WindowsMegaProxy/Assets/app.ico</ApplicationIcon>
+        <MegaProxyDev>false</MegaProxyDev>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(InstallerResources)' != ''">
+        <EmbeddedResource Include="$(InstallerResources)/payload.zip" LogicalName="payload.zip" />
+        <EmbeddedResource Include="$(InstallerResources)/setup.json" LogicalName="setup.json" />
+    </ItemGroup>
+</Project>

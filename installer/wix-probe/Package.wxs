@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Package
+        Name="MegaProxy installer diagnostic control"
+        Manufacturer="MegaProxy"
+        Version="0.0.0"
+        UpgradeCode="C2CA2415-BC37-4C16-BAC8-AC4D4F4C663B"
+        Scope="perUser">
+        <MajorUpgrade DowngradeErrorMessage="A newer diagnostic control is installed." />
+        <MediaTemplate EmbedCab="yes" />
+        <StandardDirectory Id="LocalAppDataFolder">
+            <Directory Id="INSTALLFOLDER" Name="MegaProxyInstallerDiagnostic">
+                <Component Id="DiagnosticReadme" Guid="F5F8AC64-C752-4DCA-974F-80420CB12792">
+                    <File Source="$(var.SourceDirectory)\readme.txt" />
+                    <RegistryValue
+                        Root="HKCU"
+                        Key="Software\MegaProxy\InstallerDiagnostic"
+                        Name="Installed"
+                        Type="integer"
+                        Value="1"
+                        KeyPath="yes" />
+                    <RemoveFolder Id="RemoveDiagnosticFolder" On="uninstall" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+        <Feature Id="Diagnostic" Title="Diagnostic control">
+            <ComponentRef Id="DiagnosticReadme" />
+        </Feature>
+    </Package>
+</Wix>
