@@ -40,6 +40,7 @@ public static partial class Installation
         using var lease = new FileStream(Path.Combine(staging, "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         string target = Path.Combine(staging, "setup.exe");
         bool launched = false;
+        bool copied = false;
         try
         {
             string cache = AppUpdateTrust.CacheDirectory;
@@ -53,6 +54,7 @@ public static partial class Installation
             await using (var input = new FileStream(Path.Combine(cache, "setup.exe"), FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous))
             await using (var output = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
             {
+                copied = true;
                 if (input.Length != package.Size) throw new CryptographicException("Invalid update installer size.");
                 await input.CopyToAsync(output);
             }
@@ -66,7 +68,13 @@ public static partial class Installation
             launched = true;
             return 0;
         }
-        finally { if (!launched) File.Delete(target); }
+        finally
+        {
+            if (!launched && copied)
+                try { File.Delete(target); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                { Console.Error.WriteLine($"Update staging cleanup failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}."); }
+        }
     }
 
     private static async Task<int> CleanupInstallationAsync()

@@ -102,12 +102,14 @@ public partial class MainWindow : Window
 
     public MainWindow(bool startInTray, Action<Settings>? persistSettings = null, DiagnosticLog? diagnosticLog = null,
         Func<bool, Task>? setAutostart = null, Func<Task<bool>>? getAutostart = null, Func<Task>? diagnosticsOnEnter = null, ConnectionController? connectionController = null,
-        ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null, bool standalone = false, AppUpdateManager? appUpdates = null)
+        ServiceClient? serviceClient = null, Func<Task<Settings>>? loadLegacy = null, bool standalone = false, AppUpdateManager? appUpdates = null,
+        Func<Task>? installAppUpdate = null)
     {
         service = serviceClient ?? (persistSettings is null && !standalone ? new ServiceClient() : null);
         this.loadLegacy = loadLegacy ?? (() => Task.Run<Settings>(standalone ? StartupConfiguration.LoadLocal : SettingsStore.Load));
         automaticUpdateChecks = persistSettings is null && loadLegacy is null;
         this.appUpdates = appUpdates ?? (automaticUpdateChecks ? new AppUpdateManager() : null);
+        this.installAppUpdate = installAppUpdate ?? StartAppUpdateInstallerAsync;
         canEdit = service is null;
         connection = connectionController ?? new ConnectionController(CreateEngine);
         settingsWriter = new SettingsWriter(persistSettings ?? (standalone ? StartupConfiguration.SaveLocal : value =>

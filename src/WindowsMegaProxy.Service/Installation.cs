@@ -126,7 +126,14 @@ public static partial class Installation
         {
             string message = DiagnosticLog.Redact(error.Message);
             Console.Error.WriteLine(message);
-            if (args[0] is "--set-mode" or "--install-update")
+            if (args[0] == "--install-update")
+            {
+                // A hidden modal dialog would keep installation DLLs locked indefinitely.
+                try { new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100)
+                    .Write($"Application update installation failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {message}"); }
+                catch (Exception loggingError) when (loggingError is IOException or UnauthorizedAccessException) { }
+            }
+            if (args[0] == "--set-mode")
             {
                 if (Process.GetProcessesByName(AppIdentity.Name).Length == 0 && File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)))
                     Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();

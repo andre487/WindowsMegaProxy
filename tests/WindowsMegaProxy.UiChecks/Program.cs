@@ -61,6 +61,7 @@ internal static partial class Program
             return;
         }
         if (ChannelFixture.Run(args)) return;
+        if (args.Contains("--update-install-check")) { UpdateInstallChecks.Run(); return; }
         if (FailoverChecks.RunFixture(args)) return;
         if (args.Contains("--failover-check"))
         {
@@ -100,6 +101,7 @@ internal static partial class Program
         ServiceChecks.RunAsync().GetAwaiter().GetResult();
         RecoveryChecks.RunAsync().GetAwaiter().GetResult();
         UiRecoveryChecks.RunIsolatedAsync().GetAwaiter().GetResult();
+        UpdateInstallChecks.RunIsolatedAsync().GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(app.Dispatcher));
         app.Resources.MergedDictionaries.Add(new ResourceDictionary

@@ -96,6 +96,7 @@ def main():
         assert "sing-box.exe" not in running_images(), "An unconfigured installation must not activate TUN."
         assert service_state("WindowsMegaProxy.Dev") is None, "Installer must not register DEV."
         if attempt == 3:
+            check_failed_update_helper(Path(current), logs)
             security = sp.check_output(["sc.exe", "sdshow", "WindowsMegaProxy"], text=True)
             original = next(line.strip() for line in security.splitlines() if line.strip().startswith("D:"))
             first_entry = original.index("(")
@@ -117,6 +118,26 @@ def main():
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     check_legacy_upgrade(setups[0], logs, destination, data)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
+
+
+def check_failed_update_helper(helper, logs):
+    cache = known_folder(0x1c) / "WindowsMegaProxy/Updates"
+    assert not (cache / "state.json").exists(), "The update failure fixture requires an empty disposable user cache."
+    staging = helper.parent / "update"
+    staging.mkdir(exist_ok=True)
+    target = staging / "setup.exe"
+    marker = b"previous staged installer must survive an early update failure"
+    target.write_bytes(marker)
+    try:
+        for _ in range(2):
+            result = sp.run([str(helper), "--install-update"], capture_output=True, text=True, timeout=20)
+            assert result.returncode == 1, "A failed update must exit instead of keeping installation DLLs locked in a hidden dialog."
+            assert target.read_bytes() == marker, "An early failure must not delete an installer it did not copy."
+        log = known_folder(0x1c) / "WindowsMegaProxy/logs/current.log"
+        assert "Application update installation failed:" in log.read_text(encoding="utf-8")
+        (logs / "update-helper-failed.txt").write_text(result.stderr, encoding="utf-8")
+    finally:
+        target.unlink(missing_ok=True)
 
 
 def check_legacy_upgrade(setup, logs, destination, data):
