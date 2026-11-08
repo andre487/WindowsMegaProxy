@@ -1,5 +1,7 @@
 import base64
 import os
+import subprocess as sp
+import sys
 import tempfile
 import unittest
 from datetime import timedelta
@@ -113,6 +115,21 @@ class SigningTests(unittest.TestCase):
         with patch.object(auth, "sign_file") as sign:
             signer.sign_directory(self.root)
         self.assertEqual({call.args[0].name for call in sign.call_args_list}, set(names[:2]))
+
+    def test_old_tag_setup_uses_current_downloader_and_tag_dependency_versions(self):
+        scripts = self.root / "scripts"
+        scripts.mkdir()
+        (scripts / "common.py").write_text('raise AssertionError("Old downloader must not be imported")\n')
+        (scripts / "dependencies.py").write_text('CORE_VERSION = "tag-fixture"\n')
+        (scripts / "setup.py").write_text(
+            'from common import ROOT, open_download\n'
+            'from dependencies import CORE_VERSION\n'
+            'assert CORE_VERSION == "tag-fixture"\n'
+            'assert ROOT.resolve() == __import__("pathlib").Path.cwd().resolve()\n'
+            '(ROOT / "bootstrap-passed.txt").write_text(CORE_VERSION)\n')
+        runner = Path(auth.__file__).with_name("release_package.py")
+        sp.run([sys.executable, str(runner), "--setup"], cwd=self.root, check=True, capture_output=True)
+        self.assertEqual((self.root / "bootstrap-passed.txt").read_text(), "tag-fixture")
 
 
 if __name__ == "__main__":

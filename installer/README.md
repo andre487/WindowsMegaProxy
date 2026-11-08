@@ -132,3 +132,8 @@ installer and sing-box archives. OpenSSH uses the Windows capability installer;
 Wintun is already provided by the upstream core. WinGet is not required: calling
 its CLI would add an App Installer/user-registration dependency, and the CLI is
 not supported under SYSTEM. See [Microsoft's limitations](https://learn.microsoft.com/windows/package-manager/winget/troubleshooting).
+
+Development/release downloads retry HTTP 5xx four times with 1, 2 and 4 second
+backoff delays, logging a bounded error body and diagnostic headers. After
+exhausted retries on a GitHub release URL, build tools can retrieve the same
+asset through the official GitHub REST API with the original pinned hash.

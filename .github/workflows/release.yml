@@ -85,7 +85,7 @@ jobs:
       - name: Download build dependencies
         if: steps.restore.outputs.reused != 'true'
         shell: cmd
-        run: setup.cmd
+        run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/release_package.py --setup
 
       - name: Build signed update packages and native installer
         if: steps.restore.outputs.reused != 'true'

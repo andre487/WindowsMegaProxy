@@ -1,6 +1,7 @@
 import ctypes as ct
 import hashlib
 import io
+import json
 import tempfile
 import unittest
 import urllib.error
@@ -16,7 +17,16 @@ import run as dev_runner
 import stop_prod
 import uninstall_dev
 from artwork import preferred_color
-from common import ROOT, app_name, artifact_root, download, extract, open_download
+from common import (
+    ROOT,
+    DownloadHttpError,
+    app_name,
+    artifact_root,
+    download,
+    extract,
+    github_asset_url,
+    open_download,
+)
 from dependencies import asset
 from install import secure_directory
 from service_control import require_production_stopped, stop_service
@@ -257,6 +267,37 @@ class ToolsChecks(unittest.TestCase):
                     open_download(url)
             self.assertEqual(network.call_count, attempts)
             self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4] if status == 504 else [])
+
+    def test_official_github_api_fallback_keeps_hash_verification(self):
+        url = "https://github.com/owner/repository/releases/download/v1/asset.zip"
+        endpoint = "https://api.github.com/repos/owner/repository/releases/assets/123"
+        metadata = {"assets": [{"name": "asset.zip", "browser_download_url": url, "url": endpoint}]}
+        expected = hashlib.sha256(b"verified").hexdigest()
+        for content, success in ((b"verified", True), (b"corrupted", False)):
+            with tempfile.TemporaryDirectory() as temporary:
+                target = Path(temporary) / "asset.zip"
+                target.write_bytes(b"previous")
+                responses = [DownloadHttpError(url, 504, 4), io.BytesIO(json.dumps(metadata).encode()), io.BytesIO(content)]
+                with patch("common.open_download", side_effect=responses) as network, redirect_stdout(io.StringIO()):
+                    if success:
+                        self.assertEqual(download(url, target, expected), target)
+                        self.assertEqual(target.read_bytes(), content)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "Checksum mismatch"):
+                            download(url, target, expected)
+                        self.assertEqual(target.read_bytes(), b"previous")
+                self.assertEqual(network.call_args.args, (endpoint,))
+                self.assertEqual(network.call_args.kwargs["headers"], {"Accept": "application/octet-stream"})
+                self.assertFalse(target.with_name("asset.zip.download").exists())
+
+    def test_github_fallback_rejects_an_untrusted_api_endpoint(self):
+        url = "https://github.com/owner/repository/releases/download/v1/asset.zip"
+        metadata = {"assets": [{"name": "asset.zip", "browser_download_url": url,
+                                "url": "https://untrusted.invalid/archive.zip"}]}
+        with patch("common.open_download", return_value=io.BytesIO(json.dumps(metadata).encode())):
+            with self.assertRaisesRegex(RuntimeError, "untrusted"):
+                github_asset_url(url)
+        self.assertIsNone(github_asset_url("https://example.invalid/file.zip"))
 
     def test_flag_palette_and_neutral_pixels(self):
         palette = [(255, 0, 0), (0, 0, 255)]
