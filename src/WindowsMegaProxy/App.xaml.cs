@@ -10,10 +10,43 @@ public partial class App : Application
 {
     private Mutex? instance;
     private IDisposable? runtime;
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         SetCurrentProcessExplicitAppUserModelID(AppIdentity.Name);
+        if (e.Args.Length == 2 && e.Args[0] == "--resolve-channel-conflict")
+        {
+            try
+            {
+                Ui.SetLanguage("en");
+                if (e.Args[1] is not ("stop-other" or "exit-current")) throw new ArgumentException("Invalid channel switch command.");
+                await ChannelControl.ResolveAsync(e.Args[1] == "stop-other");
+                Shutdown();
+            }
+            catch (Exception error)
+            {
+                var native = error as System.ComponentModel.Win32Exception ?? error.InnerException as System.ComponentModel.Win32Exception;
+                string detail = native is null ? error.Message : $"Windows error {native.NativeErrorCode}.";
+                try { new DiagnosticLog(System.IO.Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100).Write($"Channel switch {e.Args[1]} failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {detail}"); }
+                catch (System.IO.IOException) { }
+                catch (UnauthorizedAccessException) { }
+                Shutdown(1);
+            }
+            return;
+        }
+        bool alreadyRunning;
+        try
+        {
+            alreadyRunning = Mutex.TryOpenExisting(AppIdentity.MutexName, out var existing);
+            existing?.Dispose();
+        }
+        catch (UnauthorizedAccessException) { alreadyRunning = true; }
+        if (alreadyRunning)
+        {
+            if (!Array.Exists(e.Args, argument => argument == "--tray")) ChannelControl.ActivateExisting();
+            Shutdown();
+            return;
+        }
         bool standalone;
         try { standalone = StartupConfiguration.Mode != "service"; }
         catch (Exception error)
@@ -39,7 +72,7 @@ public partial class App : Application
         instance = new Mutex(true, AppIdentity.MutexName, out bool created);
         if (!created)
         {
-            MessageBox.Show(Ui.T("MegaProxy is already running. Open it from the system tray."), "MegaProxy");
+            if (!Array.Exists(e.Args, argument => argument == "--tray")) ChannelControl.ActivateExisting();
             Shutdown();
             return;
         }

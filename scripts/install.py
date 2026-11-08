@@ -134,8 +134,6 @@ def install_main():
     if options.dev:
         import build
         from run import stop_workspace_app
-        from service_control import require_production_stopped
-        require_production_stopped()
         stop_workspace_app(dev=True, workspace_only=False)
         build.main(dev=True)
     name = app_name(options.dev)

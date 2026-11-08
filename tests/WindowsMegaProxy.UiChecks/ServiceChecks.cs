@@ -93,6 +93,10 @@ internal static class ServiceChecks
         }
         Assert(!serialized.Contains("do-not-disclose") && visible.Settings?.Profiles.Count == 1, "Read-only views preserve profile names but omit all secrets.");
         var started = await broker.HandleAsync(admin, new("start", InstanceId: broker.InstanceId), default);
+        int starts = fake.Starts;
+        var repeatedStart = await broker.HandleAsync(admin, new("start", InstanceId: broker.InstanceId), default);
+        Assert(fake.Starts == starts && repeatedStart.Status!.Generation == started.Status!.Generation,
+            "Repeated service start keeps the existing connection and its generation.");
         visible = await broker.HandleAsync(reader, new("status"), default);
         Assert(visible.Status?.Running == true && visible.Status.AppliedSignature is null && visible.Probe is null,
             "Read-only status cannot leak configuration signatures or diagnostic credentials.");

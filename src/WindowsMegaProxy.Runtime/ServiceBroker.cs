@@ -127,7 +127,13 @@ public sealed class ServiceBroker : IAsyncDisposable
                             }
                             await engine.StartAsync(PortableConfiguration.Copy(settings), request.TestOnly, token).ConfigureAwait(false);
                         }
-                        catch (Exception error) { log.Write("Service connection start failed (" + error.GetType().Name + ")."); await StopAsync().ConfigureAwait(false); throw; }
+                        catch (Exception error)
+                        {
+                            string detail = error is System.ComponentModel.Win32Exception windowsError ? $"Windows error {windowsError.NativeErrorCode}." : error.Message;
+                            log.Write($"Service connection start failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {detail}");
+                            await StopAsync().ConfigureAwait(false);
+                            throw;
+                        }
                         if (request.TestOnly)
                         {
                             lease = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

@@ -15,6 +15,7 @@ internal static class ControllerChecks
         var controller = new ConnectionController(() => { created++; return slow; });
         var connecting = controller.ConnectAsync(settings);
         await started.Task;
+        Assert(ReferenceEquals(connecting, controller.ConnectAsync(settings)), "Repeated connect requests share the pending startup instead of creating another connection.");
         bool tested = await controller.RunDiagnosticsAsync(settings, (_, _) => throw new Exception("Diagnostics overlapped startup."));
         Assert(!tested && created == 1 && controller.State == ConnectionState.Connecting, "Opening diagnostics during startup cannot create a second engine.");
         await controller.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(5));
@@ -40,6 +41,8 @@ internal static class ControllerChecks
         var live = new TestEngine();
         var connected = new ConnectionController(() => live);
         await connected.ConnectAsync(settings);
+        await connected.ConnectAsync(settings);
+        Assert(live.Starts == 1 && live.Stops == 0, "Connecting an already connected host is an idempotent target-state request.");
         int unexpected = 0;
         connected.UnexpectedExit += () => unexpected++;
         Assert(await connected.RunDiagnosticsAsync(settings, (engine, _) =>
@@ -52,5 +55,13 @@ internal static class ControllerChecks
         Assert(unexpected == 1, "An unexpected core exit is surfaced once.");
         await connected.DisconnectAsync();
         Assert(live.Disposed && connected.State == ConnectionState.Disconnected, "A crashed core is cleaned up through the same lifecycle.");
+
+        var shared = new TestEngine { Persistent = true };
+        var attached = new ConnectionController(() => throw new Exception("An attached service does not need another engine."));
+        attached.Attach(shared);
+        await attached.ConnectAsync(settings);
+        Assert(shared.Starts == 1 && shared.Stops == 0, "A stale service view is reconciled by starting idempotently, without stopping the existing shared connection.");
+        await attached.ShutdownAsync();
+        Assert(shared.Stops == 0, "Closing a service client preserves its shared connection.");
     }
 }

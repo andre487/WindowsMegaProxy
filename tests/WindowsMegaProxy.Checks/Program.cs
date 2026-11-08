@@ -15,6 +15,20 @@ static void Reject(Action action)
 
 Assert(ProfileAppearance.Colors.Count == 12 && ProfileAppearance.Countries.Count >= 250, "Bundle the palette and country catalog.");
 TransferChecks.Run();
+var defaultTun = TunAddresses.Select([], false);
+var devTun = TunAddresses.Select([], true);
+Assert(defaultTun.Ipv4 != devTun.Ipv4 && defaultTun.Ipv6 != devTun.Ipv6, "DEV and production prefer separate IPv4 and IPv6 TUN subnets.");
+var occupiedTun = new[] { TunAddresses.Network(System.Net.IPAddress.Parse("172.29.0.1"), 30),
+    TunAddresses.Network(System.Net.IPAddress.Parse("fd87:6d65:6761::1"), 126) };
+var alternateTun = TunAddresses.Select(occupiedTun, false);
+Assert(alternateTun != defaultTun && alternateTun.Ipv4 == "172.29.1.1/30" && alternateTun.Ipv6 == "fd87:6d65:6761:1::1/126",
+    "A leftover legacy DEV adapter cannot reserve production's TUN addresses.");
+var vpnNetwork = TunAddresses.Network(System.Net.IPAddress.Parse("172.29.8.1"), 16);
+Assert(TunAddresses.Select([vpnNetwork], false).Ipv4 == "172.30.0.1/30", "Avoid overlapping VPN subnets, not just duplicate host addresses.");
+bool noSubnet = false;
+try { TunAddresses.Select([System.Net.IPNetwork.Parse("0.0.0.0/0")], false); }
+catch (IOException) { noSubnet = true; }
+Assert(noSubnet, "Exhausted TUN address pools produce an actionable error.");
 Assert(ProfileAppearance.CountryName("DE", "fallback", System.Globalization.CultureInfo.GetCultureInfo("ru-RU")) == "Германия", "Country names follow the app language.");
 Assert(ProfileAppearance.CountryName("DE", "fallback", System.Globalization.CultureInfo.GetCultureInfo("en-US")) == "Germany", "Country localization uses the requested language.");
 Assert(ProfileAppearance.Country("DE").FlagUri!.EndsWith("/DE.png"), "Country codes resolve to embedded flags.");
