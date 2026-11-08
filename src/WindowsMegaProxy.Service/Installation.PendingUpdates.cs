@@ -68,7 +68,7 @@ public static partial class Installation
         task.Settings.AllowDemandStart = !boot; task.Settings.StartWhenAvailable = false;
         task.Settings.DisallowStartIfOnBatteries = false; task.Settings.StopIfGoingOnBatteries = false;
         task.Settings.MultipleInstances = 2;
-        if (boot) task.Triggers.Create(8);
+        if (boot) { dynamic trigger = task.Triggers.Create(8); trigger.Enabled = true; }
         dynamic action = task.Actions.Create(0);
         action.Path = WorkerPath(root); action.Arguments = "--run-staged-update";
         action.WorkingDirectory = Path.GetDirectoryName(WorkerPath(root));

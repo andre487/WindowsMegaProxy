@@ -26,7 +26,7 @@ public partial class MainWindow
         changingUpdatePreference = false;
         AutomaticUpdatesBox.IsEnabled = canEdit && !quitting && !settingsLoading;
         InstalledVersionText.Text = Ui.F("Installed version: {0}", AppUpdateTrust.CurrentVersion.ToString(3));
-        string status = installingAppUpdate ? "Installing update…" : appUpdates?.StatusKey ?? "Update files are unavailable.";
+        string status = installingAppUpdate ? "Preparing update…" : appUpdates?.StatusKey ?? "Update files are unavailable.";
         if (!installingAppUpdate && scheduledAppUpdate is { } pending)
             status = pending.When is "now" or "applying" ? "Installing update…" : pending.When == "launch" ? "Update scheduled for the next application start." : "Update scheduled for the next computer restart.";
         UpdateStatusText.Text = Ui.T(status);

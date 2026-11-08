@@ -36,11 +36,12 @@ def check(setup, logs, destination, data):
         raise RuntimeError("Deferred update fixtures require an elevated disposable GitHub runner.")
     if destination != known_folder(0x26) / "WindowsMegaProxy" or data != known_folder(0x23) / "WindowsMegaProxy":
         raise RuntimeError("Unexpected fixture installation paths.")
-    if service_state("WindowsMegaProxy") is not None or destination.exists():
-        raise RuntimeError("Deferred fixtures require the preceding installer tests to finish uninstalling.")
+    wait_until(lambda: service_state("WindowsMegaProxy") is None and not destination.exists(),
+               "Deferred fixtures require the preceding installer tests to finish uninstalling.", 15)
     if (data / "preservation-check.txt").read_text() != "preserved":
         raise RuntimeError("Deferred fixtures require installer_smoke's own preserved test data.")
     fixture = ROOT / ".tools/deferred-update-fixture"
+    started = time.time()
     fixture.mkdir(parents=True, exist_ok=True)
     source = fixture / "source"
     shutil.copytree(ROOT / "src", source / "src", ignore=shutil.ignore_patterns("bin", "obj"), dirs_exist_ok=True)
@@ -172,6 +173,20 @@ def check(setup, logs, destination, data):
         assert "sing-box.exe" not in running_images()
         print("Deferred next-start installation, SYSTEM boot installation, scheduling isolation and damaged-package service recovery passed; no reboot or TUN.")
     finally:
+        for label, directory in (("machine", data / "logs"), ("client", known_folder(0x1c) / "WindowsMegaProxy/logs"),
+                                 ("personal", known_folder(0x1c) / "WindowsMegaProxy/Personal/logs")):
+            for log in directory.glob("*.log"):
+                try:
+                    shutil.copy2(log, logs / f"deferred-{label}-{log.name}")
+                except OSError:
+                    pass
+        for label, directory in (("system", Path(os.environ["SystemRoot"]) / "Temp"), ("user", known_folder(0x1c) / "Temp")):
+            for log in directory.glob("Setup Log*.txt"):
+                if log.stat().st_mtime >= started:
+                    try:
+                        shutil.copy2(log, logs / f"deferred-{label}-{log.stem}.log")
+                    except OSError:
+                        pass
         stop_workspace_app(dev=False, workspace_only=False)
         sp.run(["schtasks.exe", "/Delete", "/TN", simulation, "/F"], check=False, capture_output=True)
         if (personal_home / "unins000.exe").is_file():

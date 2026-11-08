@@ -8,6 +8,8 @@
     "Update scheduled for the next application start.": "Обновление запланировано на следующий запуск приложения.",
     "Update scheduled for the next computer restart.": "Обновление запланировано на следующую перезагрузку компьютера.",
     "Change update timing": "Изменить время обновления",
+    "Preparing update…": "Подготовка обновления…",
+    "Could not prepare the application update. See the application log for details.": "Не удалось подготовить обновление приложения. Подробности записаны в журнал приложения.",
     "Another MegaProxy version is running": "Уже запущена другая версия MegaProxy",
     "{0} is already running. Choose which version should remain active.": "{0} уже работает. Выберите, какая версия должна остаться активной.",
     "Stop {0}": "Остановить {0}",
