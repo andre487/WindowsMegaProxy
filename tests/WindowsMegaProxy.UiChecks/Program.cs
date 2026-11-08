@@ -21,6 +21,8 @@ internal static partial class Program
     private static void Main(string[] args)
     {
         if (args.Contains("--documentation-screenshots")) { CaptureDocumentation(); return; }
+        if (args.Length == 2 && args[0] == "--published-update-check") { PublishedUpdateChecks.Run(args[1]); return; }
+        if (args.Length == 2 && args[0] == "--update-preservation-check") { PublishedUpdateChecks.Settings(args[1]); return; }
         InstallationChecks.Run();
         if (args.Length == 2 && args[0] == "--user-settings-check")
         {
@@ -193,13 +195,27 @@ internal static partial class Program
                     applySettings.Invoke(window, [pendingSettings]);
                     Layout(window);
                     string summary = ((TextBlock)window.FindName("ProfileSummary")).Text;
-                    Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && summary.Contains("HTTP/3") && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
+                    var transport = (TextBlock)window.FindName("TransportText");
+                    var trayIcon = (System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+                    Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && transport.Text == "HTTP/3 · QUIC" && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
+                    Assert(trayIcon.Text.Contains("Running H3 profile") && trayIcon.Text.Contains("HTTP/3") && !trayIcon.Text.Contains("SSH KZ") && !trayIcon.Text.Contains("TLS"), "Tray details use the applied profile and omit unavailable TLS negotiation data.");
+                    fakeEngine.AppliedSettings!.ActiveProfile!.Data["name"] = new string('x', 200) + "😀";
+                    updateSummary.Invoke(window, null);
+                    Assert(trayIcon.Text.Length <= 127 && trayIcon.Text.EndsWith("HTTP/3 · QUIC") && trayIcon.Text.Contains("…"), "Long profile names fit the native tray tooltip without losing protocol details.");
+                    fakeEngine.AppliedSettings.ActiveProfile.Proxy["type"] = "HTTPS";
+                    fakeEngine.Http3Selected = false; fakeEngine.UsedHttp3Fallback = true;
+                    updateSummary.Invoke(window, null);
+                    Assert(transport.Text == "HTTP/1.1" && trayIcon.Text.EndsWith("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/3"), "HTTP/3 fallback reports the actual HTTP/1.1 transport in the window and tray.");
                     Assert(((Button)window.FindName("ConnectButton")).IsEnabled && ((Button)window.FindName("ReconnectButton")).IsEnabled, "Accept-new enables SSH reconnect without a manually pasted server key.");
                     fakeEngine.AppliedSettings = pendingSettings;
                     fakeEngine.Http3Selected = false;
+                    fakeEngine.UsedHttp3Fallback = false;
                     updateSummary.Invoke(window, null);
                     Assert(((TextBlock)window.FindName("ProfileSummary")).Text.Contains("SSH KZ") && !((TextBlock)window.FindName("ProfileSummary")).Text.Contains("HTTP/3"), "After reconnect the summary switches to the applied SSH profile and drops H3.");
+                    Assert(transport.Text == "SSH" && trayIcon.Text.Contains("SSH KZ") && trayIcon.Text.EndsWith("SSH"), "SSH updates the window and tray without stale H3 details.");
                     Wait(window, testConnection.DisconnectAsync());
+                    updateSummary.Invoke(window, null);
+                    Assert(transport.Visibility == Visibility.Collapsed && !trayIcon.Text.Contains("SSH KZ"), "Disconnect clears active transport and profile details.");
                     string key = "ssh-ed25519 " + Convert.ToBase64String(Convert.FromHexString("0000000B7373682D6564323535313900000020" + new string('0', 64)));
                     var update = new SshHostKeyUpdate(pendingSsh.Id, pendingSsh.Name, pendingSsh.Host, pendingSsh.Port, "", SshConfiguration.Fingerprint(key), key);
                     Wait(window, (Task)typeof(MainWindow).GetMethod("SaveSshHostKey", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [update])!);
