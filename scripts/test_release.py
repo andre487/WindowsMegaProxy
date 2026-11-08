@@ -173,6 +173,28 @@ class VirusTotalTests(unittest.TestCase):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class ReleaseRetryTests(unittest.TestCase):
+    def test_new_draft_visibility_is_retried_with_exponential_backoff(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "build"
+            fixture(directory)
+            notes = Path(temporary) / "notes.md"
+            notes.write_text("Release notes")
+            with patch.object(release, "release_state", side_effect=[None, None, None, {"draft": True}]), patch.object(release, "gh") as gh, patch.object(release.time, "sleep") as sleep:
+                release.publish(directory, REPO, TAG, COMMIT, notes)
+            self.assertEqual([call.args[0] for call in sleep.call_args_list], [2, 4, 8])
+            self.assertTrue(any(call.args[:2] == ("release", "upload") for call in gh.call_args_list))
+
+    def test_invisible_or_published_draft_never_allows_upload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "build"
+            fixture(directory)
+            notes = Path(temporary) / "notes.md"
+            notes.write_text("Release notes")
+            for states in ([None] * 6, [None, {"draft": False}]):
+                with patch.object(release, "release_state", side_effect=states), patch.object(release, "gh") as gh, patch.object(release.time, "sleep"), self.assertRaisesRegex(RuntimeError, "refusing asset replacement"):
+                    release.publish(directory, REPO, TAG, COMMIT, notes)
+                self.assertFalse(any(call.args[:2] == ("release", "upload") for call in gh.call_args_list))
+
     def test_publication_neither_requires_nor_uploads_antivirus_reports(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / "build"
@@ -219,12 +241,25 @@ class ReleaseRetryTests(unittest.TestCase):
 
     def test_only_a_real_404_is_treated_as_a_missing_release(self):
         for error, missing in (("gh: Not Found (HTTP 404)", True), ("gh: Forbidden (HTTP 403)", False), ("network unavailable", False)):
-            with patch.object(release.sp, "run", return_value=Mock(returncode=1, stderr=error)):
+            with patch.object(release.sp, "run", return_value=Mock(returncode=1, stderr=error)), patch.object(release, "gh", return_value="[[]]") as gh:
                 if missing:
                     self.assertIsNone(release.release_state(REPO, TAG))
+                    gh.assert_called_once()
                 else:
                     with self.assertRaises(RuntimeError):
                         release.release_state(REPO, TAG)
+                    gh.assert_not_called()
+
+    def test_draft_lookup_uses_all_authenticated_release_pages(self):
+        draft = {"draft": True, "tag_name": TAG, "assets": []}
+        pages = [[{"draft": False, "tag_name": "v0.0.0"}], [draft]]
+        with patch.object(release.sp, "run", return_value=Mock(returncode=1, stderr="gh: Not Found (HTTP 404)")), patch.object(release, "gh", return_value=json.dumps(pages)) as gh:
+            self.assertEqual(release.release_state(REPO, TAG), draft)
+            gh.assert_called_once_with("api", "--paginate", "--slurp", f"repos/{REPO}/releases?per_page=100")
+
+        for invalid in ([draft, draft], [{"draft": "true", "tag_name": TAG}]):
+            with patch.object(release.sp, "run", return_value=Mock(returncode=1, stderr="gh: Not Found (HTTP 404)")), patch.object(release, "gh", return_value=json.dumps([invalid])), self.assertRaises(RuntimeError):
+                release.release_state(REPO, TAG)
 
     def test_published_retry_only_updates_notes_without_upload_or_delete(self):
         with tempfile.TemporaryDirectory() as temporary:

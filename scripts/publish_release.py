@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess as sp
 import tempfile
+import time
 from pathlib import Path
 
 from cryptography import x509
@@ -38,10 +39,18 @@ def gh(*args):
 def release_state(repo, tag):
     result = sp.run(["gh", "api", f"repos/{repo}/releases/tags/{tag}"], capture_output=True, text=True, encoding="utf-8")
     if result.returncode:
-        if "(HTTP 404)" in result.stderr:
+        if "(HTTP 404)" not in result.stderr:
+            raise RuntimeError("Cannot query the GitHub release; no assets were changed")
+        # GitHub's tag endpoint omits drafts; the authenticated release list includes them.
+        pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/releases?per_page=100"))
+        matches = [item for page in pages for item in page if item.get("tag_name") == tag]
+        if not matches:
             return None
-        raise RuntimeError("Cannot query the GitHub release; no assets were changed")
-    state = json.loads(result.stdout)
+        if len(matches) != 1:
+            raise RuntimeError("Ambiguous GitHub release state; no assets were changed")
+        state = matches[0]
+    else:
+        state = json.loads(result.stdout)
     if type(state.get("draft")) is not bool or state.get("tag_name") != tag:
         raise RuntimeError("Invalid GitHub release state")
     return state
@@ -172,7 +181,11 @@ def publish(directory, repo, tag, commit, notes_path):
             gh("release", "create", tag, "--repo", repo, "--verify-tag", "--draft", "--title", tag, "--notes-file", str(notes))
         if state is None or state["draft"]:
             # Only unpublished drafts may replace files after an interrupted upload/build.
-            current = release_state(repo, tag)
+            for delay in (2, 4, 8, 16, 30):
+                time.sleep(delay)
+                current = release_state(repo, tag)
+                if current is not None:
+                    break
             if current is None or not current["draft"]:
                 raise RuntimeError("Release is no longer a draft; refusing asset replacement")
             gh("release", "upload", tag, *[str(directory / name) for name in sorted(names)], "--repo", repo, "--clobber")
