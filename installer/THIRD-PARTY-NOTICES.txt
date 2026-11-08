@@ -28,7 +28,7 @@ The Wintun binary distribution license is included in licenses/Wintun-LICENSE.tx
 Windows OpenSSH Client is an optional Windows capability, not bundled.
 Their respective installers and operating-system license terms apply.
 
-WiX Toolset 7.0.0: Burn, standard bootstrapper and modified standard theme.
+WiX Toolset 7.0.0: Burn, managed bootstrapper API and modified localization resources.
 Copyright (c) .NET Foundation and contributors.
 Source: https://github.com/wixtoolset/wix/tree/v7.0.0
 License: licenses/WiX-LICENSE.txt (Microsoft Reciprocal License).

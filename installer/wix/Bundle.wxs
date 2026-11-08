@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix
     xmlns="http://wixtoolset.org/schemas/v4/wxs"
-    xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
     xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx">
     <Bundle
         Name="MegaProxy"
@@ -10,28 +9,18 @@
         UpgradeCode="AE632890-306E-471C-A39D-8B97ED0B6583"
         IconSourceFile="$(var.RepositoryRoot)\src\WindowsMegaProxy\Assets\app.ico"
         AboutUrl="https://github.com/andre487/WindowsMegaProxy">
-        <BootstrapperApplication>
-            <bal:WixStandardBootstrapperApplication
-                LicenseUrl="https://github.com/andre487/WindowsMegaProxy/blob/main/LICENSE"
-                Theme="hyperlinkLargeLicense"
-                ThemeFile="$(var.RepositoryRoot)\installer\wix\Theme.xml"
-                LocalizationFile="$(var.RepositoryRoot)\installer\wix\Strings.en-US.wxl"
-                LogoFile="$(var.RepositoryRoot)\src\WindowsMegaProxy\Assets\toolbar.png"
-                ShowVersion="yes" />
-            <Payload
-                Name="1049\thm.wxl"
-                SourceFile="$(var.RepositoryRoot)\installer\wix\Strings.ru-RU.wxl" />
+        <BootstrapperApplication SourceFile="$(var.UIDirectory)\WindowsMegaProxy.SetupUI.exe">
+            <Payload SourceFile="$(var.UIDirectory)\WindowsMegaProxy.SetupUI.exe.config" />
+            <Payload SourceFile="$(var.UIDirectory)\WixToolset.BootstrapperApplicationApi.dll" />
+            <Payload SourceFile="$(var.UIDirectory)\mbanative.dll" />
         </BootstrapperApplication>
-        <Variable Name="Mode" Type="string" Value="preserve" bal:Overridable="yes" />
-        <Variable Name="AutomaticUpdates" Type="string" Value="preserve" bal:Overridable="yes" />
-        <Variable Name="InstallSSH" Type="numeric" Value="1" bal:Overridable="yes" />
-        <Variable Name="DesktopShortcut" Type="numeric" Value="0" bal:Overridable="yes" />
-        <Variable Name="LaunchAfterSetup" Type="numeric" Value="0" bal:Overridable="yes" />
+        <Variable Name="Mode" Type="string" Value="preserve" />
+        <Variable Name="AutomaticUpdates" Type="string" Value="preserve" />
+        <Variable Name="InstallSSH" Type="numeric" Value="1" />
+        <Variable Name="DesktopShortcut" Type="numeric" Value="0" />
+        <Variable Name="LaunchAfterSetup" Type="numeric" Value="0" />
         <Variable Name="OwnerProfile" Type="formatted" Value="[LocalAppDataFolder]." />
         <netfx:DotNetCoreSearch Variable="DesktopRuntime" RuntimeType="desktop" Platform="x64" MajorVersion="10" />
-        <bal:Condition
-            Message="MegaProxy requires Windows 10 version 1809 or later (x64)."
-            Condition="VersionNT64 AND WindowsBuildNumber &gt;= 17763" />
         <Chain>
             <ExePackage
                 Id="DesktopRuntimePackage"

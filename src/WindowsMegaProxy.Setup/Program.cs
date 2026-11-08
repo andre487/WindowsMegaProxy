@@ -89,7 +89,8 @@ internal static class Program
         using var previousKey = Hive.OpenSubKey(KeyPath);
         string? oldHelper = previousKey?.GetValue("HelperPath") as string;
         if (oldHelper is not null) ValidateHelper(oldHelper);
-        string oldMode = previousKey?.GetValue("Mode") as string ?? "manual";
+        using var previousService = Personal ? null : Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\WindowsMegaProxy");
+        string oldMode = previousKey?.GetValue("Mode") as string ?? (previousService is null ? "manual" : "service");
         if (mode == "preserve") mode = oldMode;
         ValidateMode(mode, Personal);
         // Complete all downloads and extraction before closing clients or changing the active service.
@@ -242,8 +243,8 @@ internal static class Program
         RemoveShortcuts();
         if (Personal) Unelevated(() =>
         {
-            string launcher = Path.Combine(LauncherDirectory, "WindowsMegaProxy.Launcher.exe");
-            File.Delete(launcher);
+            foreach (string name in new[] { "WindowsMegaProxy.Launcher.exe", "WindowsMegaProxy.Launcher.dll", "WindowsMegaProxy.Launcher.deps.json", "WindowsMegaProxy.Launcher.runtimeconfig.json" })
+                File.Delete(Path.Combine(LauncherDirectory, name));
             if (Directory.Exists(LauncherDirectory) && !Directory.EnumerateFileSystemEntries(LauncherDirectory).Any()) Directory.Delete(LauncherDirectory);
         });
         if (Personal) Hive.DeleteSubKeyTree(KeyPath, false);

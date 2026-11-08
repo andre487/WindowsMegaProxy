@@ -22,10 +22,10 @@ from package import archive, checksums, merge, signed_manifest, version
 
 
 class PackageTests(unittest.TestCase):
-    def test_installer_translations_cover_the_theme_in_both_languages(self):
+    def test_installer_translations_cover_the_interface_in_both_languages(self):
         namespace = {"w": "http://wixtoolset.org/schemas/v4/wxl"}
-        theme = (package.ROOT / "installer/wix/Theme.xml").read_text(encoding="utf-8")
-        required = set(re.findall(r"#\(loc\.([A-Za-z0-9]+)\)", theme))
+        source = (package.ROOT / "src/WindowsMegaProxy.SetupUI/Program.cs").read_text(encoding="utf-8")
+        required = set(re.findall(r'\bT\("([A-Za-z0-9]+)"\)', source))
         catalogs = []
         for language in ("en-US", "ru-RU"):
             path = package.ROOT / f"installer/wix/Strings.{language}.wxl"

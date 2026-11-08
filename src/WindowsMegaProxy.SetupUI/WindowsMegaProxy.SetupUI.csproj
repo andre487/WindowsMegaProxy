@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net462</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <AcceptEula>wix7</AcceptEula>
+        <OutputType>WinExe</OutputType>
+        <UseWindowsForms>true</UseWindowsForms>
+        <PlatformTarget>x86</PlatformTarget>
+        <ApplicationIcon>../WindowsMegaProxy/Assets/app.ico</ApplicationIcon>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net462" Version="1.0.3" PrivateAssets="all" />
+        <PackageReference Include="WixToolset.BootstrapperApplicationApi" Version="7.0.0" />
+        <EmbeddedResource Include="../../installer/wix/Strings.en-US.wxl" LogicalName="en.wxl" WithCulture="false" />
+        <EmbeddedResource Include="../../installer/wix/Strings.ru-RU.wxl" LogicalName="ru.wxl" WithCulture="false" />
+    </ItemGroup>
+</Project>

@@ -15,6 +15,39 @@ from install import known_folder
 from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state
 
+LEGACY_UNINSTALL = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{1D673B75-6671-42B4-97AC-99A85041D6C3}_is1"
+
+
+def legacy_registration(hive, destination=None):
+    if destination is not None:
+        with winreg.CreateKeyEx(hive, LEGACY_UNINSTALL, access=winreg.KEY_WRITE | winreg.KEY_WOW64_64KEY) as key:
+            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(destination) + "\\")
+            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "Legacy MegaProxy migration fixture")
+    try:
+        with winreg.OpenKey(hive, LEGACY_UNINSTALL, access=winreg.KEY_READ | winreg.KEY_WOW64_64KEY):
+            return True
+    except FileNotFoundError:
+        return False
+
+
+def registered_bundles(hive):
+    count = 0
+    try:
+        root = winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", access=winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+    except FileNotFoundError:
+        return 0
+    with root:
+        for index in range(winreg.QueryInfoKey(root)[0]):
+            with winreg.OpenKey(root, winreg.EnumKey(root, index)) as key:
+                try:
+                    name = winreg.QueryValueEx(key, "DisplayName")[0]
+                    codes = winreg.QueryValueEx(key, "BundleUpgradeCode")[0]
+                except FileNotFoundError:
+                    continue
+                if name == "MegaProxy" and "{AE632890-306E-471C-A39D-8B97ED0B6583}" in str(codes).upper():
+                    count += 1
+    return count
+
 
 def check_downloaded_cores(version_directory):
     manifest = json.loads((ROOT / "artifacts/release-preview/update-manifest.json").read_text(encoding="utf-8"))
@@ -51,14 +84,18 @@ def main():
 
     previous = None
     for attempt, mode in enumerate(("manual", "login", "service", "service", "manual"), 1):
-        arguments = [str(setups[0]), "/install" if attempt == 1 else "/repair", "/quiet", "/norestart", "/permachine", "InstallSSH=0", "AutomaticUpdates=false", "/log", str(logs / f"install-{attempt}.log")]
-        if attempt != 1:
+        arguments = [str(setups[0]), "/install" if attempt == 1 else "/repair", "/quiet", "/norestart", "/permachine", "InstallSSH=0", "/log", str(logs / f"install-{attempt}.log")]
+        if attempt == 1:
+            arguments.append("AutomaticUpdates=false")
+        if attempt not in (1, 4):
             arguments.append("Mode=" + mode)
         sp.run(arguments, check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             current = winreg.QueryValueEx(key, "HelperPath")[0]
         check_downloaded_cores(Path(current).parent)
+        assert registered_bundles(winreg.HKEY_LOCAL_MACHINE) == 1, "System installation must register exactly one uninstall entry for all users."
+        assert not legacy_registration(winreg.HKEY_LOCAL_MACHINE), "Successful installation must retire the legacy Inno registration."
         assert service_state("WindowsMegaProxy") == (4 if mode == "service" else None), "Only service mode may register a service."
         if mode == "service":
             assert service_path().strip('"') == current
@@ -78,6 +115,7 @@ def main():
             assert (data / "preservation-check.txt").read_text() == "preserved", "Upgrade must preserve global data."
         else:
             (data / "preservation-check.txt").write_text("preserved")
+            legacy_registration(winreg.HKEY_LOCAL_MACHINE, destination)
         dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--no-build", "--", "--installed-settings-check", "seed" if attempt == 1 else "verify")
         assert "sing-box.exe" not in running_images(), "An unconfigured installation must not activate TUN."
         assert service_state("WindowsMegaProxy.Dev") is None, "Installer must not register DEV."
@@ -87,21 +125,27 @@ def main():
             first_entry = original.index("(")
             denied = original[:first_entry] + "(D;;WP;;;BA)" + original[first_entry:]
             sp.run(["sc.exe", "sdset", "WindowsMegaProxy", denied], check=True, capture_output=True)
+            legacy_registration(winreg.HKEY_LOCAL_MACHINE, destination)
             try:
                 failure = sp.run([str(setups[0]), "/repair", "/quiet", "/norestart", "/permachine", "InstallSSH=0", "Mode=manual", "/log", str(logs / "mode-change-failed.log")], timeout=120)
                 assert failure.returncode != 0, "A failed mode configuration must fail the installer."
                 assert service_state("WindowsMegaProxy") == 4, "A denied mode change must preserve the running service."
+                assert legacy_registration(winreg.HKEY_LOCAL_MACHINE), "A failed installation must retain the previous uninstall registration."
                 with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
                     assert winreg.QueryValueEx(key, "Mode")[0] == "service", "A failed mode change must preserve the previous mode."
             finally:
                 sp.run(["sc.exe", "sdset", "WindowsMegaProxy", original], check=True, capture_output=True)
         previous = current
         time.sleep(1)
-    check_user_install(setups[0], logs, data)
+    rejected_scope = sp.run([str(setups[0]), "/install", "/quiet", "/norestart", "/peruser", "InstallSSH=0",
+                             "/log", str(logs / "scope-change-rejected.log")], timeout=120)
+    assert rejected_scope.returncode != 0, "Changing scope must require uninstall instead of silently modifying another installation."
     sp.run([str(setups[0]), "/uninstall", "/quiet", "/norestart", "/permachine", "/log", str(logs / "uninstall.log")], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
+    assert registered_bundles(winreg.HKEY_LOCAL_MACHINE) == 0, "System uninstall must remove its Programs and Features entry."
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
+    check_user_install(setups[0], logs, data)
 
 
 def check_user_install(setup, logs, global_data):
@@ -113,23 +157,25 @@ def check_user_install(setup, logs, global_data):
         raise RuntimeError("Refusing to alter an existing current-user installation.")
     namespace = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
     name = "WindowsMegaProxy.User." + sid
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
-        system_helper = winreg.QueryValueEx(key, "HelperPath")[0]
     previous = None
     for mode in ("manual", "login", "manual"):
-        sp.run([str(setup), "/repair" if previous else "/install", "/quiet", "/norestart", "/peruser", "InstallSSH=0", "AutomaticUpdates=false", "Mode=" + mode,
-                "/log", str(logs / f"user-{mode}.log")], check=True, timeout=600)
+        arguments = [str(setup), "/repair" if previous else "/install", "/quiet", "/norestart", "/peruser", "InstallSSH=0", "Mode=" + mode,
+                     "/log", str(logs / f"user-{mode}.log")]
+        if previous is None:
+            arguments.append("AutomaticUpdates=false")
+        sp.run(arguments, check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             helper = winreg.QueryValueEx(key, "HelperPath")[0]
         check_downloaded_cores(Path(helper).parent)
+        assert registered_bundles(winreg.HKEY_CURRENT_USER) == 1, "Personal installation must register its own per-user uninstall entry."
+        assert registered_bundles(winreg.HKEY_LOCAL_MACHINE) == 0, "Personal installation must not register for all users."
+        assert not legacy_registration(winreg.HKEY_CURRENT_USER)
         assert str(protected / "versions").casefold() in helper.casefold()
         assert (destination / "WindowsMegaProxy.Launcher.exe").is_file()
         assert not (destination / "WindowsMegaProxy.exe").exists(), "Only the unprivileged launcher belongs in the user-writable install directory."
         assert (global_data / "preservation-check.txt").read_text() == "preserved"
         assert service_state("WindowsMegaProxy") is None
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
-            assert winreg.QueryValueEx(key, "HelperPath")[0] == system_helper, "A user install must preserve the system registration."
         for task_name, login in ((name, False), (name + ".Login", True)):
             task = sp.run(["schtasks.exe", "/Query", "/TN", task_name, "/XML"], capture_output=True, text=True)
             if login and mode != "login":
@@ -144,6 +190,7 @@ def check_user_install(setup, logs, global_data):
             assert document.findtext("t:Actions/t:Exec/t:Command", namespaces=namespace) == str(Path(helper).with_name("WindowsMegaProxy.exe"))
         dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--", "--user-settings-check", "verify" if previous else "seed")
         if previous is None:
+            legacy_registration(winreg.HKEY_CURRENT_USER, destination)
             sp.run([str(destination / "WindowsMegaProxy.Launcher.exe")], check=True, timeout=30)
             for _ in range(150):
                 if "windowsmegaproxy.exe" in running_images() and workspace_windows("MegaProxy"):
@@ -167,11 +214,12 @@ def check_user_install(setup, logs, global_data):
     sp.run([str(setup), "/uninstall", "/quiet", "/norestart", "/peruser", "/log", str(logs / "user-uninstall.log")], check=True, timeout=120)
     for task_name in (name, name + ".Login"):
         assert sp.run(["schtasks.exe", "/Query", "/TN", task_name], capture_output=True).returncode != 0
+    assert not list(destination.glob("WindowsMegaProxy.Launcher.*")), "Uninstall must remove the launcher and its managed support files."
+    assert registered_bundles(winreg.HKEY_CURRENT_USER) == 0
+    assert registered_bundles(winreg.HKEY_LOCAL_MACHINE) == 0
     assert (local / "WindowsMegaProxy/Personal/settings.json").is_file(), "Personal settings must survive uninstall."
     assert not list(protected.rglob("user-installation.sid")), "Uninstall must remove markers from every installed version."
     assert (global_data / "preservation-check.txt").read_text() == "preserved"
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
-        assert winreg.QueryValueEx(key, "HelperPath")[0] == system_helper, "User uninstall must preserve the system registration."
     print("Current-user install/repair, protected highest-privilege tasks, personal DPAPI settings and uninstall passed.")
 
 

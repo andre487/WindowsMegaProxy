@@ -68,6 +68,9 @@
     <String Id="FilesInUseIgnoreButton" Value="Пропустить" />
     <String Id="FilesInUseExitButton" Value="Выход" />
     <String Id="SetupOptions" Value="Параметры установки" />
+    <String Id="ScopeLocked" Value="Чтобы изменить область установки, сначала удалите MegaProxy. Конфигурация сохраняется." />
+    <String Id="LicenseLink" Value="Лицензия" />
+    <String Id="SetupLog" Value="Журнал установки" />
     <String Id="SystemScope" Value="Все пользователи: общая конфигурация, доступен режим службы" />
     <String Id="PersonalScope" Value="Текущий пользователь: личная конфигурация, без режима службы" />
     <String Id="OperatingMode" Value="Режим работы" />

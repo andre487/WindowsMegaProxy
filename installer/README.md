@@ -35,6 +35,8 @@ page can change the mode with administrator approval and restarts the interface.
 Exiting a standalone host stops its core; service-mode clients can close while
 the shared core continues running.
 
+Only one installation scope is active at a time. To change scope, uninstall
+and install again; global and personal configuration are retained separately.
 Each installation uses a separate version directory. Existing clients close
 gracefully; the service switches to the new directory. If startup fails, its
 previous executable is restored. Global configuration, personal configuration
@@ -55,15 +57,19 @@ configuration migration.
 
 ## Installer implementation
 
-The native C++ WiX standard bootstrapper runs without .NET. Burn downloads the
-checksum-verified Desktop Runtime, installs a small dual-scope registration MSI,
+The native Burn engine hosts a small WinForms bootstrapper application on the
+.NET Framework 4.x already included in supported Windows versions. It does not
+require .NET 10 to display setup. Burn downloads the checksum-verified Desktop
+Runtime, installs a small dual-scope registration MSI,
 and starts the managed setup engine elevated. The MSI gives Burn a native choice
-of per-user or per-machine registration; the engine deploys immutable version
+of per-user or per-machine registration. The custom BA explicitly honors silent
+scope selection; the stock WiX 7 BA does not. The engine deploys immutable version
 folders and invokes the existing service helper. Core downloads and OpenSSH
 preparation finish before that helper switches the active runtime. Failed
 configuration keeps the previous runtime; Burn rollback can restore the previous
 helper and settings. Setup logs are retained under the protected installation
-root's `installer-logs` directory. User-writable launcher and shortcut operations
+root's `installer-logs` directory. Rollback snapshots are restricted to SYSTEM
+and administrators, separately from the readable runtime files. User-writable launcher and shortcut operations
 use the administrator's filtered token when UAC is enabled.
 
 Existing Inno registrations are retired only after successful configuration, while
@@ -74,7 +80,7 @@ Inno Setup.
 Build tools are downloaded into `.tools` and `artifacts/wix-cache`; Visual Studio
 is not required. The build explicitly accepts the [WiX 7 OSMF EULA](https://docs.firegiant.com/wix/osmf/)
 as authorized for this noncommercial project. Reassess the fee terms if the
-project becomes revenue-generating. WiX runtime/theme license text is included
+project becomes revenue-generating. WiX runtime/localization license text is included
 in `licenses/WiX-LICENSE.txt`.
 
 ## Release

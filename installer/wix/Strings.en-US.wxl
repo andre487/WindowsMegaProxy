@@ -68,6 +68,9 @@
     <String Id="FilesInUseIgnoreButton" Value="&amp;Ignore" />
     <String Id="FilesInUseExitButton" Value="E&amp;xit" />
     <String Id="SetupOptions" Value="Installation options" />
+    <String Id="ScopeLocked" Value="To change installation scope, uninstall MegaProxy first. Configuration is retained." />
+    <String Id="LicenseLink" Value="License" />
+    <String Id="SetupLog" Value="Setup log" />
     <String Id="SystemScope" Value="All users: shared configuration and Windows service support" />
     <String Id="PersonalScope" Value="Current user: personal configuration, no Windows service" />
     <String Id="OperatingMode" Value="Operating mode" />
