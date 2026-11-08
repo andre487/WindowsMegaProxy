@@ -66,6 +66,7 @@ public sealed class SetupApplication : BootstrapperApplication
     private SetupWindow window = null!;
     private bool installed, busy, cancel, downgrade;
     private BundleScope relatedScope;
+    private BundleScope requestedScope;
     private int exitCode;
     private readonly Dictionary<string, string> arguments = new(StringComparer.Ordinal);
     internal string Version => engine.GetVariableString("WixBundleVersion");
@@ -78,11 +79,17 @@ public sealed class SetupApplication : BootstrapperApplication
         {
             foreach (var item in command.ParseCommandLine().Variables)
             {
+                if (item.Key == "Scope")
+                {
+                    requestedScope = item.Value switch { "PerUser" => BundleScope.PerUser, "PerMachine" => BundleScope.PerMachine, _ => throw new ArgumentException("Invalid installation scope.") };
+                    continue;
+                }
                 if (item.Key is not ("Mode" or "AutomaticUpdates" or "InstallSSH" or "DesktopShortcut" or "LaunchAfterSetup"))
                     throw new ArgumentException("Unknown setup variable: " + item.Key);
                 Validate(item.Key, item.Value);
                 arguments[item.Key] = item.Value;
             }
+            if (requestedScope == BundleScope.Default) requestedScope = command.Scope;
         }
         catch (Exception error) { engine.Log(LogLevel.Error, error.ToString()); args.HResult = unchecked((int)0x80070057); }
     }
@@ -132,13 +139,13 @@ public sealed class SetupApplication : BootstrapperApplication
         {
             if (args.Status < 0) { Complete(args.Status); return; }
             BundleScope detected = installed ? (BundleScope)engine.GetVariableNumeric("WixBundleDetectedScope") : BundleScope.Default;
-            if (installed && command.Scope != BundleScope.Default && command.Scope != detected)
+            if (installed && requestedScope != BundleScope.Default && requestedScope != detected)
             {
                 engine.Log(LogLevel.Error, "Uninstall the existing scope before installing another scope. Configuration is retained.");
                 Complete(unchecked((int)0x80070666));
                 return;
             }
-            var scope = detected != BundleScope.Default ? detected : command.Scope != BundleScope.Default ? command.Scope
+            var scope = detected != BundleScope.Default ? detected : requestedScope != BundleScope.Default ? requestedScope
                 : relatedScope != BundleScope.Default ? relatedScope : BundleScope.PerMachine;
             if (scope == BundleScope.PerUser && arguments.TryGetValue("Mode", out var mode) && mode == "service")
                 throw new ArgumentException("Windows service mode is unavailable for a personal installation.");

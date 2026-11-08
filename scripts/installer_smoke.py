@@ -84,7 +84,7 @@ def main():
 
     previous = None
     for attempt, mode in enumerate(("manual", "login", "service", "service", "manual"), 1):
-        arguments = [str(setups[0]), "/install" if attempt == 1 else "/repair", "/quiet", "/norestart", "/permachine", "InstallSSH=0", "/log", str(logs / f"install-{attempt}.log")]
+        arguments = [str(setups[0]), "/install" if attempt == 1 else "/repair", "/quiet", "/norestart", "Scope=PerMachine", "InstallSSH=0", "/log", str(logs / f"install-{attempt}.log")]
         if attempt == 1:
             arguments.append("AutomaticUpdates=false")
         if attempt not in (1, 4):
@@ -127,7 +127,7 @@ def main():
             sp.run(["sc.exe", "sdset", "WindowsMegaProxy", denied], check=True, capture_output=True)
             legacy_registration(winreg.HKEY_LOCAL_MACHINE, destination)
             try:
-                failure = sp.run([str(setups[0]), "/repair", "/quiet", "/norestart", "/permachine", "InstallSSH=0", "Mode=manual", "/log", str(logs / "mode-change-failed.log")], timeout=120)
+                failure = sp.run([str(setups[0]), "/repair", "/quiet", "/norestart", "Scope=PerMachine", "InstallSSH=0", "Mode=manual", "/log", str(logs / "mode-change-failed.log")], timeout=120)
                 assert failure.returncode != 0, "A failed mode configuration must fail the installer."
                 assert service_state("WindowsMegaProxy") == 4, "A denied mode change must preserve the running service."
                 assert legacy_registration(winreg.HKEY_LOCAL_MACHINE), "A failed installation must retain the previous uninstall registration."
@@ -141,7 +141,7 @@ def main():
             shortcut.rename(backup)
             shortcut.mkdir()
             try:
-                rollback = sp.run([str(setups[0]), "/repair", "/quiet", "/norestart", "/permachine", "InstallSSH=0", "Mode=manual",
+                rollback = sp.run([str(setups[0]), "/repair", "/quiet", "/norestart", "Scope=PerMachine", "InstallSSH=0", "Mode=manual",
                                    "/log", str(logs / "post-config-rollback.log")], timeout=180)
                 assert rollback.returncode != 0, "Failure after configuration must fail setup."
                 assert service_state("WindowsMegaProxy") == 4
@@ -155,10 +155,10 @@ def main():
                 backup.rename(shortcut)
         previous = current
         time.sleep(1)
-    rejected_scope = sp.run([str(setups[0]), "/install", "/quiet", "/norestart", "/peruser", "InstallSSH=0",
+    rejected_scope = sp.run([str(setups[0]), "/install", "/quiet", "/norestart", "Scope=PerUser", "InstallSSH=0",
                              "/log", str(logs / "scope-change-rejected.log")], timeout=120)
     assert rejected_scope.returncode != 0, "Changing scope must require uninstall instead of silently modifying another installation."
-    sp.run([str(setups[0]), "/uninstall", "/quiet", "/norestart", "/permachine", "/log", str(logs / "uninstall.log")], check=True, timeout=120)
+    sp.run([str(setups[0]), "/uninstall", "/quiet", "/norestart", "Scope=PerMachine", "/log", str(logs / "uninstall.log")], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
     assert registered_bundles(winreg.HKEY_LOCAL_MACHINE) == 0, "System uninstall must remove its Programs and Features entry."
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
@@ -177,7 +177,7 @@ def check_user_install(setup, logs, global_data):
     name = "WindowsMegaProxy.User." + sid
     previous = None
     for mode in ("manual", "login", "manual"):
-        arguments = [str(setup), "/repair" if previous else "/install", "/quiet", "/norestart", "/peruser", "InstallSSH=0", "Mode=" + mode,
+        arguments = [str(setup), "/repair" if previous else "/install", "/quiet", "/norestart", "Scope=PerUser", "InstallSSH=0", "Mode=" + mode,
                      "/log", str(logs / f"user-{mode}.log")]
         if previous is None:
             arguments.append("AutomaticUpdates=false")
@@ -226,10 +226,10 @@ def check_user_install(setup, logs, global_data):
             stop_workspace_app(dev=False, workspace_only=False)
             assert "sing-box.exe" not in running_images(), "The fixture must never activate TUN."
         previous = helper
-    rejected = sp.run([str(setup), "/repair", "/quiet", "/norestart", "/peruser", "InstallSSH=0", "Mode=service",
+    rejected = sp.run([str(setup), "/repair", "/quiet", "/norestart", "Scope=PerUser", "InstallSSH=0", "Mode=service",
                        "/log", str(logs / "user-service-rejected.log")], timeout=120)
     assert rejected.returncode != 0, "A current-user install must reject service mode."
-    sp.run([str(setup), "/uninstall", "/quiet", "/norestart", "/peruser", "/log", str(logs / "user-uninstall.log")], check=True, timeout=120)
+    sp.run([str(setup), "/uninstall", "/quiet", "/norestart", "Scope=PerUser", "/log", str(logs / "user-uninstall.log")], check=True, timeout=120)
     for task_name in (name, name + ".Login"):
         assert sp.run(["schtasks.exe", "/Query", "/TN", task_name], capture_output=True).returncode != 0
     assert not list(destination.glob("WindowsMegaProxy.Launcher.*")), "Uninstall must remove the launcher and its managed support files."
