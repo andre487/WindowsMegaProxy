@@ -58,7 +58,7 @@ public static partial class Installation
             await AppUpdateTrust.VerifyInstallerAsync(target, package, CancellationToken.None);
             Settings current = personal ? new MachineSettingsStore(UserInstallation.DataDirectory, machine: false).Load() : new MachineSettingsStore().Load();
             var start = new ProcessStartInfo(target) { UseShellExecute = false };
-            foreach (string argument in new[] { "/passive", "/norestart", "WixStdBAScope=" + (personal ? "PerUser" : "PerMachine"),
+            foreach (string argument in new[] { "/passive", "/norestart", personal ? "/peruser" : "/permachine",
                 "Mode=" + StartupConfiguration.Mode, "LaunchAfterSetup=1", "AutomaticUpdates=" + AppUpdatePolicy.Enabled(current).ToString().ToLowerInvariant() }) start.ArgumentList.Add(argument);
             using var process = Process.Start(start) ?? throw new IOException("Could not start the verified update installer.");
             await process.WaitForExitAsync();

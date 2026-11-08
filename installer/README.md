@@ -22,8 +22,8 @@ tools only. Prerequisites are prepared before changing an existing service.
 
 The installer defaults to manual launch on a new installation and offers three
 operating modes: manual, elevated sign-in startup, or a Windows service. It
-preserves the chosen mode on upgrade. Silent installations use `/quiet /norestart WixStdBAScope=PerMachine` (or
-`PerUser`), with `Mode=manual`, `Mode=login` or `Mode=service`. Use `/repair`
+preserves the chosen mode on upgrade. Silent installations use `/quiet /norestart /permachine` (or
+`/peruser`), with `Mode=manual`, `Mode=login` or `Mode=service`. Use `/repair`
 for an existing installation and `/uninstall` to remove it. `InstallSSH=0`
 opts out of OpenSSH, `AutomaticUpdates=false` opts out of automatic updates,
 and `DesktopShortcut=1` creates a desktop shortcut. Mode and update preferences

@@ -98,6 +98,7 @@ internal static class Program
         string directory = Path.Combine(versions, manifest.VersionDirectory + "-" + Guid.NewGuid().ToString("N"));
         Protect(directory);
         bool switched = false;
+        bool helperStarted = false;
         try
         {
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip") ?? throw new IOException("Missing application payload."))
@@ -119,6 +120,7 @@ internal static class Program
             string helper = Path.Combine(directory, "WindowsMegaProxy.Service.exe");
             var arguments = new List<string> { Personal ? "--configure-user" : "--configure-mode", mode };
             if (updates != "preserve") arguments.AddRange(new[] { "--automatic-updates", updates });
+            helperStarted = true;
             await Require(helper, arguments.ToArray());
             switched = true;
             try
@@ -142,7 +144,13 @@ internal static class Program
             {
                 try
                 {
-                    if (Personal) await Execute(Path.Combine(LauncherDirectory, "WindowsMegaProxy.Launcher.exe"), TimeSpan.FromSeconds(30));
+                    if (Personal)
+                    {
+                        // Never execute the user-writable launcher with the installer's elevated token.
+                        dynamic scheduler = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")!)!;
+                        scheduler.Connect();
+                        scheduler.GetFolder(@"\").GetTask("WindowsMegaProxy.User." + Sid).Run(null);
+                    }
                     else Process.Start(new ProcessStartInfo(Path.Combine(directory, "WindowsMegaProxy.exe")) { UseShellExecute = true })?.Dispose();
                 }
                 catch (Exception error) { Console.Error.WriteLine("Installation succeeded; could not launch the interface: " + error.Message); }
@@ -150,7 +158,8 @@ internal static class Program
         }
         catch
         {
-            if (!switched) DeleteVersion(directory);
+            // Retain files if a helper or its own rollback failed: a service/task may still reference them.
+            if (!switched && !helperStarted) DeleteVersion(directory);
             throw;
         }
     }

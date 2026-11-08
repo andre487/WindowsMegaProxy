@@ -19,7 +19,6 @@
                 ShowVersion="yes" />
         </BootstrapperApplication>
         <Variable Name="Mode" Type="string" Value="preserve" bal:Overridable="yes" />
-        <Variable Name="WixStdBAScope" Type="string" Value="PerMachine" bal:Overridable="yes" />
         <Variable Name="AutomaticUpdates" Type="string" Value="preserve" bal:Overridable="yes" />
         <Variable Name="InstallSSH" Type="numeric" Value="1" bal:Overridable="yes" />
         <Variable Name="DesktopShortcut" Type="numeric" Value="0" bal:Overridable="yes" />
