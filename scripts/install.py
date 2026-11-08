@@ -1,10 +1,11 @@
 """Developer installation using the same protected mode helper as native setup."""
 import argparse
 import ctypes as ct
+import shutil
 import subprocess as sp
 import sys
 import tempfile
-import time
+import winreg
 from contextlib import redirect_stderr, redirect_stdout
 from ctypes import wintypes as wt
 from pathlib import Path
@@ -144,21 +145,58 @@ def install_main():
     cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
     install_openssh()
     root = known_folder(0x26) / name
-    target = root / "versions" / f"local-{time.time_ns()}"
-    for directory in (root, root / "versions", target):
-        if directory.resolve() != directory.absolute():
-            raise RuntimeError("The installation path contains a junction or symbolic link.")
-        secure_directory(directory, public=True)
-    for source in sources:
-        if any(entry.is_symlink() or entry.is_junction() for entry in source.rglob("*")):
-            raise RuntimeError("Application files cannot contain links.")
-        merge(source, target)
-    install_core(target / "dependencies/sing-box", cache)
-    install_core(target / "dependencies/sing-box-h3", cache, http3=True)
-    if options.dev:
-        for directory in ("sing-box", "sing-box-h3"):
-            (target / "dependencies" / directory / "sing-box.exe").rename(target / "dependencies" / directory / "sing-box-dev.exe")
-    run(str(target / (name + ".Service.exe")), "--configure-mode", options.mode)
+    target = root
+    if root.resolve() != root.absolute():
+        raise RuntimeError("The installation path contains a junction or symbolic link.")
+    previous_helper, previous_mode = None, "manual"
+    if root.exists():
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + name) as key:
+                previous_helper = Path(winreg.QueryValueEx(key, "HelperPath")[0])
+                previous_mode = winreg.QueryValueEx(key, "Mode")[0]
+            if not previous_helper.resolve().is_relative_to(root.resolve()) or previous_helper.name != name + ".Service.exe":
+                raise RuntimeError("The previous installation helper is outside its protected directory.")
+        except FileNotFoundError:
+            previous_helper = None
+    secure_directory(root, public=True)
+    from run import stop_workspace_app
+    from service_control import stop_service
+    with tempfile.TemporaryDirectory(prefix="megaproxy-install-", dir=root.parent) as temporary:
+        staging = Path(temporary)
+        secure_directory(staging)
+        payload, backup = staging / "payload", staging / "backup"
+        for source in sources:
+            if any(entry.is_symlink() or entry.is_junction() for entry in source.rglob("*")):
+                raise RuntimeError("Application files cannot contain links.")
+            merge(source, payload)
+        install_core(payload / "dependencies/sing-box", cache)
+        install_core(payload / "dependencies/sing-box-h3", cache, http3=True)
+        if options.dev:
+            for directory in ("sing-box", "sing-box-h3"):
+                (payload / "dependencies" / directory / "sing-box.exe").rename(payload / "dependencies" / directory / "sing-box-dev.exe")
+        stop_workspace_app(dev=options.dev, workspace_only=False)
+        stop_service(name)
+        for entry in root.iterdir():
+            if entry.name in {"versions", "update"}:
+                continue
+            if entry.is_symlink() or entry.is_junction():
+                raise RuntimeError("The installation contains a junction or symbolic link.")
+            if entry.is_dir():
+                shutil.copytree(entry, backup / entry.name)
+            else:
+                backup.mkdir(exist_ok=True)
+                shutil.copy2(entry, backup / entry.name)
+        try:
+            shutil.copytree(payload, target, dirs_exist_ok=True)
+            run(str(target / (name + ".Service.exe")), "--configure-mode", options.mode)
+        except Exception:
+            stop_service(name)
+            if backup.exists():
+                shutil.copytree(backup, target, dirs_exist_ok=True)
+            if previous_helper is not None and previous_helper.is_file():
+                run(str(previous_helper), "--configure-mode", previous_mode)
+            raise
+    run(str(target / (name + ".Service.exe")), "--cleanup-installation")
     if options.launch:
         started = sp.Popen([str(target / (name + ".exe"))], cwd=target)
         try:

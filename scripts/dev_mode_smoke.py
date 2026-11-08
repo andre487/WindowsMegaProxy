@@ -4,6 +4,7 @@ import os
 import subprocess as sp
 import time
 import winreg
+from pathlib import Path
 
 from common import ROOT, cli, dotnet
 from install import known_folder
@@ -27,7 +28,8 @@ def main():
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + NAME) as key:
                 assert winreg.QueryValueEx(key, "Mode")[0] == mode
                 helper = winreg.QueryValueEx(key, "HelperPath")[0]
-            assert str(root / "versions").casefold() in helper.casefold()
+            assert Path(helper).parent == root
+            assert not (root / "versions").exists()
             assert service_state(NAME) == (4 if mode == "service" else None)
             tasks, _ = startup_records()
             assert bool(tasks) == (mode == "login")

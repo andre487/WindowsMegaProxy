@@ -53,9 +53,9 @@ internal static class InstallationChecks
             throw new Exception("A user installation accepted an unsupported operating mode.");
         }
         string userRoot = UserInstallation.ProtectedRoot(programFiles, sid);
-        if (UserInstallation.ValidateDirectory(Path.Combine(userRoot, "versions", "test"), programFiles, sid) != userRoot)
-            throw new Exception("User runtimes must use their own protected version directory.");
-        foreach (string invalid in new[] { userRoot, userRoot + @"\versions", userRoot + @"\versions\test\child", @"C:\Users\Test\AppData\Local\MegaProxy\versions\test", userRoot + @"\versions\..\elsewhere", userRoot.Replace(sid, "S-1-5-21-100-200-300-1002") + @"\versions\test" })
+        if (UserInstallation.ValidateDirectory(userRoot, programFiles, sid) != userRoot)
+            throw new Exception("User runtimes must use their own fixed protected directory.");
+        foreach (string invalid in new[] { userRoot + @"\versions", userRoot + @"\versions\test\child", @"C:\Users\Test\AppData\Local\MegaProxy\versions\test", userRoot + @"\versions\..\elsewhere", userRoot.Replace(sid, "S-1-5-21-100-200-300-1002") + @"\versions\test" })
         {
             try { UserInstallation.ValidateDirectory(invalid, programFiles, sid); }
             catch (IOException) { continue; }
@@ -63,10 +63,10 @@ internal static class InstallationChecks
         }
         string root = Path.Combine(programFiles, AppIdentity.Name);
         if (StartupConfiguration.RegistryPath != @"SOFTWARE\" + AppIdentity.Name) throw new Exception("Startup settings must be isolated by channel.");
-        string valid = Path.Combine(root, "versions", "0.0.1-test");
+        string valid = root;
         if (Installation.InstallRoot(valid.ToUpperInvariant(), programFiles) != root)
-            throw new Exception("Installation must accept case-insensitive protected version paths.");
-        foreach (string path in new[] { root, Path.Combine(root, "versions"), valid + @"\child", root + @"-other\versions\1", @"C:\Users\Public\versions\1", valid + @"\..\..\..\elsewhere" })
+            throw new Exception("Installation must accept case-insensitive fixed protected paths.");
+        foreach (string path in new[] { Path.Combine(root, "versions"), valid + @"\child", root + @"-other\versions\1", @"C:\Users\Public\versions\1", valid + @"\..\..\..\elsewhere" })
         {
             try { Installation.InstallRoot(path, programFiles); }
             catch (IOException) { continue; }

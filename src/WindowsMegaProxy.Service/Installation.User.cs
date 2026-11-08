@@ -16,7 +16,7 @@ public static partial class Installation
         string mode = uninstall ? "manual" : UserInstallation.ValidateMode(args[1]);
         string root = UserInstallation.ValidateDirectory(AppContext.BaseDirectory,
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), UserInstallation.Sid);
-        foreach (string path in new[] { Path.GetDirectoryName(root)!, root, Path.Combine(root, "versions"), AppContext.BaseDirectory }) CheckDirectory(path);
+        foreach (string path in new[] { Path.GetDirectoryName(root)!, root }) CheckDirectory(path);
         CloseClients(root, currentSession: true);
         dynamic scheduler = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")!)!;
         scheduler.Connect();

@@ -43,15 +43,15 @@ class ToolsChecks(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "OpenSSH Client installation failed"):
                 install_openssh()
 
-    def test_production_publishes_self_contained_single_files(self):
+    def test_production_publishes_self_contained_folders(self):
         from build import publish_options
         options = publish_options()
         self.assertEqual(options[:2], ["--self-contained", "true"])
-        self.assertIn("-p:PublishSingleFile=true", options)
-        self.assertIn("-p:IncludeNativeLibrariesForSelfExtract=true", options)
-        self.assertNotIn("-p:PublishSingleFile=true", publish_options(dev=True))
+        self.assertIn("-p:PublishSingleFile=false", options)
+        self.assertNotIn("-p:IncludeNativeLibrariesForSelfExtract=true", options)
+        self.assertEqual(options, publish_options(dev=True))
 
-    def test_console_installer_uses_mode_helper_in_version_directory(self):
+    def test_console_installer_uses_mode_helper_in_fixed_directory(self):
         for mode, dev in ((mode, dev) for mode in ("manual", "login", "service") for dev in (False, True)):
             with self.subTest(mode=mode, dev=dev), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary).resolve()
@@ -67,13 +67,42 @@ class ToolsChecks(unittest.TestCase):
                      patch("install.install_openssh") as dependencies, \
                      patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
                      patch("install.install_core", side_effect=core), patch("install.run") as configure, patch("builtins.print"), \
-                     patch("run.stop_workspace_app"), patch("service_control.require_production_stopped"), patch("build.main"):
+                     patch("run.stop_workspace_app"), patch("service_control.stop_service"), patch("service_control.require_production_stopped"), patch("build.main"):
                     installer.install()
-                command = configure.call_args.args
-                self.assertIn("versions", Path(command[0]).parts)
+                command = next(call.args for call in configure.call_args_list if call.args[1] == "--configure-mode")
+                self.assertEqual(Path(command[0]).parent, root / "Program Files" / name)
+                self.assertFalse((root / "Program Files" / name / "versions").exists())
                 self.assertEqual(Path(command[0]).name, name + ".Service.exe")
                 self.assertEqual(command[1:], ("--configure-mode", mode))
                 dependencies.assert_called_once()
+
+    def test_console_installer_restores_files_after_configuration_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            name = app_name(False)
+            installed = root / "Program Files" / name
+            installed.mkdir(parents=True)
+            helper = installed / (name + ".Service.exe")
+            helper.write_bytes(b"previous-helper")
+            for directory, executable in (("app", name + ".exe"), ("service", name + ".Service.exe")):
+                (root / directory).mkdir()
+                (root / directory / executable).write_bytes(b"new-build")
+
+            def configure(*command):
+                if helper.read_bytes() == b"new-build":
+                    raise RuntimeError("configuration failed")
+                self.assertEqual(command[1:], ("--configure-mode", "manual"))
+
+            with patch("sys.argv", ["install.py", "--mode", "service"]), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
+                 patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
+                 patch("install.winreg.OpenKey"), patch("install.winreg.QueryValueEx", side_effect=[(str(helper), 1), ("manual", 1)]), \
+                 patch("install.install_openssh"), patch("install.install_core"), \
+                 patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
+                 patch("install.run", side_effect=configure) as commands, patch("run.stop_workspace_app"), patch("service_control.stop_service"):
+                with self.assertRaisesRegex(RuntimeError, "configuration failed"):
+                    installer.install()
+            self.assertEqual(helper.read_bytes(), b"previous-helper")
+            self.assertEqual(commands.call_count, 2)
 
     def test_dev_cleanup_matches_only_its_own_task_names(self):
         for task in (r"\WindowsMegaProxy.Dev.Login", r"\WindowsMegaProxy.Dev-S-1-5-21-1001", r"\WindowsMegaProxy.Dev"):

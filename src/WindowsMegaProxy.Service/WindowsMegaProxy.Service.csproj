@@ -6,6 +6,8 @@
         <ApplicationIcon Condition="'$(MegaProxyDev)' == 'true'">../WindowsMegaProxy/Assets/dev-app.ico</ApplicationIcon>
     </PropertyGroup>
     <ItemGroup>
+        <!-- Share the desktop runtime with the UI in the installation folder. -->
+        <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
         <ProjectReference Include="../WindowsMegaProxy.Runtime/WindowsMegaProxy.Runtime.csproj" />
     </ItemGroup>
 </Project>
