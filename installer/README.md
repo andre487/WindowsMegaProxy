@@ -19,8 +19,9 @@ existing values.
 Windows OpenSSH Client is a mandatory Windows capability. Setup installs it
 when missing; failure stops setup with an error. Wintun is provided by the
 upstream cores. Python, uv and the .NET SDK remain development-only downloads
-inside the checkout. DEV publishes self-contained folders for quick rebuilds;
-production publishes single-file EXEs. Native .NET libraries are extracted on
+inside the checkout. DEV UI uses a self-contained folder for quick rebuilds;
+service/helper EXEs stay single-file to isolate their runtime from WPF assets.
+Production publishes single-file EXEs. Native .NET libraries are extracted on
 first launch; the SYSTEM service uses a protected cache in its version directory.
 Updating bundled .NET requires an application update.
 

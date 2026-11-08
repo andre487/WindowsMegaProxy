@@ -53,7 +53,7 @@ def main(dev=False, app_only=False):
             destination.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="publish-", dir=destination.parent) as staging:
                 dotnet("publish", str(ROOT / f"src/{project}/{project}.csproj"), "-c", "Release", "-r", "win-x64",
-                       *publish_options(dev), "-o", staging, "--nologo", f"-p:MegaProxyDev={str(dev).lower()}")
+                       *publish_options(dev=dev and output == "app"), "-o", staging, "--nologo", f"-p:MegaProxyDev={str(dev).lower()}")
                 # Replace only after a successful publish; discard obsolete bundled runtimes.
                 if destination.exists():
                     shutil.rmtree(destination)
