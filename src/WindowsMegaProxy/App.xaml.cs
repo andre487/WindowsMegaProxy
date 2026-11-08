@@ -27,7 +27,9 @@ public partial class App : Application
             {
                 var native = error as System.ComponentModel.Win32Exception ?? error.InnerException as System.ComponentModel.Win32Exception;
                 string detail = native is null ? error.Message : $"Windows error {native.NativeErrorCode}.";
-                new DiagnosticLog(System.IO.Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100).Write($"Channel switch {e.Args[1]} failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {detail}");
+                try { new DiagnosticLog(System.IO.Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100).Write($"Channel switch {e.Args[1]} failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {detail}"); }
+                catch (System.IO.IOException) { }
+                catch (UnauthorizedAccessException) { }
                 Shutdown(1);
             }
             return;
