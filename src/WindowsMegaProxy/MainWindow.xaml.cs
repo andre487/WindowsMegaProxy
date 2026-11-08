@@ -348,6 +348,7 @@ public partial class MainWindow : Window
                 if (!testing && (connection.State == ConnectionState.Connected) != remote.Running) connection.Attach(remote);
             }
             bool connected = engine?.Running == true;
+            UpdateProfileSummary();
             if (StatusText.Text != Ui.T(connected ? "Connected" : "Disconnected")) SetConnected(connected);
             SetBusy(busy);
             if (firstBinding && canEdit && !serviceTesting && settings.AutoConnect && engine?.Running != true) await ToggleAsync();
@@ -373,7 +374,7 @@ public partial class MainWindow : Window
         TrafficText.Text = "↑ —  ↓ —";
         ConnectionsHint.Text = Ui.T("Service unavailable");
         StatusText.Text = Ui.T("Connection unknown");
-        tray.Text = BrandLabel("MegaProxy — service unavailable");
+        UpdateConnectionDetails();
         tray.Icon = DisconnectedIcon();
         diagnosticSucceeded = false; checkedSettings = null; lastDiagnosticResult = null; lastSpeedResults = null;
         SpeedPanel.Visibility = Visibility.Collapsed; SpeedLockedText.Visibility = Visibility.Visible;
@@ -574,7 +575,6 @@ public partial class MainWindow : Window
             StatusText.Text = Ui.T(unavailable ? "Connection unknown" : connected ? "Connected" : "Disconnected");
             trayOpen.Header = BrandLabel("Open MegaProxy");
             trayExit.Header = Ui.T("Exit");
-            tray.Text = BrandLabel(unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
             SetBusy(busy);
         }
         if (languageChanged)
@@ -593,12 +593,13 @@ public partial class MainWindow : Window
         var profile = connected ? engine!.AppliedSettings?.ActiveProfile : settings.ActiveProfile;
         ProfileSummary.Text = profile is null ? Ui.T("Add or import a profile on the Profiles tab")
             : profile.Supported ? profile.Name + " · " + profile.Description : profile.Availability;
-        if (connected && profile?.UsesHttp3 == true)
-            ProfileSummary.Text += engine!.UsedHttp3Fallback ? " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP") : engine.Http3Selected ? " · HTTP/3" : "";
+        if (connected && engine!.UsedHttp3Fallback)
+            ProfileSummary.Text += " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP");
         string? error = ConnectionError();
         ConnectButton.IsEnabled = canEdit && (connected || error is null);
         ConnectButton.ToolTip = connected ? null : error;
         if (!connected && profile is not null && error is not null) ProfileSummary.Text += " · " + error;
+        UpdateConnectionDetails();
     }
 
     private bool CanConnect() => canEdit && !serviceTesting && !settingsLoading && settingsReady && ConnectionError() is null;
@@ -842,7 +843,6 @@ public partial class MainWindow : Window
     {
         StatusText.Text = value ? Ui.T("Connected") : Ui.T("Disconnected");
         ConnectButton.Content = trayConnect.Header = value ? Ui.T("Disconnect") : Ui.T("Connect");
-        tray.Text = BrandLabel(value ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
         tray.Icon = value ? connectedIcon : DisconnectedIcon();
         UpdateProfileSummary();
         WriteLog(value ? "TUN connected." : "TUN disconnected.");

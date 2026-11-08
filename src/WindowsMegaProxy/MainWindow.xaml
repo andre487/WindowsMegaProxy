@@ -230,6 +230,13 @@
                             AutomationProperties.LiveSetting="Polite" />
                     </WrapPanel>
                     <TextBlock
+                        x:Name="TransportText"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Margin="0,0,0,4"
+                        Visibility="Collapsed"
+                        AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock
                         x:Name="RoutingWarningText"
                         TextWrapping="Wrap"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"

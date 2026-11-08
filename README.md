@@ -14,7 +14,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 - **Configuration transfer:** import MegaProxy JSON v1–8, FoxyProxy JSON, ProxyList and SuperProxy. Export MegaProxy JSON or ProxyList; review changed settings and optionally remove missing profiles. Passwords and private keys are excluded by default. Other clients' settings are preserved.
 - **Subscriptions:** HTTPS sources with backups, optional Basic authentication, automatic/manual updates and subscription definitions imported from JSON. Updates preserve local profiles and require reconnecting to apply network changes.
 - **Failover:** optional selected/all-profile backups in profile order, triggered by proxy transport failures; retains certificate and SSH key checks.
-- **Windows integration:** manual launch, elevated startup at sign-in, or a shared Windows service; system tray, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
+- **Windows integration:** manual launch, elevated startup at sign-in, or a shared Windows service; the active profile and transport in the system tray and main window, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
 - **Application updates:** daily checks and downloads from GitHub Releases, signed manifests, installation notifications and a manual check. Automatic checks can be disabled in settings or during installation.
 - **Shared service:** one protected configuration for the machine; administrator accounts can edit without repeated UAC prompts, other users have a read-only interface.
 - **Appearance:** English and Russian, automatic/light/dark themes and Windows display scaling.
