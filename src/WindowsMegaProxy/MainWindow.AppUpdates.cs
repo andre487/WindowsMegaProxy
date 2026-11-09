@@ -85,7 +85,7 @@ public partial class MainWindow
         await appUpdates!.InitializeAsync(updatesStopping.Token);
         if (!manual && (!canEdit || !AppUpdatePolicy.Enabled(settings))) return;
         if (manual || appUpdates.CheckDue) await appUpdates.CheckAsync(updatesStopping.Token);
-        if (quitting || !appUpdates.Ready) return;
+        if (quitting || channelConflictPending || !appUpdates.Ready) return;
         bool visible = IsVisible && Sections.SelectedItem == SettingsTab && settingsPage == "updates";
         if (visible) await appUpdates.MarkNotificationAsync(true, updatesStopping.Token);
         else if ((manual || AppUpdatePolicy.Enabled(settings)) && canEdit && appUpdates.NotificationDue)
