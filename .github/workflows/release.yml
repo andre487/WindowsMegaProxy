@@ -20,6 +20,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require successful main CI for the tagged commit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $commit = git rev-parse HEAD
+          $success = $false
+          for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            $response = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$commit&event=push&branch=main&per_page=10" | ConvertFrom-Json
+            if ($LASTEXITCODE) { throw 'Cannot query CI status' }
+            $run = $response.workflow_runs | Select-Object -First 1
+            if ($run.status -eq 'completed') {
+              if ($run.conclusion -ne 'success') { throw 'Main CI did not pass' }
+              $success = $true
+              break
+            }
+            Start-Sleep -Seconds 30
+          }
+          if (!$success) { throw 'Timed out waiting for main CI' }
+
   package:
     runs-on: windows-2025
     timeout-minutes: 90
@@ -52,26 +82,6 @@ jobs:
           git merge-base --is-ancestor HEAD origin/main
           if ($LASTEXITCODE) { throw 'Release commit must belong to main' }
           if (!(Test-Path "release-notes/$env:RELEASE_TAG.md")) { throw 'Committed release notes are missing' }
-
-      - name: Require successful main CI for the tagged commit
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $commit = git rev-parse HEAD
-          $success = $false
-          for ($attempt = 0; $attempt -lt 60; $attempt++) {
-            $response = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$commit&event=push&branch=main&per_page=10" | ConvertFrom-Json
-            if ($LASTEXITCODE) { throw 'Cannot query CI status' }
-            $run = $response.workflow_runs | Select-Object -First 1
-            if ($run.status -eq 'completed') {
-              if ($run.conclusion -ne 'success') { throw 'Main CI did not pass' }
-              $success = $true
-              break
-            }
-            Start-Sleep -Seconds 30
-          }
-          if (!$success) { throw 'Timed out waiting for main CI' }
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
@@ -138,7 +148,7 @@ jobs:
           overwrite: true
 
   publish:
-    needs: package
+    needs: [package, verify-ci]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
