@@ -60,6 +60,7 @@ Name: "{code:ProtectedUserBase}"; Permissions: admins-full system-full users-rea
 Name: "{code:ProtectedUserRoot}"; Permissions: admins-full system-full users-readexec; Check: IsUserInstall
 
 [Files]
+Source: "{#PayloadDirectory}\*"; DestDir: "{tmp}\repair"; Excludes: "launcher\*,dependencies\*"; Flags: dontcopy recursesubdirs createallsubdirs
 Source: "{#PayloadDirectory}\*"; DestDir: "{code:RuntimePath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsUserInstall
 
@@ -259,14 +260,15 @@ begin
     if (Pos(Lowercase(Root + '\'), Lowercase(PreviousHelper)) <> 1) or
       (Pos('\..', PreviousHelper) <> 0) or (CompareText(ExtractFileName(PreviousHelper), 'WindowsMegaProxy.Service.exe') <> 0) then
       RaiseException('The previous installation helper is outside the protected installation directory.');
-    if (ExpandConstant('{param:STAGEDUPDATE|0}') <> '1') and not FileExists(PreviousHelper) then
-      RaiseException('The previous installation helper is missing. Repair the previous installation first.');
   end;
   if IsAdminInstallMode then StopInstalledService;
   Prepared := True;
-  if (ExpandConstant('{param:STAGEDUPDATE|0}') <> '1') and (PreviousHelper <> '') and
-    (not ExecAndLogOutput(PreviousHelper, '--prepare-uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0)) then
-    RaiseException('Could not close the previous installation. Close MegaProxy in all Windows sessions and retry.');
+  if (ExpandConstant('{param:STAGEDUPDATE|0}') <> '1') and DirExists(Root) then begin
+    { Recovery must not depend on the old helper or its runtime being intact. }
+    ExtractTemporaryFiles('{tmp}\repair\*');
+    if not ExecAndLogOutput(ExpandConstant('{tmp}\repair\WindowsMegaProxy.Service.exe'), '--prepare-repair "' + Root + '"', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
+      RaiseException('Could not close the previous installation. Close MegaProxy in all Windows sessions and retry.');
+  end;
 end;
 
 procedure DeinitializeSetup;

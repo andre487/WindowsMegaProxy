@@ -8,6 +8,15 @@ internal static class InstallationChecks
 {
     public static void Run()
     {
+        foreach (string state in new[] { "now", "applying" })
+        {
+            var pending = new PendingAppUpdate("0.0.2", state);
+            if (PendingAppUpdate.Recover(pending, new Version(0, 0, 2), false)?.When != "failed" ||
+                PendingAppUpdate.Recover(pending, new Version(0, 0, 1), true)?.When != state)
+                throw new Exception("A dead updater must allow recovery, including a partially installed target version; a live updater must stay protected.");
+        }
+        if (PendingAppUpdate.Recover(new("0.0.2", "launch"), new Version(0, 0, 2), false) is not null)
+            throw new Exception("Completed next-start updates must not run again.");
         foreach (bool service in new[] { false, true })
         {
             foreach (string action in new[] { "now", service ? "restart" : "launch", service ? "reboot" : "launch" })

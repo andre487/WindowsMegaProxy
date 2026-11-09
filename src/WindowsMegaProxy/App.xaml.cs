@@ -79,12 +79,19 @@ public partial class App : Application
         try
         {
             var pending = AppIdentity.IsDev ? null : PendingAppUpdate.Read();
-            if (pending?.When is "applying" or "now" && (!standalone || PendingAppUpdate.WorkerRunning())) { Shutdown(); return; }
-            if (standalone && pending?.When is "launch" or "applying" or "now")
+            if (pending?.When is "applying" or "now" && PendingAppUpdate.WorkerRunning()) { Shutdown(); return; }
+            if (standalone && pending?.When == "launch")
             {
-                await PendingAppUpdate.RequestAsync("now", applyPending: true);
-                Shutdown();
-                return;
+                try
+                {
+                    await PendingAppUpdate.RequestAsync("now", applyPending: true);
+                    Shutdown();
+                    return;
+                }
+                catch (Exception error)
+                {
+                    PendingAppUpdate.LogRecovery("Could not apply the next-start update; opening the recovery interface: " + error.Message);
+                }
             }
             if (standalone) runtime = StartupConfiguration.ClaimRuntime();
             var window = new MainWindow(Array.Exists(e.Args, arg => arg == "--tray"), standalone: standalone);

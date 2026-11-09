@@ -108,34 +108,71 @@ public static partial class Installation
         ProtectDataDirectory(staging);
         using var lease = new FileStream(Path.Combine(staging, "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         string target = Path.Combine(staging, "setup.exe");
+        string replacement = target + ".part", backup = target + ".previous";
         bool copied = false;
-        PreparedUpdate? previous = File.Exists(PreparedPath(root)) ? ReadPrepared(root) : null;
+        bool committed = false;
+        PreparedUpdate? previous = null;
         try
         {
-            AppUpdateState state;
-            if (previous is not null) state = previous.State;
-            else
+            if (File.Exists(PreparedPath(root))) { previous = ReadPrepared(root); _ = VerifyPrepared(previous); }
+        }
+        catch (Exception error) when (error is IOException or JsonException or System.Security.Cryptography.CryptographicException)
+        {
+            previous = null;
+            UpdateLog(personal, "The pending update record is invalid; a newly verified download is required: " + error.Message);
+        }
+        try
+        {
+            File.Delete(replacement);
+            AppUpdateState? state = previous?.State;
+            string cache = AppUpdateTrust.CacheDirectory;
+            if (File.Exists(Path.Combine(cache, "setup.exe")))
             {
-                string cache = AppUpdateTrust.CacheDirectory;
                 AppUpdateTrust.CheckDirectory(cache);
                 string statePath = Path.Combine(cache, "state.json");
                 if ((File.GetAttributes(statePath) & FileAttributes.ReparsePoint) != 0 || new FileInfo(statePath).Length > 2 * 1024 * 1024)
                     throw new InvalidDataException("Invalid update state.");
-                state = JsonSerializer.Deserialize<AppUpdateState>(await File.ReadAllTextAsync(statePath)) ?? throw new InvalidDataException("Missing update state.");
+                var candidate = JsonSerializer.Deserialize<AppUpdateState>(await File.ReadAllTextAsync(statePath)) ?? throw new InvalidDataException("Missing update state.");
+                candidate = candidate with { Manifest = candidate.DownloadedManifest ?? candidate.Manifest, Signature = candidate.DownloadedSignature ?? candidate.Signature };
+                var candidatePackage = VerifyPrepared(new(candidate, mode, when));
+                if (previous is null || AppUpdateTrust.ParseVersion(candidatePackage.Version) >= AppUpdateTrust.ParseVersion(VerifyPrepared(previous).Version)) state = candidate;
             }
+            if (state is null) throw new InvalidDataException("Missing update state.");
             var prepared = new PreparedUpdate(state, mode, when);
             var package = VerifyPrepared(prepared);
-            if (!AppUpdateTrust.IsNewer(package.Version, AppUpdateTrust.CurrentVersion)) throw new InvalidDataException("Updates cannot downgrade or reinstall this version.");
-            if (previous is null)
+            if (AppUpdateTrust.ParseVersion(package.Version) < AppUpdateTrust.ParseVersion(AppUpdateTrust.CurrentVersion.ToString(3)) || (previous is null && !AppUpdateTrust.IsNewer(package.Version, AppUpdateTrust.CurrentVersion)))
+                throw new InvalidDataException("Updates cannot downgrade this version.");
+            if (previous is null || state != previous.State)
             {
+                if (previous is not null)
+                {
+                    try
+                    {
+                        string verified = await VerifiedStagedInstallerAsync(target, VerifyPrepared(previous));
+                        if (verified != target) File.Move(verified, target, overwrite: true);
+                    }
+                    catch (Exception error) when (error is IOException or System.Security.Cryptography.CryptographicException)
+                    { UpdateLog(personal, "Replacing an invalid staged installer with a newly verified download: " + error.Message); }
+                }
                 await using var input = new FileStream(Path.Combine(AppUpdateTrust.CacheDirectory, "setup.exe"), FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous);
-                await using var output = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous);
-                copied = true;
+                await using var output = new FileStream(replacement, FileMode.Create, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous);
                 if (input.Length != package.Size) throw new System.Security.Cryptography.CryptographicException("Invalid update installer size.");
                 await input.CopyToAsync(output);
             }
-            await AppUpdateTrust.VerifyInstallerAsync(target, package, CancellationToken.None);
-            CopyUpdateWorker(root, Path.GetDirectoryName(WorkerPath(root))!);
+            if (File.Exists(replacement))
+            {
+                await AppUpdateTrust.VerifyInstallerAsync(replacement, package, CancellationToken.None);
+                if (File.Exists(target)) File.Replace(replacement, target, backup); else File.Move(replacement, target);
+                copied = true;
+            }
+            if (!copied)
+            {
+                string verified = await VerifiedStagedInstallerAsync(target, package);
+                if (verified != target) File.Move(verified, target, overwrite: true);
+            }
+            else await AppUpdateTrust.VerifyInstallerAsync(target, package, CancellationToken.None);
+            // Keep the known working runtime after a partially completed installation.
+            if (previous is null || !File.Exists(WorkerPath(root))) CopyUpdateWorker(root, Path.GetDirectoryName(WorkerPath(root))!);
             string? oldTask = personal ? null : TaskXml(UpdateTaskFolder(), PendingAppUpdate.TaskName);
             try
             {
@@ -163,6 +200,9 @@ public static partial class Installation
                 throw;
             }
             // The protected copy is now authoritative; keep only one downloaded update.
+            committed = true;
+            try { File.Delete(backup); }
+            catch (IOException error) { UpdateLog(personal, "Could not remove the previous staged installer: " + error.Message); }
             try { File.Delete(Path.Combine(AppUpdateTrust.CacheDirectory, "setup.exe")); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { UpdateLog(personal, "Could not remove the downloaded update cache: " + error.GetType().Name + "."); }
             UpdateLog(personal, $"Prepared application update {package.Version}; timing={when}.");
@@ -178,10 +218,12 @@ public static partial class Installation
         }
         catch
         {
+            if (!committed && copied && File.Exists(backup)) File.Move(backup, target, overwrite: true);
             if (copied && !File.Exists(PreparedPath(root)))
                 try { File.Delete(target); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
             throw;
         }
+        finally { File.Delete(replacement); }
     }
 
     private static void StartUpdateWorker(string root)
@@ -193,6 +235,17 @@ public static partial class Installation
             UpdateTaskFolder().GetTask(UpdateTaskName(root) + ".Apply").Run(null);
         }
         catch { DeleteTask(UpdateTaskFolder(), UpdateTaskName(root) + ".Apply"); throw; }
+    }
+
+    private static async Task<string> VerifiedStagedInstallerAsync(string target, AppUpdatePackage package)
+    {
+        try { await AppUpdateTrust.VerifyInstallerAsync(target, package, CancellationToken.None); return target; }
+        catch (Exception error) when (error is IOException or System.Security.Cryptography.CryptographicException)
+        {
+            // A crash may leave the previous manifest alongside the replaced installer.
+            await AppUpdateTrust.VerifyInstallerAsync(target + ".previous", package, CancellationToken.None);
+            return target + ".previous";
+        }
     }
 
     private static void UpdateLog(bool personal, string message)
@@ -244,11 +297,14 @@ public static partial class Installation
         {
             string mode = personal ? "manual" : StartupConfiguration.Mode;
             int result = 1;
+            bool installerVerified = false;
+            string? updateVersion = null;
             try
             {
                 var prepared = ReadPrepared(root);
                 mode = personal ? UserInstallation.ValidateMode(prepared.Mode) : prepared.Mode;
                 var package = VerifyPrepared(prepared);
+                updateVersion = package.Version;
                 Version installed;
                 try { installed = AssemblyName.GetAssemblyName(Path.Combine(root, "WindowsMegaProxy.Runtime.dll")).Version!; }
                 catch (Exception error) when (error is IOException or BadImageFormatException)
@@ -256,7 +312,8 @@ public static partial class Installation
                 if (AppUpdateTrust.ParseVersion(package.Version) >= new Version(installed.Major, installed.Minor, Math.Max(0, installed.Build)))
                 {
                     string target = Path.Combine(UpdateDirectory(root), "setup.exe");
-                    await AppUpdateTrust.VerifyInstallerAsync(target, package, CancellationToken.None);
+                    target = await VerifiedStagedInstallerAsync(target, package);
+                    installerVerified = true;
                     WriteUpdateRecord(personal, new(package.Version, "applying"));
                     CloseClients(root, currentSession: personal);
                     var current = new MachineSettingsStore(personal ? UserInstallation.DataDirectory : null, machine: !personal).Load();
@@ -289,7 +346,12 @@ public static partial class Installation
                         throw;
                     }
                 }
-                CancelPendingUpdate(root, personal);
+                if (result == 0 || !installerVerified) CancelPendingUpdate(root, personal);
+                else
+                {
+                    WriteUpdateRecord(personal, new(updateVersion!, "failed"));
+                    UpdateLog(personal, "The verified installer is retained for a manual retry after installation failure.");
+                }
                 lease.Dispose();
                 try
                 {

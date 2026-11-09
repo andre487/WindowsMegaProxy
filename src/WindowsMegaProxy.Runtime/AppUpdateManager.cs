@@ -13,6 +13,9 @@ namespace WindowsMegaProxy;
 public sealed record AppUpdateState
 {
     public DateTimeOffset LastCheck { get; init; }
+    public int FailedChecks { get; init; }
+    public byte[]? DownloadedManifest { get; init; }
+    public byte[]? DownloadedSignature { get; init; }
     public DateTimeOffset LastNotification { get; init; }
     public string? NotifiedVersion { get; init; }
     public string? AcknowledgedVersion { get; init; }
@@ -31,14 +34,15 @@ public sealed class AppUpdateManager : IDisposable
     private readonly Func<DateTimeOffset> now;
     private readonly SemaphoreSlim gate = new(1);
     private bool initialized;
+    private AppUpdatePackage? downloaded;
     public AppUpdateState State { get; private set; } = new();
     public AppUpdatePackage? Package { get; private set; }
     public string StatusKey { get; private set; } = "Updates have not been checked yet.";
     public string? ErrorKey { get; private set; }
     public int Progress { get; private set; }
-    public bool Ready => Package is not null && File.Exists(InstallerPath);
+    public bool Ready => Package is not null && Package.Sha256 == downloaded?.Sha256 && File.Exists(InstallerPath);
     public string InstallerPath => Path.Combine(directory, "setup.exe");
-    public bool CheckDue => AppUpdatePolicy.CheckDue(State.LastCheck, now());
+    public bool CheckDue => AppUpdatePolicy.CheckDue(State.LastCheck, now(), State.FailedChecks);
     public bool NotificationDue => Package is not null && AppUpdatePolicy.NotificationDue(Package.Version, State.NotifiedVersion, State.LastNotification, State.AcknowledgedVersion, now());
     public event Action? Changed;
     public event Action<string>? Log;
@@ -79,17 +83,26 @@ public sealed class AppUpdateManager : IDisposable
                     var package = AppUpdateTrust.Verify(State.Manifest, State.Signature, key);
                     if (AppUpdateTrust.IsNewer(package.Version, currentVersion))
                     {
-                        if (File.Exists(InstallerPath)) await AppUpdateTrust.VerifyInstallerAsync(InstallerPath, package, token).ConfigureAwait(false);
-                        Package = package; StatusKey = Ready ? "Update ready to install." : "Update available to download.";
+                        Package = package;
+                        if (File.Exists(InstallerPath))
+                        {
+                            var cached = AppUpdateTrust.Verify(State.DownloadedManifest ?? State.Manifest, State.DownloadedSignature ?? State.Signature, key);
+                            await AppUpdateTrust.VerifyInstallerAsync(InstallerPath, cached, token).ConfigureAwait(false);
+                            downloaded = cached;
+                            State = State with { DownloadedManifest = State.DownloadedManifest ?? State.Manifest, DownloadedSignature = State.DownloadedSignature ?? State.Signature };
+                        }
+                        StatusKey = Ready ? "Update ready to install." : "Update available to download.";
                     }
                 }
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 State = new();
+                downloaded = null;
+                Package = null;
                 Log?.Invoke("Discarded invalid application update cache: " + error.GetType().Name + ".");
             }
-            ClearFiles(keepInstaller: Ready);
+            ClearFiles(keepInstaller: downloaded is not null);
             if (Package is null) State = State with { Manifest = null, Signature = null };
             Save(); initialized = true;
         }, token).ConfigureAwait(false);
@@ -117,7 +130,7 @@ public sealed class AppUpdateManager : IDisposable
                 Version version = AppUpdateTrust.ParseVersion(tag[1..]);
                 if (version <= new Version(currentVersion.Major, currentVersion.Minor, Math.Max(0, currentVersion.Build)))
                 {
-                    Package = null; ClearFiles(false); State = State with { Manifest = null, Signature = null };
+                    Package = null; downloaded = null; ClearFiles(false); State = State with { Manifest = null, Signature = null, DownloadedManifest = null, DownloadedSignature = null, FailedChecks = 0 };
                     StatusKey = "The application is up to date.";
                     return;
                 }
@@ -136,24 +149,25 @@ public sealed class AppUpdateManager : IDisposable
                 if ("v" + package.Version != tag) throw new InvalidDataException("Release and update versions differ.");
                 _ = Asset(package.FileName);
                 bool cached = false;
-                if (Ready && Package!.Sha256 == package.Sha256)
+                if (downloaded?.Sha256 == package.Sha256 && File.Exists(InstallerPath))
                 {
                     try { await AppUpdateTrust.VerifyInstallerAsync(InstallerPath, package, deadline.Token).ConfigureAwait(false); cached = true; }
                     catch (Exception error) when (error is IOException or CryptographicException or UnauthorizedAccessException)
-                    { Package = null; Log?.Invoke("Discarded a damaged cached application update."); }
+                    { downloaded = null; Log?.Invoke("Discarded a damaged cached application update."); }
                 }
                 if (!cached)
                 {
-                    Package = null; State = State with { Manifest = null, Signature = null };
-                    ClearFiles(false);
+                    ClearFiles(downloaded is not null);
                     if (download)
                     {
                         StatusKey = "Downloading update…"; Changed?.Invoke();
                         await DownloadAsync(package, deadline.Token).ConfigureAwait(false);
+                        downloaded = package;
+                        State = State with { DownloadedManifest = manifest, DownloadedSignature = signature };
                     }
                 }
                 Package = package;
-                State = State with { Manifest = manifest, Signature = signature };
+                State = State with { Manifest = manifest, Signature = signature, FailedChecks = 0 };
                 StatusKey = Ready ? "Update ready to install." : "Update available to download.";
                 Log?.Invoke("Application update " + package.Version + (Ready ? " downloaded and verified." : " is available to download."));
             }
@@ -164,19 +178,28 @@ public sealed class AppUpdateManager : IDisposable
             }
             catch (Exception error)
             {
-                ErrorKey = error is UpdateUnavailableException ? "Update files are unavailable." :
-                    error is CryptographicException or InvalidDataException or JsonException or FormatException ? "Update verification failed." : "Could not check for updates. Try again later.";
-                if (error is UpdateUnavailableException)
-                {
-                    Package = null; State = State with { Manifest = null, Signature = null }; ClearFiles(false);
-                }
-                StatusKey = Ready ? "Update ready to install." : ErrorKey;
-                Log?.Invoke($"Application update check failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}" +
-                    (error is HttpRequestException { StatusCode: { } status } ? $"; HTTP {(int)status}." : "."));
+                ReportFailure(error);
             }
-            finally { File.Delete(InstallerPath + ".part"); Save(); Changed?.Invoke(); }
+            finally { File.Delete(InstallerPath + ".part"); Save(); }
         }
-        finally { this.transport = null; gate.Release(); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error) { ReportFailure(error); }
+        finally { this.transport = null; gate.Release(); Changed?.Invoke(); }
+    }
+
+    public void ReportFailure(Exception error)
+    {
+        State = State with { LastCheck = now(), FailedChecks = Math.Min(State.FailedChecks + 1, 8) };
+        if (downloaded is not null && File.Exists(InstallerPath))
+        {
+            Package = downloaded;
+            State = State with { Manifest = State.DownloadedManifest, Signature = State.DownloadedSignature };
+        }
+        ErrorKey = error is UpdateUnavailableException ? "Update files are unavailable." :
+            error is CryptographicException or InvalidDataException or JsonException or FormatException ? "Update verification failed." : "Could not check for updates. Try again later.";
+        StatusKey = Ready ? "Update ready to install." : ErrorKey;
+        Log?.Invoke($"Application update operation failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {error.Message}" +
+            (error is HttpRequestException { StatusCode: { } status } ? $"; HTTP {(int)status}." : ""));
     }
 
     public async Task MarkNotificationAsync(bool acknowledged, CancellationToken token)
@@ -272,7 +295,7 @@ public sealed class AppUpdateManager : IDisposable
             if (total != package.Size || Convert.ToHexStringLower(hash.GetHashAndReset()) != package.Sha256)
                 throw new CryptographicException("The update download failed its integrity check.");
         }
-        File.Move(InstallerPath + ".part", InstallerPath);
+        File.Move(InstallerPath + ".part", InstallerPath, overwrite: true);
     }
 
     public void Dispose() { if (ownsClient) client.Dispose(); gate.Dispose(); }
