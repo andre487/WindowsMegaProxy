@@ -6,6 +6,7 @@
     x:Class="WindowsMegaProxy.ProfileWindow"
     Title="{DynamicResource &quot;Connection profile&quot;}"
     Width="540"
+    MinWidth="500"
     Height="590"
     MinHeight="450"
     ResizeMode="CanResize"
@@ -17,6 +18,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
@@ -26,47 +28,6 @@
                     Padding="0"
                     Margin="0,0,0,4" />
                 <TextBox x:Name="NameBox" Margin="0,0,0,16" />
-                <Label
-                    Content="{DynamicResource &quot;Profile country&quot;}"
-                    Target="{Binding ElementName=CountryBox}"
-                    Padding="0"
-                    Margin="0,0,0,4" />
-                <ComboBox
-                    x:Name="CountryBox"
-                    SelectionChanged="CountryChanged"
-                    TextSearch.TextPath="Name"
-                    Margin="0,0,0,16">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
-                                <Image Source="{Binding FlagUri}" Width="24" Height="18" Margin="0,0,8,0" />
-                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-                <Label
-                    Content="{DynamicResource &quot;Profile color&quot;}"
-                    Target="{Binding ElementName=ColorBox}"
-                    Padding="0"
-                    Margin="0,0,0,4" />
-                <ComboBox x:Name="ColorBox" SelectionChanged="ColorChanged" Margin="0,0,0,16">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
-                                <Border
-                                    Background="{Binding Hex}"
-                                    Width="14"
-                                    Height="14"
-                                    CornerRadius="7"
-                                    Margin="0,0,8,0"
-                                    BorderBrush="{DynamicResource TextFillColorSecondaryBrush}"
-                                    BorderThickness="1" />
-                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
                 <StackPanel x:Name="ConnectionFields">
                     <Label
                         Content="{DynamicResource &quot;Server type&quot;}"
@@ -80,22 +41,6 @@
                         <ComboBoxItem Content="SSH" Tag="SSH" />
                         <ComboBoxItem Content="MASQUE α (HTTP/3)" Tag="MASQUE" />
                     </ComboBox>
-                    <StackPanel x:Name="HttpVersionPanel" Margin="0,0,0,8">
-                        <Label
-                            Content="{DynamicResource &quot;Proxy HTTP support&quot;}"
-                            Target="{Binding ElementName=HttpVersionBox}" />
-                        <ComboBox x:Name="HttpVersionBox" SelectedIndex="0">
-                            <ComboBoxItem Content="{DynamicResource &quot;Stable core (HTTP/1.1)&quot;}" />
-                            <ComboBoxItem Content="{DynamicResource &quot;Enable HTTP/2 (1.15 alpha)&quot;}" />
-                            <ComboBoxItem Content="{DynamicResource &quot;Enable HTTP/2 + HTTP/3 (1.15 alpha)&quot;}" />
-                        </ComboBox>
-                    </StackPanel>
-                    <TextBlock
-                        x:Name="Http3HelpText"
-                        Text="{DynamicResource &quot;HTTP/2 and HTTP/3 use the alpha core. HTTPS falls back to a lower HTTP version when unsupported. HTTP/3 requires UDP; MASQUE requires HTTP/3.&quot;}"
-                        TextWrapping="Wrap"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Margin="0,0,0,16" />
                     <Grid Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -130,6 +75,28 @@
                         Padding="0"
                         Margin="0,0,0,4" />
                     <PasswordBox x:Name="PasswordBox" Margin="0,0,0,16" />
+                    <StackPanel x:Name="HttpVersionPanel" Margin="0,0,0,8">
+                        <Label
+                            Content="{DynamicResource &quot;Proxy HTTP support&quot;}"
+                            Target="{Binding ElementName=HttpVersionBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <ComboBox x:Name="HttpVersionBox" SelectedIndex="0">
+                            <ComboBoxItem Content="{DynamicResource &quot;Stable core (HTTP/1.1)&quot;}" />
+                            <ComboBoxItem Content="{DynamicResource &quot;Enable HTTP/2 (1.15 alpha)&quot;}" />
+                            <ComboBoxItem Content="{DynamicResource &quot;Enable HTTP/2 + HTTP/3 (1.15 alpha)&quot;}" />
+                        </ComboBox>
+                    </StackPanel>
+                    <Expander
+                        x:Name="Http3HelpText"
+                        Header="{DynamicResource &quot;About HTTP versions&quot;}"
+                        Margin="0,0,0,16">
+                        <TextBlock
+                            Text="{DynamicResource &quot;HTTP/2 and HTTP/3 use the alpha core. HTTPS falls back to a lower HTTP version when unsupported. HTTP/3 requires UDP; MASQUE requires HTTP/3.&quot;}"
+                            TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Margin="0,0,0,16" />
+                    </Expander>
                     <StackPanel x:Name="JumpFields">
                         <Label
                             Content="{DynamicResource &quot;Jump server&quot;}"
@@ -250,18 +217,64 @@
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Margin="0,4,0,0" />
                 </StackPanel>
+                <Expander Header="{DynamicResource &quot;Appearance&quot;}" Margin="0,0,0,16">
+                    <StackPanel Margin="0,12,0,0">
+                        <Label
+                            Content="{DynamicResource &quot;Profile country&quot;}"
+                            Target="{Binding ElementName=CountryBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <ComboBox
+                            x:Name="CountryBox"
+                            SelectionChanged="CountryChanged"
+                            TextSearch.TextPath="Name"
+                            Margin="0,0,0,16">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="{Binding FlagUri}" Width="24" Height="18" Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Label
+                            Content="{DynamicResource &quot;Profile color&quot;}"
+                            Target="{Binding ElementName=ColorBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <ComboBox x:Name="ColorBox" SelectionChanged="ColorChanged" Margin="0,0,0,16">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border
+                                            Background="{Binding Hex}"
+                                            Width="14"
+                                            Height="14"
+                                            CornerRadius="7"
+                                            Margin="0,0,8,0"
+                                            BorderBrush="{DynamicResource TextFillColorSecondaryBrush}"
+                                            BorderThickness="1" />
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                </Expander>
                 <TextBlock
                     x:Name="SupportText"
                     TextWrapping="Wrap"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                <TextBlock
-                    x:Name="ErrorText"
-                    TextWrapping="Wrap"
-                    Margin="0,12,0,0"
-                    AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
         </ScrollViewer>
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+        <TextBlock
+            x:Name="ErrorText"
+            Grid.Row="1"
+            TextWrapping="Wrap"
+            Margin="0,12,0,0"
+            AutomationProperties.LiveSetting="Assertive" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button
                 Content="{DynamicResource &quot;Save&quot;}"
                 Click="SaveClick"

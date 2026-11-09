@@ -687,6 +687,7 @@ internal static partial class Program
             Layout(window);
             Assert(saved.Count == savedAfterEdit && rules[1].Destination == "*.after.example", "A failed edit save restores the persisted rule.");
             rejectSave = false;
+            CheckUiReview(window, value => rejectSave = value);
             foreach (var input in new[]
             {
                 new RoutingRule { Source = "exe", Path = @"C:\Apps\client.exe", Action = "system" },

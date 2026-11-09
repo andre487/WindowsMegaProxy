@@ -26,13 +26,19 @@ public sealed class RuleWindow : Window
     {
         Title = existingRule is null ? Ui.T("New rule") : Ui.T("Edit rule");
         Width = 550;
+        MinWidth = 500;
+        Height = Math.Min(680, SystemParameters.WorkArea.Height);
+        MinHeight = Math.Min(400, Height);
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
         FontSize = 14;
-        SizeToContent = SizeToContent.Height;
-        ResizeMode = ResizeMode.NoResize;
+        ResizeMode = ResizeMode.CanResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var panel = new StackPanel { Margin = new Thickness(24) };
-        Content = panel;
+        var root = new Grid { Margin = new Thickness(24) };
+        root.RowDefinitions.Add(new RowDefinition());
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Content = root;
+        var panel = new StackPanel();
+        root.Children.Add(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         AddField(panel, Ui.T("Rule name (optional)"), name);
         panel.Children.Add(enabled);
         AddField(panel, Ui.T("Application"), source);
@@ -100,7 +106,8 @@ public sealed class RuleWindow : Window
         };
         buttons.Children.Add(save);
         buttons.Children.Add(new Button { Content = Ui.T("Cancel"), IsCancel = true });
-        panel.Children.Add(buttons);
+        Grid.SetRow(buttons, 1);
+        root.Children.Add(buttons);
     }
     private static void AddField(StackPanel panel, string label, Control control)
     {

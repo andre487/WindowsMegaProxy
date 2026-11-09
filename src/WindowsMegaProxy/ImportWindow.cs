@@ -17,7 +17,7 @@ public sealed class ImportWindow : Window
 
     public ImportWindow(ImportReview review)
     {
-        Title = Ui.T("Import options"); Width = 540; Height = 600; MinHeight = 320;
+        Title = Ui.T("Import options"); Width = 540; MinWidth = 480; Height = 600; MinHeight = 320;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"); FontSize = 14;
         var root = new DockPanel { Margin = new Thickness(24) };

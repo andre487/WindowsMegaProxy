@@ -1,4 +1,8 @@
 {
+    "About HTTP versions": "О версиях HTTP",
+    "Enter a proxy host.": "Укажите адрес прокси-сервера.",
+    "Undo delete": "Отменить удаление",
+    "Restore rule: {0}": "Восстановить правило: {0}",
     "Proxy HTTP support": "Поддержка HTTP в прокси",
     "Stable core (HTTP/1.1)": "Стабильное ядро (HTTP/1.1)",
     "Enable HTTP/2 (1.15 alpha)": "Включить HTTP/2 (1.15 alpha)",

@@ -811,7 +811,7 @@ public partial class MainWindow : Window
         ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
         trayConnect.IsEnabled = ConnectButton.IsEnabled;
         bool editable = canEdit && !quitting && !settingsLoading && !installingAppUpdate;
-        RulesEditable = editable;
+        RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
         foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
@@ -832,6 +832,7 @@ public partial class MainWindow : Window
         System.Windows.Automation.AutomationProperties.SetName(ReconnectButton,
             changed ? Ui.T("Reconnect and apply changes") : Ui.T("Reconnect"));
         ReconnectButton.ToolTip = changed ? Ui.T("Apply profile and rule changes") : Ui.T("Reconnect using current settings");
+        UpdateListCommands();
     }
 
     private static System.Collections.Generic.IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
@@ -1314,7 +1315,6 @@ public partial class MainWindow : Window
         }
         catch (Exception error) { ShowError(error); }
     }
-    private void DeleteRuleClick(object sender, RoutedEventArgs e) { if (canEdit && RulesList.SelectedItem is RoutingRule rule) rules.Remove(rule); }
     private async void RuleEnabledClick(object sender, RoutedEventArgs e)
     {
         if (sender is not CheckBox box || box.DataContext is not RoutingRule rule) return;
