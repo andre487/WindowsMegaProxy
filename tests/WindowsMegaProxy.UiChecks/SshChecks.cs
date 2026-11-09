@@ -37,6 +37,7 @@ internal static class SshChecks
             }
             foreach (string mode in new[] { "password", "key", "wrong-key", "wrong-password", "accept-new", "missing-public-key", "accept-change", "save-failure" })
             {
+                using var scenarioTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 profile.Proxy.Remove("password"); profile.Proxy.Remove("privateKey");
                 profile.Proxy["password"] = mode == "wrong-password" ? "incorrect" : "secret";
                 profile.Data["windows"]!["sshHostKey"] = fixture[mode is "wrong-key" or "accept-change" ? "otherKey" : "hostKey"]!.ToString();
@@ -65,9 +66,9 @@ internal static class SshChecks
                     bool failed = false;
                     try
                     {
-                        await engine.StartAsync(settings, true, timeout.Token);
+                        await engine.StartAsync(settings, true, scenarioTimeout.Token);
                         using var client = engine.CreateProbeClient(true);
-                        Assert(await client.GetStringAsync(fixture["origin"]!.ToString(), timeout.Token) == "ssh-fixture", "SSH forwards actual response bytes.");
+                        Assert(await client.GetStringAsync(fixture["origin"]!.ToString(), scenarioTimeout.Token) == "ssh-fixture", "SSH forwards actual response bytes.");
                     }
                     catch (Exception error) when (error is HttpRequestException or InvalidOperationException or IOException) { failed = true; }
                     Assert(failed == (mode.StartsWith("wrong-", StringComparison.Ordinal) || mode == "save-failure"), "Reject wrong keys, credentials and failed persistence without direct fallback.");
@@ -75,7 +76,7 @@ internal static class SshChecks
                     Assert(saves == (mode is "accept-new" or "missing-public-key" or "accept-change" ? 1 : 0), "Persist each accepted or resolved server key before connecting.");
                     if (savedKey is not null) Assert(engine.AppliedSettings!.ActiveProfile!.Proxy["trustedHostKey"]!.ToString() == savedKey.Fingerprint, "The applied snapshot contains the newly pinned server key.");
                     if (mode is "wrong-key" or "save-failure") Assert(!engine.Running, "Cancelled key changes or failed key persistence must not start the network core.");
-                    if (!failed) Assert(!engine.Http3Selected && await engine.CheckHttp3Async(timeout.Token) == "", "SSH uses the stable core and hides HTTP/3 diagnostics.");
+                    if (!failed) Assert(!engine.Http3Selected && await engine.CheckHttp3Async(scenarioTimeout.Token) == "", "SSH uses the stable core and hides HTTP/3 diagnostics.");
                 }
                 finally { await engine.StopAsync(); }
             }
