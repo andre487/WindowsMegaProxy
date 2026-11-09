@@ -109,6 +109,7 @@ public static partial class Installation
         string when = action == "restart" ? "reboot" : action;
         string root = CurrentUpdateRoot(personal);
         CheckDirectory(root);
+        RequireNoQueuedRebootFiles(root);
         string staging = UpdateDirectory(root);
         ProtectDataDirectory(staging);
         using var lease = new FileStream(Path.Combine(staging, "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -185,7 +186,7 @@ public static partial class Installation
                 if (mode == "service")
                 {
                     RegisterUpdateTask(root);
-                    await ScAsync("config", ServiceProtocol.Name, "start=", "demand");
+                    await ScAsync("config", ServiceProtocol.Name, "start=", when == "reboot" ? "auto" : "demand");
                 }
                 else if (!personal) DeleteTask(UpdateTaskFolder(), PendingAppUpdate.TaskName);
                 WriteUpdateRecord(personal, new(package.Version, when));
@@ -206,6 +207,7 @@ public static partial class Installation
             }
             // The protected copy is now authoritative; keep only one downloaded update.
             committed = true;
+            if (when == "reboot") await PrepareRebootFilesAsync(root);
             try { File.Delete(backup); }
             catch (IOException error) { UpdateLog(personal, "Could not remove the previous staged installer: " + error.Message); }
             try { File.Delete(Path.Combine(AppUpdateTrust.CacheDirectory, "setup.exe")); }
@@ -261,11 +263,13 @@ public static partial class Installation
 
     private static void CancelPendingUpdate(string root, bool personal)
     {
+        RequireNoQueuedRebootFiles(root);
         if (!personal) DeleteTask(UpdateTaskFolder(), PendingAppUpdate.TaskName);
         DeleteTask(UpdateTaskFolder(), UpdateTaskName(root) + ".Apply");
         WriteUpdateRecord(personal, null);
         string path = PreparedPath(root);
         if (File.Exists(path)) { CheckDirectory(UpdateDirectory(root)); File.Delete(path); }
+        File.Delete(RebootReceipt(root));
     }
 
     private static int ApplyPendingUpdate()
@@ -291,6 +295,7 @@ public static partial class Installation
         if (!Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar).Equals(Path.GetDirectoryName(WorkerPath(root)), StringComparison.OrdinalIgnoreCase))
             throw new IOException("The update worker must run from its protected staging directory.");
         CheckDirectory(root); CheckDirectory(UpdateDirectory(root)); CheckDirectory(Path.GetDirectoryName(WorkerPath(root))!);
+        RequireNoQueuedRebootFiles(root);
         Environment.CurrentDirectory = root;
         FileStream? lease = null;
         for (int attempt = 0; lease is null; attempt++)
@@ -315,7 +320,14 @@ public static partial class Installation
                 try { installed = AssemblyName.GetAssemblyName(Path.Combine(root, "WindowsMegaProxy.Runtime.dll")).Version!; }
                 catch (Exception error) when (error is IOException or BadImageFormatException)
                 { installed = new Version(0, 0, 0); UpdateLog(personal, "Repairing an interrupted installation from the verified staged package."); }
-                if (AppUpdateTrust.ParseVersion(package.Version) >= new Version(installed.Major, installed.Minor, Math.Max(0, installed.Build)))
+                bool filesApplied = false;
+                if (!personal && File.Exists(RebootReceipt(root)))
+                {
+                    try { VerifyRebootFiles(root, RebootFiles(package.Manifest)); filesApplied = true; }
+                    catch (Exception error) when (error is IOException or System.Security.Cryptography.CryptographicException)
+                    { UpdateLog(false, "Early-boot file replacement was incomplete; restoring from the verified installer: " + error.Message); }
+                }
+                if (!filesApplied && AppUpdateTrust.ParseVersion(package.Version) >= new Version(installed.Major, installed.Minor, Math.Max(0, installed.Build)))
                 {
                     string target = Path.Combine(UpdateDirectory(root), "setup.exe");
                     target = await VerifiedStagedInstallerAsync(target, package);

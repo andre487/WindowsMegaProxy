@@ -23,7 +23,7 @@ public partial class MainWindow
         TransportText.Text = protocol.Length == 0 ? "" : "(" + protocol + ")";
         TransportText.Visibility = protocol.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (tray is null) return;
-        string heading = BrandLabel(unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
+        string heading = BrandLabel(unavailable && ServiceUpdateInProgress ? "MegaProxy — update in progress" : unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");
         string suffix = protocol.Length == 0 ? "" : "\n" + protocol;
         string name = profile is null ? "" : new string(profile.Name.Select(character => char.IsControl(character) ? ' ' : character).ToArray()).Trim();
         // NotifyIcon limits tooltip text to 127 UTF-16 code units; preserve the protocol line.

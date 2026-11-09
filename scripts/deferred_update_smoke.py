@@ -43,6 +43,36 @@ def wait_for_tray_client():
     return wait_until(hidden_window, "The boot update did not restore exactly one hidden tray client in the logged-on session.", 30)
 
 
+def apply_boot_file_moves(destination, *, damage=False):
+    """Emulate Session Manager only on an owned disposable runner installation."""
+    if (os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
+            or destination != known_folder(0x26) / "WindowsMegaProxy"):
+        raise RuntimeError("Boot replacement simulation requires the disposable fixture.")
+    stop_workspace_app(dev=False, workspace_only=False)
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager", 0,
+                        winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as registration:
+        operations = winreg.QueryValueEx(registration, "PendingFileRenameOperations")[0]
+        assert len(operations) % 2 == 0
+        remaining = []
+        applied = 0
+        for source, target in zip(operations[::2], operations[1::2]):
+            prefix = "\\??\\"
+            destination_text = target.lstrip("!")
+            if not destination_text.lower().startswith((prefix + str(destination) + "\\").lower()):
+                remaining.extend((source, target))
+                continue
+            assert source.startswith(prefix)
+            original, replacement = Path(source[len(prefix):]), Path(destination_text[len(prefix):])
+            assert original.resolve().is_relative_to((destination / "update/reboot").resolve())
+            assert replacement.resolve().is_relative_to(destination.resolve())
+            if damage and replacement.name == "WindowsMegaProxy.dll":
+                original.write_bytes(b"damaged reboot payload")
+            original.replace(replacement)
+            applied += 1
+        assert applied > 0, "The updater must use Windows' early-boot replacement queue."
+        winreg.SetValueEx(registration, "PendingFileRenameOperations", 0, winreg.REG_MULTI_SZ, remaining)
+
+
 def check(setup, logs, destination, data, *, fresh=False):
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted" or not ct.windll.shell32.IsUserAnAdmin():
         raise RuntimeError("Deferred update fixtures require an elevated disposable GitHub runner.")
@@ -77,6 +107,9 @@ def check(setup, logs, destination, data, *, fresh=False):
     manifest = {"schemaVersion": 1, "preview": False, "platform": "win-x64", "version": version(), "components": {"installer": {
         "file": setup.name, "version": version(), "size": setup.stat().st_size, "sha256": digest(setup, "sha256"),
         "url": f"https://github.com/andre487/WindowsMegaProxy/releases/download/v{version()}/{setup.name}"}}}
+    published_manifest = json.loads((setup.parent / "update-manifest.json").read_bytes())
+    for component in ("app", "sing-box", "sing-box-h3"):
+        manifest["components"][component] = published_manifest["components"][component]
     signed_manifest(manifest, feed, key)
     assert manifest["signingKeyId"] == hashlib.sha256(key.public_key().public_bytes_raw()).hexdigest()
     cache = known_folder(0x1c) / "WindowsMegaProxy/Updates"
@@ -121,9 +154,17 @@ def check(setup, logs, destination, data, *, fresh=False):
         assert (data / "preservation-check.txt").read_text() == "preserved"
         assert "sing-box.exe" not in running_images()
 
-    def simulate_boot(expected_result):
+    def simulate_boot(expected_result, *, damage=False):
         sp.run(["sc.exe", "stop", "WindowsMegaProxy"], check=True, capture_output=True)
         wait_until(lambda: service_state("WindowsMegaProxy") == 1, "The fixture service did not stop.")
+        apply_boot_file_moves(destination, damage=damage)
+        started_service = sp.run(["sc.exe", "start", "WindowsMegaProxy"], capture_output=True)
+        if damage:
+            wait_until(lambda: service_state("WindowsMegaProxy") == 1, "An incomplete payload must not start the service.")
+        else:
+            assert started_service.returncode == 0
+            wait_until(lambda: service_state("WindowsMegaProxy") == 4, "The updated service must start before the recovery task.")
+            assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == version()
         worker = destination / "update/worker/WindowsMegaProxy.Service.exe"
         start_time = (datetime.now() + timedelta(hours=1)).strftime("%H:%M")
         sp.run(["schtasks.exe", "/Create", "/TN", simulation, "/SC", "ONCE", "/ST", start_time,
@@ -158,7 +199,7 @@ def check(setup, logs, destination, data, *, fresh=False):
         stop_workspace_app(dev=False, workspace_only=False)
         prepare("service", 2)
         command("--install-update", "reboot")
-        assert pending()["When"] == "reboot" and service_state("WindowsMegaProxy") == 4 and service_start() == 3
+        assert pending()["When"] == "reboot" and service_state("WindowsMegaProxy") == 4 and service_start() == 2
         xml = sp.check_output(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Update", "/XML"], text=True)
         tree = ET.fromstring(xml)
         namespace = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
@@ -168,15 +209,15 @@ def check(setup, logs, destination, data, *, fresh=False):
         assert Path(tree.findtext("t:Actions/t:Exec/t:Command", namespaces=namespace)).is_relative_to(destination / "update/worker")
         time.sleep(1)
         assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == "0.0.0", "Deferral must not apply in the current session."
+        refused = sp.run([str(helper), "--configure-mode", "manual"], timeout=30)
+        assert refused.returncode != 0 and service_state("WindowsMegaProxy") == 4, "Queued replacements must block mode changes without stopping the service."
         simulate_boot(0)
         verify_settings()
         command("--configure-mode", "manual")
         prepare("service", 3)
         command("--install-update", "reboot")
-        with (destination / "update/setup.exe").open("r+b") as staged:
-            staged.write(b"INVALID")
-        simulate_boot(1)
-        assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == "0.0.0", "A damaged staged installer must never run."
+        simulate_boot(0, damage=True)
+        assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == version(), "Incomplete boot replacement must be repaired from the signed installer."
         verify_settings()
         command("--configure-mode", "manual")
         prepare("manual", "replacement")

@@ -22,6 +22,8 @@ internal sealed class Program : ServiceBase
 
     protected override void OnStart(string[] args)
     {
+        RequestAdditionalTime(20000);
+        Installation.VerifyBootUpdate();
         runtime = StartupConfiguration.ClaimRuntime();
         run = Task.Run(RunAsync);
     }

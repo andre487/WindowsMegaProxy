@@ -8,10 +8,20 @@ public partial class MainWindow
     private string serviceState = "Service: checking…";
     private bool queryingServiceState;
 
+    private bool ServiceUpdateInProgress => scheduledAppUpdate?.When is "now" or "applying";
+    private string ServiceConnectionMessage => ServiceUpdateInProgress ? Ui.T("Update in progress") : ServiceUnavailableMessage;
+
+    private async Task RefreshInstallationStateAsync()
+    {
+        if (!automaticUpdateChecks) return;
+        scheduledAppUpdate = await TrackFileAsync(Task.Run(PendingAppUpdate.Read));
+        if (!quitting) UpdateAppUpdatesView();
+    }
+
     private void UpdateServiceStateView()
     {
         ServiceStateText.Visibility = service is null ? Visibility.Collapsed : Visibility.Visible;
-        ServiceStateText.Text = Ui.T(serviceState == "Service: running" && !serviceAvailable
+        ServiceStateText.Text = Ui.T(ServiceUpdateInProgress ? "Update in progress" : serviceState == "Service: running" && !serviceAvailable
             ? "Service: running, client disconnected" : serviceState);
         var warnings = PodkopCatalog.Warnings(engine?.AppliedSettings);
         RoutingWarningText.Visibility = warnings.Length == 0 ? Visibility.Collapsed : Visibility.Visible;

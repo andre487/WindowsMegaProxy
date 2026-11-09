@@ -46,6 +46,10 @@ public static partial class Installation
                     using (lease)
                     {
                         if (File.Exists(PreparedPath(root))) return 0;
+                        RequireNoQueuedRebootFiles(root);
+                        string reboot = Path.Combine(staging, "reboot");
+                        if (Directory.Exists(reboot)) { CheckDirectory(reboot); Directory.Delete(reboot, true); }
+                        File.Delete(RebootReceipt(root));
                         string worker = Path.Combine(staging, "worker");
                         if (Directory.Exists(worker)) { CheckDirectory(worker); Directory.Delete(worker, true); }
                         string setup = Path.Combine(staging, "setup.exe");
