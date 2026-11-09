@@ -98,6 +98,7 @@ public partial class ProfileWindow : Window
 
     private void SaveClick(object sender, RoutedEventArgs e)
     {
+        ErrorText.Text = "";
         try
         {
             var candidate = original.Copy();
@@ -114,7 +115,16 @@ public partial class ProfileWindow : Window
             }
             if (candidate.Supported)
             {
-                if (!int.TryParse(PortBox.Text, out int port)) throw new ArgumentException(Ui.T("Invalid port."));
+                if (!int.TryParse(PortBox.Text, out int port) || port is < 1 or > 65535)
+                {
+                    InvalidField(PortBox, "Invalid port.");
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(HostBox.Text))
+                {
+                    InvalidField(HostBox, "Enter a proxy host.");
+                    return;
+                }
                 var type = (string)((ComboBoxItem)TypeBox.SelectedItem).Tag;
                 if (candidate.Type != type && candidate.Proxy["privateKey"] is not null)
                     candidate.Proxy.Remove("privateKey");
@@ -153,7 +163,11 @@ public partial class ProfileWindow : Window
                 }
                 if (type == "HTTPS_JUMP")
                 {
-                    if (!int.TryParse(JumpPortBox.Text, out int jumpPort)) throw new ArgumentException(Ui.T("Invalid port."));
+                    if (!int.TryParse(JumpPortBox.Text, out int jumpPort) || jumpPort is < 1 or > 65535)
+                    {
+                        InvalidField(JumpPortBox, "Invalid port.");
+                        return;
+                    }
                     var options = candidate.Proxy["jump"] as System.Text.Json.Nodes.JsonObject ?? new();
                     options["host"] = JumpHostBox.Text.Trim(); options["port"] = jumpPort;
                     options["sameAuthentication"] = SameJumpAuthenticationBox.IsChecked == true;
@@ -174,6 +188,14 @@ public partial class ProfileWindow : Window
             DialogResult = true;
         }
         catch (Exception error) when (error is ArgumentException or InvalidDataException) { ErrorText.Text = error.Message; }
+    }
+
+    private void InvalidField(TextBox field, string message)
+    {
+        ErrorText.Text = Ui.T(message);
+        field.Focus();
+        field.SelectAll();
+        field.BringIntoView();
     }
 
     private void SameJumpAuthenticationChanged(object sender, RoutedEventArgs e)

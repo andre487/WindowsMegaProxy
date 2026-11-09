@@ -33,7 +33,8 @@ public static class WindowInput
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && ScrollHorizontal(node, -e.Delta)) { e.Handled = true; return; }
         while (node is not null)
         {
-            if (node is ScrollViewer viewer && viewer.ScrollableHeight > 0)
+            if (node is ScrollViewer viewer && viewer.ScrollableHeight > 0 &&
+                (e.Delta < 0 ? viewer.VerticalOffset < viewer.ScrollableHeight : viewer.VerticalOffset > 0))
             {
                 // WPF's pixel mode uses 48 DIP per line; use actual text lines and the Windows wheel setting.
                 viewer.ScrollToVerticalOffset(viewer.VerticalOffset + WheelDistance(e.Delta, SystemParameters.WheelScrollLines,
@@ -65,7 +66,8 @@ public static class WindowInput
     {
         while (node is not null)
         {
-            if (node is ScrollViewer viewer && viewer.ScrollableWidth > 0)
+            if (node is ScrollViewer viewer && viewer.ScrollableWidth > 0 &&
+                (delta > 0 ? viewer.HorizontalOffset < viewer.ScrollableWidth : viewer.HorizontalOffset > 0))
             {
                 int characters = SystemParametersInfo(0x006C, 0, out uint value, 0) ? unchecked((int)value) : 3;
                 var text = new FormattedText("0", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,

@@ -16,7 +16,8 @@
     FontWeight="Normal"
     UseLayoutRounding="True"
     Closing="WindowClosing"
-    Loaded="WindowLoaded">
+    Loaded="WindowLoaded"
+    SizeChanged="WindowSizeChanged">
     <Window.Resources>
         <Style x:Key="SettingsCategoryStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -77,7 +78,13 @@
             </Style.Triggers>
         </Style>
         <DataTemplate x:Key="ProfilePickerTemplate">
-            <StackPanel Orientation="Horizontal">
+            <Grid MaxWidth="360">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <Border
                     Background="{Binding ColorHex}"
                     BorderBrush="{DynamicResource TextFillColorSecondaryBrush}"
@@ -88,17 +95,24 @@
                     Margin="0,0,8,0"
                     VerticalAlignment="Center" />
                 <Image
+                    Grid.Column="1"
                     Source="{Binding FlagUri}"
                     Style="{StaticResource CountryFlagStyle}"
                     ToolTip="{Binding CountryName}"
                     AutomationProperties.Name="{Binding CountryName}" />
-                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
                 <TextBlock
+                    Grid.Column="2"
+                    Text="{Binding Name}"
+                    ToolTip="{Binding Name}"
+                    TextTrimming="CharacterEllipsis"
+                    VerticalAlignment="Center" />
+                <TextBlock
+                    Grid.Column="3"
                     Text="{Binding Type}"
                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                     Margin="8,0,0,0"
                     VerticalAlignment="Center" />
-            </StackPanel>
+            </Grid>
         </DataTemplate>
         <Style x:Key="SectionHeaderStyle" TargetType="TabItem">
             <Setter Property="FontWeight" Value="Normal" />
@@ -155,14 +169,14 @@
             </Setter>
         </Style>
     </Window.Resources>
-    <Grid Margin="24">
+    <Grid x:Name="RootLayout" Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid Margin="0,0,0,16">
+        <Grid x:Name="TitleLayout" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -197,6 +211,7 @@
             </Menu>
         </Grid>
         <Border
+            x:Name="ConnectionCard"
             Grid.Row="1"
             Padding="20,16"
             Margin="0,0,0,16"
@@ -211,6 +226,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Margin="0,0,24,0">
                     <TextBlock
+                        x:Name="ConnectionLabel"
                         Text="{DynamicResource &quot;Connection&quot;}"
                         Style="{DynamicResource CaptionTextBlockStyle}"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -443,6 +459,7 @@
                         Margin="0,0,0,16" />
                     <ListBox
                         x:Name="ProfilesList"
+                        SelectionChanged="ListSelectionChanged"
                         Grid.Row="1"
                         AutomationProperties.Name="{DynamicResource &quot;Connection profiles&quot;}"
                         HorizontalContentAlignment="Stretch"
@@ -464,16 +481,21 @@
                                         BorderBrush="{DynamicResource TextFillColorSecondaryBrush}"
                                         BorderThickness="0.5" />
                                     <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                                        <StackPanel Orientation="Horizontal">
+                                        <DockPanel>
                                             <Image
                                                 Source="{Binding FlagUri}"
                                                 Style="{StaticResource CountryFlagStyle}"
                                                 ToolTip="{Binding CountryName}"
                                                 AutomationProperties.Name="{Binding CountryName}" />
-                                            <TextBlock Text="{Binding Name}" />
-                                        </StackPanel>
+                                            <TextBlock
+                                                Text="{Binding Name}"
+                                                TextTrimming="CharacterEllipsis"
+                                                ToolTip="{Binding Name}" />
+                                        </DockPanel>
                                         <TextBlock
                                             Text="{Binding Description}"
+                                            TextTrimming="CharacterEllipsis"
+                                            ToolTip="{Binding Description}"
                                             Margin="0,4,0,0"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                         <TextBlock
@@ -492,14 +514,17 @@
                             Margin="0,0,8,8" />
                         <Button
                             Content="{DynamicResource &quot;Edit&quot;}"
+                            x:Name="EditProfileButton"
                             Click="EditProfileClick"
                             Margin="0,0,8,8" />
                         <Button
                             Content="{DynamicResource &quot;Duplicate&quot;}"
+                            x:Name="CloneProfileButton"
                             Click="CloneProfileClick"
                             Margin="0,0,8,8" />
                         <Button
                             Content="{DynamicResource &quot;Delete&quot;}"
+                            x:Name="DeleteProfileButton"
                             Click="DeleteProfileClick"
                             Margin="0,0,8,8" />
                         <Button
@@ -528,7 +553,7 @@
                             Margin="0,0,12,0" />
                         <ComboBox
                             x:Name="DefaultActionBox"
-                            Width="160"
+                            MinWidth="200"
                             AutomationProperties.Name="{DynamicResource &quot;Default action&quot;}"
                             SelectedIndex="0">
                             <ComboBoxItem Content="{DynamicResource &quot;Active profile&quot;}" Tag="proxy" />
@@ -548,6 +573,7 @@
                         Margin="0,0,0,12" />
                     <DataGrid
                         x:Name="RulesList"
+                        SelectionChanged="ListSelectionChanged"
                         MouseDoubleClick="RulesDoubleClick"
                         PreviewKeyDown="RulesKeyDown"
                         AutoGenerateColumns="False"
@@ -606,21 +632,31 @@
                         <Button
                             Content="{DynamicResource &quot;Edit&quot;}"
                             Margin="0,0,8,0"
+                            x:Name="EditRuleButton"
                             Click="EditRuleClick" />
                         <Button
                             Content="{DynamicResource &quot;Delete&quot;}"
                             Margin="0,0,8,0"
+                            x:Name="DeleteRuleButton"
                             Click="DeleteRuleClick" />
                         <Button
                             Content="↑"
                             AutomationProperties.Name="{DynamicResource &quot;Move rule up&quot;}"
                             Margin="0,0,8,0"
+                            x:Name="MoveRuleUpButton"
                             Click="MoveRuleUpClick" />
                         <Button
                             Content="↓"
                             AutomationProperties.Name="{DynamicResource &quot;Move rule down&quot;}"
                             Margin="0,0,8,0"
+                            x:Name="MoveRuleDownButton"
                             Click="MoveRuleDownClick" />
+                        <Button
+                            x:Name="UndoDeleteRuleButton"
+                            Content="{DynamicResource &quot;Undo delete&quot;}"
+                            Click="UndoDeleteRuleClick"
+                            Margin="8,0,0,0"
+                            Visibility="Collapsed" />
                     </WrapPanel>
                 </Grid>
             </TabItem>
