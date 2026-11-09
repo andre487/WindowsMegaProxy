@@ -157,6 +157,7 @@ def check(setup, logs, destination, data, *, fresh=False):
     def simulate_boot(expected_result, *, damage=False):
         sp.run(["sc.exe", "stop", "WindowsMegaProxy"], check=True, capture_output=True)
         wait_until(lambda: service_state("WindowsMegaProxy") == 1, "The fixture service did not stop.")
+        wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "The stopped service has not released its files.", 30)
         apply_boot_file_moves(destination, damage=damage)
         started_service = sp.run(["sc.exe", "start", "WindowsMegaProxy"], capture_output=True)
         if damage:
