@@ -30,7 +30,15 @@ internal static class FailoverChecks
         var config = JsonNode.Parse(File.ReadAllText(args[Array.IndexOf(args, "-c") + 1]))!;
         if (args.Contains("tools"))
         {
-            string host = config["outbounds"]!.AsArray().Single(item => item!["tag"]!.ToString() == "proxy")!["server"]!.ToString();
+            if (config["route"]!["rules"]!.AsArray().Count != 0 || config["route"]!["rule_set"] is not null)
+                throw new Exception("Transport probes must not load user routing rules or unprepared Podkop files.");
+            var outbound = config["outbounds"]!.AsArray().Single(item => item!["tag"]!.ToString() == "proxy")!;
+            string host = outbound["server"]!.ToString();
+            File.AppendAllText(state + ".probes", host + ":" + outbound["version"] + Environment.NewLine);
+            if (host == "h3-fallback.invalid" && outbound["version"]?.GetValue<int>() == 3)
+            { Console.Error.WriteLine("HTTP/3 unavailable: connection refused"); Environment.ExitCode = 1; return true; }
+            if (host == "untrusted.invalid")
+            { Console.Error.WriteLine("x509 certificate validation failed"); Environment.ExitCode = 1; return true; }
             if (host == "unavailable.invalid" || File.ReadAllText(state) == host)
             { Console.Error.WriteLine("outbound/http[proxy]: connection refused"); Environment.ExitCode = 1; }
             return true;
@@ -68,7 +76,9 @@ internal static class FailoverChecks
         string state = Path.Combine(directory, "failed-host"); File.WriteAllText(state, "");
         const string variable = "WINDOWSMEGAPROXY_CORE";
         string? previous = Environment.GetEnvironmentVariable(variable);
+        string? previousH3 = Environment.GetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE");
         Environment.SetEnvironmentVariable(variable, Environment.ProcessPath);
+        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE", Environment.ProcessPath);
         Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_FAILOVER_FIXTURE", state);
         using var stopping = new CancellationTokenSource(TimeSpan.FromSeconds(50));
         using var origin = new TcpListener(IPAddress.Loopback, 0); origin.Start();
@@ -91,6 +101,33 @@ internal static class FailoverChecks
             await changed.Task.WaitAsync(stopping.Token);
             if (engine.AppliedSettings?.ActiveProfileId != profiles[2].Id || engine.AppliedSignature != Configuration.Signature(settings))
                 throw new Exception("Traffic-triggered failover must skip attempted profiles, update the actual profile and retain the requested signature.");
+            await engine.StopAsync();
+            foreach (bool fallback in new[] { false, true })
+            {
+                var candidate = ProxyProfile.Create("H3 candidate");
+                candidate.Proxy["host"] = fallback ? "h3-fallback.invalid" : "h3-ok.invalid";
+                candidate.Proxy["preferHttp3"] = true;
+                var h3 = new Settings { Profiles = [candidate], ActiveProfileId = candidate.Id, DefaultAction = "proxy" };
+                h3.SharedOptions["failover"] = new JsonObject { ["mode"] = "ALL", ["profileIds"] = new JsonArray() };
+                File.WriteAllText(state + ".probes", "");
+                await engine.StartAsync(h3, cancellationToken: stopping.Token);
+                if (File.ReadAllLines(state + ".probes").Length != (fallback ? 2 : 1) || engine.UsedHttp3Fallback != fallback || engine.Http3Selected == fallback)
+                    throw new Exception("Reuse H3 success or validated H2 fallback without another probe; preserve the actual transport flags.");
+                await engine.StopAsync();
+                candidate.Proxy["host"] = "untrusted.invalid";
+                bool rejected = false;
+                try { await engine.StartAsync(h3, cancellationToken: stopping.Token); }
+                catch (IOException) { rejected = true; }
+                if (!rejected || engine.Running) throw new Exception("A failed certificate check cannot be reused as a successful candidate.");
+            }
+            var diagnosticProfile = ProxyProfile.Create("H3 diagnostic");
+            diagnosticProfile.Proxy["host"] = "h3-ok.invalid";
+            diagnosticProfile.Proxy["preferHttp3"] = true;
+            string lists = Path.Combine(directory, "podkop"); Directory.CreateDirectory(lists);
+            File.WriteAllText(Path.Combine(lists, "youtube.json"), PodkopCache.Parse(["youtube.com"]).ToJsonString());
+            await engine.StartAsync(new Settings { Profiles = [diagnosticProfile], ActiveProfileId = diagnosticProfile.Id, DefaultAction = "proxy",
+                Rules = [new RoutingRule { Destination = "podkop:youtube", Action = "block" }] }, testOnly: true, cancellationToken: stopping.Token);
+            await engine.StopAsync();
             Console.WriteLine("Startup and traffic-triggered failover passed with fake cores and loopback only; no TUN driver.");
         }
         finally
@@ -98,6 +135,7 @@ internal static class FailoverChecks
             await engine.StopAsync();
             stopping.Cancel(); await serving;
             Environment.SetEnvironmentVariable(variable, previous);
+            Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE", previousH3);
             Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_FAILOVER_FIXTURE", null);
         }
     }

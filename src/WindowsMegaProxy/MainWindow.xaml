@@ -56,6 +56,7 @@
             <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
             <Setter Property="ClipboardCopyMode" Value="ExcludeHeader" />
             <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
             <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
             <Setter Property="CanUserDeleteRows" Value="False" />
         </Style>
@@ -349,6 +350,7 @@
                     <DataGrid
                         x:Name="ConnectionsGrid"
                         MinColumnWidth="80"
+                        ScrollViewer.CanContentScroll="True"
                         VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                         Grid.Row="2"
                         AutoGenerateColumns="False"

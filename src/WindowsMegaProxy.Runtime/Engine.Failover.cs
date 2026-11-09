@@ -41,8 +41,8 @@ public sealed partial class Engine
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    if (enabled) await CheckCandidateAsync(selected, cancellationToken).ConfigureAwait(false);
-                    await StartSelectedAsync(selected, testOnly, cancellationToken).ConfigureAwait(false);
+                    bool? validatedHttp3 = enabled ? await CheckCandidateAsync(selected, cancellationToken).ConfigureAwait(false) : null;
+                    await StartSelectedAsync(selected, testOnly, cancellationToken, validatedHttp3).ConfigureAwait(false);
                     break;
                 }
                 catch (ProxyTransportException) when (enabled)
@@ -93,10 +93,10 @@ public sealed partial class Engine
         }
     }
 
-    private async Task CheckCandidateAsync(Settings settings, CancellationToken token)
+    private async Task<bool?> CheckCandidateAsync(Settings settings, CancellationToken token)
     {
         // First-use SSH key verification stays in StartSelectedAsync; never send credentials before it.
-        if (settings.ActiveProfile is { Type: "SSH" } ssh && SshConfiguration.PublicKey(ssh).Length == 0) return;
+        if (settings.ActiveProfile is { Type: "SSH" } ssh && SshConfiguration.PublicKey(ssh).Length == 0) return null;
         var runtime = settings.Copy();
         var config = Configuration.Build(runtime, 1, "failover");
         config["inbounds"] = new JsonArray(); config.Remove("experimental");
@@ -108,13 +108,13 @@ public sealed partial class Engine
         try
         {
             var result = await RunCoreToolAsync(CoreExecutable(Configuration.RequiresAlpha(runtime)), config, http3ProbeUri.ToString(), deadline.Token).ConfigureAwait(false);
-            if (result.ExitCode == 0) return;
+            if (result.ExitCode == 0) return runtime.ActiveProfile!.PreferHttp3 ? true : null;
             if (runtime.ActiveProfile!.PreferHttp3 && Http3Fallback.IsUnavailable([result.Error]))
             {
                 runtime.ActiveProfile.Proxy["preferHttp2"] = true;
                 runtime.ActiveProfile.Proxy["preferHttp3"] = false;
                 await CheckCandidateAsync(runtime, token).ConfigureAwait(false);
-                return;
+                return false;
             }
             if (FailoverPolicy.TransportFailure(result.Error)) throw new ProxyTransportException();
             throw new IOException("Proxy validation failed. Check credentials, certificates and server compatibility.");
@@ -165,10 +165,10 @@ public sealed partial class Engine
                     try
                     {
                         if (candidate.Type == "SSH" && SshConfiguration.PublicKey(candidate).Length == 0) continue;
-                        await CheckCandidateAsync(next, token).ConfigureAwait(false);
+                        bool? validatedHttp3 = await CheckCandidateAsync(next, token).ConfigureAwait(false);
                         changingProfile = true;
                         await StopSelectedAsync().ConfigureAwait(false);
-                        await StartSelectedAsync(next, false, token).ConfigureAwait(false);
+                        await StartSelectedAsync(next, false, token, validatedHttp3).ConfigureAwait(false);
                         PreservePinnedKey(requested);
                         AppliedSignature = Configuration.Signature(requested);
                         Log?.Invoke(candidate.Id == current.ActiveProfileId ? "Proxy recovered after a fresh connection." : "Failover switched the active connection profile.");

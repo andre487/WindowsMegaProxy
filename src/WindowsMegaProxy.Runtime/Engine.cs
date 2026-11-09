@@ -59,13 +59,19 @@ public sealed partial class Engine : IEngine
         this.http3ProbeUri = http3ProbeUri ?? new Uri("https://example.com/");
     }
 
-    private async Task StartSelectedAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
+    private async Task StartSelectedAsync(Settings settings, bool testOnly, CancellationToken cancellationToken, bool? validatedHttp3 = null)
     {
         if (Running) return;
         if (!testOnly && otherRunning())
             throw new IOException("The other MegaProxy version is running. Open the application and choose which version to keep active.");
-        UsedHttp3Fallback = false;
+        UsedHttp3Fallback = validatedHttp3 == false;
         var runtime = PortableConfiguration.Copy(settings);
+        if (UsedHttp3Fallback)
+        {
+            runtime.ActiveProfile!.Proxy["preferHttp2"] = true;
+            runtime.ActiveProfile.Proxy["preferHttp3"] = false;
+        }
+        if (validatedHttp3.HasValue) Log?.Invoke("Reusing the failover candidate's verified HTTP transport.");
         if (Configuration.UsesProxy(runtime) && runtime.ActiveProfile is { Type: "SSH" } ssh && !(ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false))
         {
             string previous = ssh.Proxy["trustedHostKey"]?.GetValue<string>() ?? "";
@@ -80,10 +86,12 @@ public sealed partial class Engine : IEngine
             ssh.Proxy["trustedHostKey"] = fingerprint;
             Log?.Invoke(previous.Length == 0 ? "Accepted and pinned a new SSH server key." : "Verified the SSH server key.");
         }
-        if (Configuration.RequiresHttp3(settings) && settings.ActiveProfile!.PreferHttp3)
+        if (validatedHttp3 is null && Configuration.RequiresHttp3(settings) && settings.ActiveProfile!.PreferHttp3)
         {
             var config = Configuration.Build(runtime, 1, "probe");
             config["inbounds"] = new JsonArray();
+            config["route"]!["rules"] = new JsonArray();
+            config["route"]!.AsObject().Remove("rule_set");
             config["route"]!["final"] = "proxy";
             config.Remove("experimental");
             config["log"] = new JsonObject { ["disabled"] = true };
@@ -122,7 +130,8 @@ public sealed partial class Engine : IEngine
         if (!testOnly && PodkopCatalog.Used(runtime).Length > 0)
         {
             listStopping = new CancellationTokenSource();
-            listUpdates = UpdatePodkopAsync(runtime, listStopping.Token);
+            var listToken = listStopping.Token;
+            listUpdates = Task.Run(() => UpdatePodkopAsync(runtime, listToken), listToken);
         }
     }
 
@@ -157,7 +166,8 @@ public sealed partial class Engine : IEngine
             Log?.Invoke($"TUN interface {AppIdentity.DisplayName}: IPv4={addresses.Ipv4}; IPv6={addresses.Ipv6}.");
         }
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
-        foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken, cacheOnly: PodkopThroughProxy(settings, id)).ConfigureAwait(false);
+        foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken,
+            cacheOnly: PodkopThroughProxy(settings, id), preferCache: true).ConfigureAwait(false);
         foreach (var ruleSet in config["route"]!["rule_set"]!.AsArray())
             ruleSet!["path"] = cache.MergeGroup(ruleSet["tag"]!.ToString()[7..].Split('+'));
         podkopWarnings = cache.Unavailable.ToArray();

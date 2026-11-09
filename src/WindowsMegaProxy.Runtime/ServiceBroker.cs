@@ -57,9 +57,9 @@ public sealed class ServiceBroker : IAsyncDisposable
             await configuration.WaitAsync(token).ConfigureAwait(false);
             try
             {
-                var reply = Reply(peer, request.Operation == "hello");
+                var reply = Reply(peer, request.Operation == "hello", request.Operation == "hello");
                 if (lease is not null) return reply with { Status = new(false, null, null, false, false, "direct", false), Probe = null };
-                return request.Operation == "status" && reply.Status is not null ? reply with { Status = reply.Status with { AppliedSettings = null } } : reply;
+                return reply;
             }
             finally { configuration.Release(); }
         }
@@ -120,14 +120,14 @@ public sealed class ServiceBroker : IAsyncDisposable
                     {
                         case "stop": desiredSettings = null; await StopAsync().ConfigureAwait(false); return Reply(peer);
                         case "connections":
-                            return Reply(peer) with { Connections = engine?.Running == true ? await engine.GetConnectionsAsync(request.ShowAll).ConfigureAwait(false) : new([], 0, 0, 0) };
+                            return Reply(peer, includeAppliedSettings: false) with { Connections = engine?.Running == true ? await engine.GetConnectionsAsync(request.ShowAll).ConfigureAwait(false) : new([], 0, 0, 0) };
                         default:
                             if (engine?.Running != true) throw new IOException("The proxy is disconnected.");
-                            return Reply(peer) with { Text = await engine.CheckHttp3Async(token).ConfigureAwait(false) };
+                            return Reply(peer, includeAppliedSettings: false) with { Text = await engine.CheckHttp3Async(token).ConfigureAwait(false) };
                     }
                 }
                 finally { network.Release(); }
-            case "log": return Reply(peer) with { Text = await log.ReadAsync(tailOnly: true).ConfigureAwait(false) };
+            case "log": return Reply(peer, includeAppliedSettings: false) with { Text = await log.ReadAsync(tailOnly: true).ConfigureAwait(false) };
             default: throw new IOException("Unknown service operation.");
         }
     }
@@ -197,9 +197,10 @@ public sealed class ServiceBroker : IAsyncDisposable
         return Reply(peer) with { Lease = lease };
     }
 
-    private ServiceReply Reply(ClientAccess peer, bool includeSettings = false)
+    private ServiceReply Reply(ClientAccess peer, bool includeSettings = false, bool includeAppliedSettings = true)
     {
         var current = status with { Recovering = !status.Running && desiredSettings is not null && lease is null };
+        if (!includeAppliedSettings) current = current with { AppliedSettings = null };
         // Test proxy credentials belong only to the administrator who owns its lease.
         bool visible = lease is null || leaseOwner == peer.Sid;
         return new(peer.CanEdit,

@@ -112,6 +112,9 @@ jobs:
       - name: Test SSH on a local server
         run: ssh-test.cmd
 
+      - name: Test selective domain sniffing on local servers
+        run: scripts\tools.cmd scripts\sniff_test.py
+
       - name: Upload test reports and interface screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -126,10 +129,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  installer:
+  installer-package:
     needs: plan
     if: needs.plan.outputs.mode == 'full'
-    name: Installer and DEV mode checks
+    name: Build installer test package
     runs-on: windows-2025
     timeout-minutes: 30
     defaults:
@@ -168,35 +171,100 @@ jobs:
           path: artifacts/release-preview/*
           retention-days: 7
 
-      - name: Publish DEV without touching installed services
-        run: build.cmd --dev
+      - name: Upload installer smoke inputs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-installer-smoke-inputs
+          path: |
+            artifacts/release-preview/*-setup.exe
+            artifacts/release-preview/update-manifest.json
+          compression-level: 0
+          retention-days: 7
 
-      - name: Build test fixtures for installed settings and channel switching
-        run: |
-          call scripts\dotnet.cmd build tests\WindowsMegaProxy.UiChecks -c Release
-          if errorlevel 1 exit /b %errorlevel%
-          call scripts\dotnet.cmd build tests\WindowsMegaProxy.UiChecks -c Release -p:MegaProxyDev=true
-          if errorlevel 1 exit /b %errorlevel%
-
-      - name: Test installer on disposable runner without activating TUN
-        run: scripts\tools.cmd scripts\installer_smoke.py
-
-      - name: Test all DEV modes and complete startup cleanup
-        run: scripts\tools.cmd scripts\dev_mode_smoke.py
-
-      - name: Upload test reports and interface screenshots
+      - name: Upload packaging test reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: windows-installer-results
+          name: windows-installer-package-results
+          path: artifacts/installer-checks/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  installer-smoke:
+    needs: [plan, installer-package]
+    if: needs.plan.outputs.mode == 'full'
+    name: Installer smoke (${{ matrix.suite }})
+    runs-on: windows-2025
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [installation, updates, dev]
+    defaults:
+      run:
+        shell: cmd
+    env:
+      UV_PYTHON: '3.13'
+      UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}\.tools\python
+      UV_CACHE_DIR: ${{ github.workspace }}\.tools\uv-cache
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Download development dependencies
+        run: setup.cmd
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: windows-installer-smoke-inputs
+          path: artifacts/release-preview
+
+      - name: Build installed settings fixtures
+        if: matrix.suite != 'dev'
+        run: scripts\dotnet.cmd build tests\WindowsMegaProxy.UiChecks -c Release
+
+      - name: Build DEV settings and channel fixtures
+        if: matrix.suite == 'dev'
+        run: scripts\dotnet.cmd build tests\WindowsMegaProxy.UiChecks -c Release -p:MegaProxyDev=true
+
+      - name: Test installer or deferred updates
+        if: matrix.suite != 'dev'
+        run: scripts\tools.cmd scripts\installer_smoke.py --suite ${{ matrix.suite }}
+
+      - name: Test all DEV modes and complete startup cleanup
+        if: matrix.suite == 'dev'
+        run: scripts\tools.cmd scripts\dev_mode_smoke.py
+
+      - name: Upload smoke test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-installer-${{ matrix.suite }}-results
           path: |
             artifacts/**/result.txt
             artifacts/**/failure.txt
-            artifacts/ui-checks/*.png
-            artifacts/ui-checks-dev/*.png
             artifacts/installer-checks/*.log
           if-no-files-found: warn
           retention-days: 7
+
+  installer:
+    needs: [plan, installer-package, installer-smoke]
+    if: always() && needs.plan.outputs.mode == 'full'
+    name: Installer and DEV mode checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require packaging and every smoke suite
+        env:
+          PACKAGE_RESULT: ${{ needs.installer-package.result }}
+          SMOKE_RESULT: ${{ needs.installer-smoke.result }}
+        run: |
+          test "$PACKAGE_RESULT" = success
+          test "$SMOKE_RESULT" = success
 
   windows-tests:
     needs: [plan, code, network, installer]

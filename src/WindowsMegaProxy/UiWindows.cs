@@ -6,12 +6,19 @@ namespace WindowsMegaProxy;
 public static class UiTheme
 {
     private static string? appliedLanguage;
+    private static ResourceDictionary? localizedResources;
     public static void Apply(string language, string theme, Window window)
     {
         if (appliedLanguage != language || Ui.Language != language)
         {
             Ui.SetLanguage(language);
-            foreach (var pair in Ui.Russian) Application.Current.Resources[pair.Key] = Ui.T(pair.Key);
+            var resources = new ResourceDictionary();
+            foreach (var pair in Ui.Russian) resources[pair.Key] = Ui.T(pair.Key);
+            var dictionaries = Application.Current.Resources.MergedDictionaries;
+            int index = localizedResources is null ? -1 : dictionaries.IndexOf(localizedResources);
+            if (index < 0) dictionaries.Add(resources);
+            else dictionaries[index] = resources;
+            localizedResources = resources;
             appliedLanguage = language;
         }
 #pragma warning disable WPF0001

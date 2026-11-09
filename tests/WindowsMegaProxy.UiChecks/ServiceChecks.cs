@@ -149,6 +149,16 @@ internal static class ServiceChecks
             var client = new ServiceClient(pipeName, sid);
             var remote = new RemoteEngine(client, _ => Task.FromResult(false));
             await remote.StartAsync(config);
+            var applied = remote.AppliedSettings;
+            Assert(applied is not null, "Start returns the applied configuration once.");
+            var stats = await client.CallAsync(new("connections", InstanceId: remote.InstanceId, Generation: remote.Generation));
+            Assert(stats.Status?.AppliedSettings is null && stats.Settings is null, "Statistics do not resend profiles and rules.");
+            remote.Apply(stats);
+            Assert(ReferenceEquals(remote.AppliedSettings, applied), "Lightweight replies retain the client's applied snapshot.");
+            var logReply = await client.CallAsync(new("log"));
+            Assert(logReply.Status?.AppliedSettings is null, "Log polling does not resend the applied snapshot.");
+            var rebound = await client.CallAsync(new("hello"));
+            Assert(rebound.Status?.AppliedSettings is not null, "A new client binding still receives the full applied snapshot.");
             var controller = new ConnectionController(() => remote);
             controller.Attach(remote);
             await controller.ShutdownAsync();
