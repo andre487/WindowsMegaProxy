@@ -78,7 +78,7 @@ Root: HKCU; Subkey: "SOFTWARE\WindowsMegaProxy\UserInstallation"; Flags: uninsde
 Type: filesandordirs; Name: "{code:RuntimePath}\update"
 Type: files; Name: "{code:RuntimePath}\user-installation.sid"; Check: IsUserInstall
 Type: dirifempty; Name: "{code:RuntimePath}"; Check: IsUserInstall
-Type: filesandordirs; Name: "{code:RuntimePath}"; Check: IsAdminInstallMode
+Type: filesandordirs; Name: "{code:RuntimePath}"; Check: IsSystemRuntime
 
 [Run]
 Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser
@@ -120,7 +120,12 @@ var Code, I: Integer; Arguments, ExpectedSid: String;
 begin
   Result := True;
   if IsBootUpdate and not IsAdminInstallMode then RaiseException('Early-boot updates require a system installation.');
-  if IsAdminInstallMode then Exit;
+  if IsAdminInstallMode then begin
+    Arguments := ExpandConstant('{param:DIR|}');
+    if (Arguments <> '') and (CompareText(ExpandFileName(Arguments), ExpandConstant('{commonpf}\WindowsMegaProxy')) <> 0) then
+      RaiseException('System installations require the fixed Program Files\WindowsMegaProxy directory.');
+    Exit;
+  end;
   ExpectedSid := ExpandConstant('{param:OWNER|}');
   if (ExpectedSid <> '') and (ExpectedSid <> CurrentSid) then
     RaiseException('Current-user installation requires elevation by the same administrator account. Choose installation for all users instead.');
@@ -195,6 +200,11 @@ function RuntimePath(Param: String): String;
 begin
   if IsAdminInstallMode then Result := ExpandConstant('{app}')
   else Result := ProtectedUserRoot('');
+end;
+
+function IsSystemRuntime: Boolean;
+begin
+  Result := IsAdminInstallMode and (CompareText(ExpandFileName(RuntimePath('')), ExpandConstant('{commonpf}\WindowsMegaProxy')) = 0);
 end;
 
 function LaunchPath(Param: String): String;

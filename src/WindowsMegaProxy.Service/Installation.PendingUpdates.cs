@@ -323,7 +323,9 @@ public static partial class Installation
                 bool filesApplied = false;
                 if (!personal && File.Exists(RebootReceipt(root)))
                 {
-                    try { VerifyRebootFiles(root, RebootFiles(package.Manifest)); filesApplied = true; }
+                    var expectedFiles = RebootFiles(package.Manifest);
+                    SettingsStore.WriteAtomic(RebootReceipt(root), JsonSerializer.Serialize(expectedFiles));
+                    try { VerifyRebootFiles(root, expectedFiles); filesApplied = true; }
                     catch (Exception error) when (error is IOException or System.Security.Cryptography.CryptographicException)
                     { UpdateLog(false, "Early-boot file replacement was incomplete; restoring from the verified installer: " + error.Message); }
                 }
