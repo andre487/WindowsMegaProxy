@@ -438,6 +438,12 @@ internal static partial class Program
             fingerprints.SelectedIndex = 1;
             Layout(window);
             Assert(saved[^1].TlsFingerprint == "chrome", "TCP fingerprint autosaves.");
+            var bootstrapDns = (ComboBox)window.FindName("BootstrapDnsBox");
+            bootstrapDns.SelectedIndex = 3;
+            Layout(window);
+            Assert(saved[^1].BootstrapDnsProvider == "GOOGLE", "Bootstrap DNS autosaves.");
+            typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [PortableConfiguration.Copy(saved[^1])]);
+            Assert((string)((ComboBoxItem)bootstrapDns.SelectedItem).Tag == "GOOGLE", "Bootstrap DNS restores from saved settings.");
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
             {
                 var headers = ((DataGrid)window.FindName(gridName)).Columns.Select(column => (string)column.Header).ToArray();
@@ -758,6 +764,13 @@ internal static partial class Program
                     ((ComboBox)edit.FindName("CountryBox")).SelectedItem = ProfileAppearance.Countries.First(country => country.Code == "JP");
                     ((ComboBox)edit.FindName("ColorBox")).SelectedIndex = 0;
                     if (type == "HTTPS") ((ComboBox)edit.FindName("HttpVersionBox")).SelectedIndex = 2;
+                    if (type == "HTTPS") ((ComboBox)edit.FindName("DnsProviderBox")).SelectedIndex = 2;
+                    if (type == "SOCKS5")
+                    {
+                        ((ComboBox)edit.FindName("DnsProviderBox")).SelectedIndex = 6;
+                        Assert(((StackPanel)edit.FindName("DnsUrlPanel")).Visibility == Visibility.Visible, "Custom DNS reveals its URL field.");
+                        ((TextBox)edit.FindName("DnsUrlBox")).Text = "https://dns.example/query/test";
+                    }
                     if (type == "HTTPS_JUMP") ((ComboBox)edit.FindName("HttpVersionBox")).SelectedIndex = 1;
                     Descendants(edit).OfType<Button>().First(button => button.Content as string == "Сохранить")
                         .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -768,6 +781,8 @@ internal static partial class Program
                 if (type == "SSH_JUMP") Assert(System.Text.Json.Nodes.JsonNode.DeepEquals(input.Proxy, edit.Profile.Proxy), "Unsupported Jump settings stay unchanged when renamed.");
                 if (type == "SSH") Assert(edit.Profile.Supported && SshConfiguration.Build(edit.Profile, "test")["host_key"]![0]!.ToString() == SshConfiguration.PublicKey(input), "SSH editing preserves the pinned server key and creates a verified SSH outbound.");
                 if (type == "HTTPS") Assert(edit.Profile.PreferHttp3, "The profile editor saves the shared preferHttp3 option.");
+                if (type == "HTTPS") Assert(ProfileDns.Provider(edit.Profile) == "QUAD9", "The editor saves the portable DNS provider.");
+                if (type == "SOCKS5") Assert(ProfileDns.CustomUrl(edit.Profile) == "https://dns.example/query/test", "The editor saves custom DoH URLs.");
                 if (type == "HTTPS_JUMP") Assert(edit.Profile.PreferHttp2 && !edit.Profile.PreferHttp3, "The profile editor saves H2 without enabling H3.");
                 if (type == "MASQUE") Assert(edit.Profile.Supported && edit.Profile.UsesHttp3 && !edit.Profile.PreferHttp3, "MASQUE is editable and requires HTTP/3 without an optional fallback switch.");
                 if (type == "HTTPS_JUMP") Assert(edit.Profile.Supported && edit.Profile.Proxy["jump"]!["username"]!.ToString() == "jump-user" && edit.Profile.Proxy["jump"]!["futureJump"]!.GetValue<bool>(), "Jump editing preserves separate credentials and unknown server options.");
@@ -874,10 +889,12 @@ internal static partial class Program
             Assert(categories.IsVisible && !((Button)window.FindName("SettingsBackButton")).IsEnabled, "The root breadcrumb returns to the category overview.");
             Assert(ReferenceEquals(Keyboard.FocusedElement, window.FindName("AppearanceCategoryButton")), "Returning to categories restores keyboard focus to the originating row.");
         }
-        foreach (string page in new[] { "startup", "fingerprints", "log", "subscription", "failover", "updates" })
+        foreach (string page in new[] { "startup", "connection", "log", "subscription", "failover", "updates" })
         {
             Open(page);
             Assert(!categories.IsVisible && ((Button)window.FindName("SettingsBackButton")).IsEnabled, "Each settings form has a back action.");
+            if (page == "connection") Assert(((ComboBox)window.FindName("TlsFingerprintBox")).IsVisible && ((ComboBox)window.FindName("BootstrapDnsBox")).IsVisible,
+                "Connection settings show TLS fingerprints and bootstrap DNS together.");
             var host = (ContentControl)window.FindName("SettingsDetailHost");
             if (page == "subscription") Assert(host.Content is SubscriptionForm && host.IsVisible, "Subscriptions are hosted inline, without an extra window.");
             if (page == "failover") Assert(host.Content is FailoverForm && host.IsVisible, "Failover is hosted inline, without an extra window.");

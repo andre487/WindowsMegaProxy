@@ -500,5 +500,21 @@
     "Could not check for updates. Try again later.": "Не удалось проверить обновления. Повторите попытку позже.",
     "Update {0} is downloaded. Click to install.": "Обновление {0} скачано. Нажмите, чтобы установить.",
     "Development builds are updated with run.cmd.": "DEV-сборки обновляются через run.cmd.",
-    "Administrator rights are required to install updates.": "Для установки обновлений нужны права администратора."
+    "Administrator rights are required to install updates.": "Для установки обновлений нужны права администратора.",
+    "DoH URL query parameters are not supported by the bundled core. Use an endpoint without a query string.": "Параметры запроса в адресе DoH не поддерживаются встроенным ядром. Используйте адрес без строки запроса.",
+    "Bootstrap DNS": "Начальный DNS (bootstrap)",
+    "Connection settings": "Настройки подключения",
+    "TLS fingerprints and bootstrap DNS": "TLS fingerprint и начальный DNS",
+    "Windows DNS": "DNS Windows",
+    "Invalid bootstrap DNS provider.": "Некорректный провайдер начального DNS.",
+    "Resolves proxy server names directly, before connecting. Automatic uses Cloudflare for proxy-default mode and Windows DNS otherwise. Does not replace application DNS.": "Разрешает имена прокси-серверов напрямую, до подключения. Автоматически: Cloudflare при прокси по умолчанию, иначе DNS Windows. Не заменяет DNS приложений.",
+    "DNS provider": "Провайдер DNS",
+    "Custom DoH URL": "Свой адрес DoH",
+    "Yandex Basic": "Яндекс Базовый",
+    "Yandex Safe": "Яндекс Безопасный",
+    "Yandex Family": "Яндекс Семейный",
+    "Invalid DNS settings.": "Некорректные настройки DNS.",
+    "This DNS provider is not supported. Choose another provider in the profile.": "Этот провайдер DNS не поддерживается. Выберите другой в профиле.",
+    "Enter a valid HTTPS DoH URL. Plain TCP/UDP DNS is not supported by this client yet.": "Укажите корректный HTTPS-адрес DoH. Обычный DNS по TCP/UDP пока не поддерживается этим клиентом.",
+    "Used through the active proxy when the default route is the active profile. System mode keeps Windows DNS. Apps using their own encrypted DNS are not redirected.": "Используется через активный прокси, когда он выбран маршрутом по умолчанию. В системном режиме сохраняется DNS Windows. Приложения со своим шифрованным DNS не перенаправляются."
 }

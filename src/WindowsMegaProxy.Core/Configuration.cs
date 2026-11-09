@@ -28,6 +28,7 @@ public sealed class Settings
     public string Language { get; set; } = Ui.DefaultLanguage(Ui.WindowsLanguage);
     public string Theme { get; set; } = "auto";
     public string TlsFingerprint { get; set; } = "default";
+    public string BootstrapDnsProvider { get; set; } = "auto";
     public List<RoutingRule> Rules { get; set; } = [];
 
     [JsonIgnore] public ProxyProfile? ActiveProfile => Profiles.FirstOrDefault(profile => profile.Id == ActiveProfileId);
@@ -131,6 +132,8 @@ public static class Configuration
             var selected = settings.ActiveProfile ?? throw new ArgumentException(Ui.T("Select a connection profile."));
             outbounds.Insert(0, BuildOutbound(selected, "proxy", settings.TlsFingerprint, allowUnresolvedSsh));
             if (selected.Type == "HTTPS_JUMP") outbounds.Insert(1, BuildOutbound(JumpProfile(selected), "jump", settings.TlsFingerprint));
+            foreach (var outbound in outbounds.Where(item => item!["tag"]!.ToString() is "proxy" or "jump" && item["detour"] is null))
+                outbound!["domain_resolver"] = "bootstrap";
         }
 
         var rules = new JsonArray
@@ -170,10 +173,10 @@ public static class Configuration
             ["dns"] = new JsonObject
             {
                 ["servers"] = proxyDefault ? new JsonArray(
-                    new JsonObject { ["type"] = "https", ["tag"] = "bootstrap", ["server"] = "1.1.1.1", ["path"] = "/dns-query" },
-                    new JsonObject { ["type"] = "https", ["tag"] = "dns", ["server"] = "1.1.1.1", ["path"] = "/dns-query", ["detour"] = "proxy" })
-                    : new JsonArray(new JsonObject { ["type"] = "local", ["tag"] = "bootstrap" }),
-                ["final"] = proxyDefault ? "dns" : "bootstrap",
+                    ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, proxyDefault),
+                    ProfileDns.Build(settings.ActiveProfile!))
+                    : new JsonArray(ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, proxyDefault), new JsonObject { ["type"] = "local", ["tag"] = "system" }),
+                ["final"] = proxyDefault ? "dns" : "system",
                 ["strategy"] = "prefer_ipv4", ["reverse_mapping"] = true
             },
             ["inbounds"] = new JsonArray(new JsonObject
@@ -186,7 +189,7 @@ public static class Configuration
             ["outbounds"] = outbounds,
             ["route"] = new JsonObject
             {
-                ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = "bootstrap", ["rules"] = rules,
+                ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = proxyDefault ? "bootstrap" : "system", ["rules"] = rules,
                 ["rule_set"] = new JsonArray(PodkopCatalog.Groups(settings).Select(ids => (JsonNode)PodkopCatalog.Definition(ids)).ToArray()),
                 ["final"] = proxyDefault ? "proxy" : "direct"
             },

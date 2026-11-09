@@ -207,6 +207,7 @@ public partial class MainWindow : Window
         LanguageBox.SelectionChanged += PreferencesChanged;
         ThemeBox.SelectionChanged += PreferencesChanged;
         TlsFingerprintBox.SelectionChanged += PreferencesChanged;
+        BootstrapDnsBox.SelectionChanged += PreferencesChanged;
         rules.CollectionChanged += SettingsChanged;
         Sections.SelectionChanged += SectionsChanged;
         connection.Changed += () =>
@@ -483,6 +484,7 @@ public partial class MainWindow : Window
         updated.Language = (string)((ComboBoxItem)LanguageBox.SelectedItem).Tag;
         updated.Theme = (string)((ComboBoxItem)ThemeBox.SelectedItem).Tag;
         updated.TlsFingerprint = (string)((ComboBoxItem)TlsFingerprintBox.SelectedItem).Tag;
+        updated.BootstrapDnsProvider = (string)((ComboBoxItem)BootstrapDnsBox.SelectedItem).Tag;
         if (!applyingAutostart) updated.LaunchAtSignIn = AutostartBox.IsChecked == true;
         updated.Rules = rules.Select(rule => rule.Copy()).ToList();
         return updated;
@@ -579,6 +581,7 @@ public partial class MainWindow : Window
             DefaultFingerprintItem.Content = Ui.F("Default ({0})", TlsFingerprintBox.Items.Cast<ComboBoxItem>()
                 .First(item => (string)item.Tag == Configuration.DefaultTlsFingerprint).Content.ToString()!.Trim());
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
+            SelectTag(BootstrapDnsBox, updated.BootstrapDnsProvider);
             ShowAllConnectionsBox.IsChecked = updated.ShowAllConnections;
             if (profilesChanged)
             {
@@ -842,7 +845,7 @@ public partial class MainWindow : Window
         RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, BootstrapDnsBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");

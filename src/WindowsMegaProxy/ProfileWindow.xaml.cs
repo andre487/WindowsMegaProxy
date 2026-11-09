@@ -53,6 +53,13 @@ public partial class ProfileWindow : Window
         if (!SshConfiguration.Profiles.Contains(sshProfile)) SshProfileBox.Items.Add(new ComboBoxItem { Content = sshProfile, Tag = sshProfile });
         SshProfileBox.SelectedItem = SshProfileBox.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == sshProfile);
         AuthProbeHostBox.Text = ProxyAuthenticationProbe.Host(profile);
+        foreach (var provider in ProfileDns.Providers)
+            DnsProviderBox.Items.Add(new ComboBoxItem { Content = Ui.T(provider.Name), Tag = provider.Id });
+        string dnsProvider = ProfileDns.Provider(profile);
+        if (!DnsProviderBox.Items.Cast<ComboBoxItem>().Any(item => (string)item.Tag == dnsProvider))
+            DnsProviderBox.Items.Add(new ComboBoxItem { Content = dnsProvider, Tag = dnsProvider });
+        DnsProviderBox.SelectedItem = DnsProviderBox.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == dnsProvider);
+        DnsUrlBox.Text = ProfileDns.CustomUrl(profile);
         AuthProbeHostPanel.Visibility = profile.Type == "HTTPS" ? Visibility.Visible : Visibility.Collapsed;
         TypeChanged(this, null!);
         ConnectionFields.IsEnabled = profile.Supported;
@@ -60,6 +67,12 @@ public partial class ProfileWindow : Window
             ? Ui.T("Other clients' settings are preserved. SOCKS5 does not encrypt the server connection; UDP requires server support.")
             : profile.Availability + Ui.T(". You can change the name, country and color; connection parameters will be preserved.");
         initializing = false;
+    }
+
+    private void DnsProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DnsUrlPanel is not null)
+            DnsUrlPanel.Visibility = (DnsProviderBox.SelectedItem as ComboBoxItem)?.Tag as string == "CUSTOM" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void CountryChanged(object sender, SelectionChangedEventArgs e)
@@ -182,6 +195,15 @@ public partial class ProfileWindow : Window
                 if (insecure && !(original.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false) &&
                     MessageBox.Show(this, Ui.T("Disable proxy certificate verification? This weakens connection security."), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
                 candidate.Proxy["allowInvalidProxyCertificate"] = insecure;
+            }
+            string provider = (string)((ComboBoxItem)DnsProviderBox.SelectedItem).Tag;
+            if (provider != ProfileDns.Provider(original) || DnsUrlBox.Text.Trim() != ProfileDns.CustomUrl(original))
+            {
+                var dns = candidate.Data["dns"] as System.Text.Json.Nodes.JsonObject;
+                if (dns is null) { dns = new(); candidate.Data["dns"] = dns; }
+                dns["provider"] = provider;
+                dns["customDohUrl"] = DnsUrlBox.Text.Trim();
+                ProfileDns.Build(candidate);
             }
             PortableConfiguration.ValidateProfile(candidate);
             Profile = candidate;

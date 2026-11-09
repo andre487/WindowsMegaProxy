@@ -217,6 +217,29 @@
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Margin="0,4,0,0" />
                 </StackPanel>
+                <Expander Header="DNS" Margin="0,0,0,16">
+                    <StackPanel Margin="0,12,0,0">
+                        <Label
+                            Content="{DynamicResource &quot;DNS provider&quot;}"
+                            Target="{Binding ElementName=DnsProviderBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <ComboBox x:Name="DnsProviderBox" SelectionChanged="DnsProviderChanged" />
+                        <StackPanel x:Name="DnsUrlPanel" Visibility="Collapsed" Margin="0,12,0,0">
+                            <Label
+                                Content="{DynamicResource &quot;Custom DoH URL&quot;}"
+                                Target="{Binding ElementName=DnsUrlBox}"
+                                Padding="0"
+                                Margin="0,0,0,4" />
+                            <TextBox x:Name="DnsUrlBox" />
+                        </StackPanel>
+                        <TextBlock
+                            Text="{DynamicResource &quot;Used through the active proxy when the default route is the active profile. System mode keeps Windows DNS. Apps using their own encrypted DNS are not redirected.&quot;}"
+                            TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Margin="0,8,0,0" />
+                    </StackPanel>
+                </Expander>
                 <Expander Header="{DynamicResource &quot;Appearance&quot;}" Margin="0,0,0,16">
                     <StackPanel Margin="0,12,0,0">
                         <Label

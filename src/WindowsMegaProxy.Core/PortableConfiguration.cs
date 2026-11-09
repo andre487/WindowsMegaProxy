@@ -92,6 +92,7 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("language")) candidate.Language = String(windows, "language");
                     if (windows.ContainsKey("theme")) candidate.Theme = String(windows, "theme");
                     if (windows.ContainsKey("tlsFingerprint")) candidate.TlsFingerprint = String(windows, "tlsFingerprint");
+                    if (windows.ContainsKey("bootstrapDnsProvider")) candidate.BootstrapDnsProvider = String(windows, "bootstrapDnsProvider");
                     if (windows.ContainsKey("launchAtSignIn")) candidate.LaunchAtSignIn = windows["launchAtSignIn"]!.GetValue<bool>();
                     if (windows.ContainsKey("rules")) candidate.Rules = windows["rules"]!.Deserialize<List<RoutingRule>>(PortableOptions) ?? throw Invalid(Ui.T("Invalid Windows rules."));
                 }
@@ -148,6 +149,7 @@ public static class PortableConfiguration
             windows["language"] = settings.Language;
             windows["theme"] = settings.Theme;
             windows["tlsFingerprint"] = settings.TlsFingerprint;
+            windows["bootstrapDnsProvider"] = settings.BootstrapDnsProvider;
             windows["launchAtSignIn"] = settings.LaunchAtSignIn ?? false;
             windows["rules"] = JsonSerializer.SerializeToNode(settings.Rules, PortableOptions);
         }
@@ -168,6 +170,7 @@ public static class PortableConfiguration
         if (settings.LogSizeMb is < 1 or > 100) throw Invalid(Ui.T("Log size must be between 1 and 100 MiB."));
         if (settings.Language is not ("en" or "ru") || settings.Theme is not ("auto" or "light" or "dark")) throw Invalid("Invalid language or theme.");
         if (!Configuration.TlsFingerprints.Contains(settings.TlsFingerprint)) throw Invalid("Unsupported TLS fingerprint.");
+        _ = ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, false);
         _ = ConfigurationSubscription.Get(settings);
         _ = AppUpdatePolicy.Enabled(settings);
         FailoverPolicy.Validate(settings);
@@ -193,6 +196,13 @@ public static class PortableConfiguration
     public static void ValidateProfile(ProxyProfile profile, bool portable = false)
     {
         var data = profile.Data;
+        if (data["dns"] is { } dns)
+        {
+            if (dns is not JsonObject) throw Invalid(Ui.T("Invalid DNS settings."));
+            foreach (string field in new[] { "provider", "customDohUrl" })
+                if (dns[field] is { } value && (value is not JsonValue text || !text.TryGetValue<string>(out var content) || content.Length > 2048))
+                    throw Invalid(Ui.T("Invalid DNS settings."));
+        }
         var id = String(data, "id");
         if (string.IsNullOrWhiteSpace(id) || id.Length > 256 || String(data, "name").Length > 256) throw Invalid(Ui.T("Invalid profile name or ID."));
         if (data["color"] is not null && data["color"]!.GetValue<int>() < 0) throw Invalid(Ui.T("Invalid profile color."));

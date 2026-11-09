@@ -802,11 +802,11 @@
                                     </Grid>
                                 </Button>
                                 <Button
-                                    x:Name="FingerprintsCategoryButton"
-                                    Tag="fingerprints"
+                                    x:Name="ConnectionCategoryButton"
+                                    Tag="connection"
                                     Click="SettingsCategoryClick"
                                     Style="{StaticResource SettingsCategoryStyle}"
-                                    AutomationProperties.Name="{DynamicResource &quot;TLS fingerprints&quot;}">
+                                    AutomationProperties.Name="{DynamicResource &quot;Connection settings&quot;}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="40" />
@@ -823,10 +823,10 @@
                                             Margin="8,0,16,0"
                                             VerticalAlignment="Center">
                                             <TextBlock
-                                                Text="{DynamicResource &quot;TLS fingerprints&quot;}"
+                                                Text="{DynamicResource &quot;Connection settings&quot;}"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
-                                                Text="{DynamicResource &quot;TCP browser identity and HTTP/3 fingerprint&quot;}"
+                                                Text="{DynamicResource &quot;TLS fingerprints and bootstrap DNS&quot;}"
                                                 TextWrapping="Wrap"
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 FontSize="12"
@@ -1059,7 +1059,7 @@
                                     </Grid>
                                 </Border>
                                 <Border
-                                    x:Name="FingerprintSettings"
+                                    x:Name="ConnectionSettings"
                                     Style="{StaticResource DiagnosticCardStyle}"
                                     Visibility="Collapsed">
                                     <StackPanel>
@@ -1112,6 +1112,25 @@
                                             TextWrapping="Wrap"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,0,0,20" />
+                                        <Label
+                                            Content="{DynamicResource &quot;Bootstrap DNS&quot;}"
+                                            Target="{Binding ElementName=BootstrapDnsBox}"
+                                            Padding="0"
+                                            Margin="0,0,0,4" />
+                                        <ComboBox x:Name="BootstrapDnsBox" HorizontalAlignment="Left" Width="220" Margin="0,0,0,12">
+                                            <ComboBoxItem Content="{DynamicResource &quot;Automatic&quot;}" Tag="auto" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;Windows DNS&quot;}" Tag="system" />
+                                            <ComboBoxItem Content="Cloudflare" Tag="CLOUDFLARE" />
+                                            <ComboBoxItem Content="Google" Tag="GOOGLE" />
+                                            <ComboBoxItem Content="Quad9" Tag="QUAD9" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;Yandex Basic&quot;}" Tag="YANDEX" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;Yandex Safe&quot;}" Tag="YANDEX_SAFE" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;Yandex Family&quot;}" Tag="YANDEX_FAMILY" />
+                                        </ComboBox>
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Resolves proxy server names directly, before connecting. Automatic uses Cloudflare for proxy-default mode and Windows DNS otherwise. Does not replace application DNS.&quot;}"
+                                            TextWrapping="Wrap"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                 </Border>
                                 <Border
