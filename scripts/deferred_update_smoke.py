@@ -25,10 +25,22 @@ from service_control import running_images, service_state
 
 def wait_until(check, message, seconds=120):
     for _ in range(seconds * 4):
-        if check():
-            return
+        result = check()
+        if result:
+            return result
         time.sleep(0.25)
     raise AssertionError(message)
+
+
+def wait_for_tray_client():
+    user32.IsWindowVisible.argtypes = [ct.c_void_p]
+
+    def hidden_window():
+        windows = workspace_windows("MegaProxy")
+        return windows if len(windows) == 1 and not user32.IsWindowVisible(windows[0][0]) else None
+
+    # HWND creation precedes WPF Loaded, which hides a --tray window.
+    return wait_until(hidden_window, "The boot update did not restore exactly one hidden tray client in the logged-on session.", 30)
 
 
 def check(setup, logs, destination, data):
@@ -119,10 +131,7 @@ def check(setup, logs, destination, data):
         wait_until(lambda: sp.check_output(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", query], text=True).strip() == str(expected_result),
                    "The SYSTEM update worker reported an unexpected result.", 30)
         assert service_start() == 2
-        user32.IsWindowVisible.argtypes = [ct.c_void_p]
-        wait_until(lambda: bool(workspace_windows("MegaProxy")), "The boot update did not restore the tray client in the logged-on session.", 30)
-        windows = workspace_windows("MegaProxy")
-        assert len(windows) == 1 and not user32.IsWindowVisible(windows[0][0]), "Boot updates must restore a hidden tray client."
+        windows = wait_for_tray_client()
         session = ct.c_uint32()
         assert ct.windll.kernel32.ProcessIdToSessionId(windows[0][1], ct.byref(session)) and session.value > 0, "The tray client must never run in session zero."
         stop_workspace_app(dev=False, workspace_only=False)
