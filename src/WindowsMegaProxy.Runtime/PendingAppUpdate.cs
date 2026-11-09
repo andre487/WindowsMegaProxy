@@ -59,7 +59,7 @@ public sealed record PendingAppUpdate(string Version, string When, int? WorkerPi
 
     public static PendingAppUpdate? Recover(PendingAppUpdate pending, Version installed, bool? workerRunning) =>
         pending.When is "now" or "applying" ? pending with { When = workerRunning == true ? pending.When : workerRunning == false ? "failed" : "unknown" } :
-        pending.When == "failed" || AppUpdateTrust.IsNewer(pending.Version, installed) ? pending : null;
+        pending.FilesQueued || pending.When == "failed" || AppUpdateTrust.IsNewer(pending.Version, installed) ? pending : null;
 
     public static bool? WorkerRunning(PendingAppUpdate pending) => CheckWorker(pending, pid =>
     {

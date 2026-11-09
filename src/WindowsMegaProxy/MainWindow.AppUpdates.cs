@@ -34,7 +34,7 @@ public partial class MainWindow
         if (!installingAppUpdate && !checkingAppUpdate && scheduledAppUpdate is { } pending)
             status = pending.When == "unknown" ? "Installation status is unknown. You can retry through the elevated installer." : pending.When is "now" or "applying" ? "Installing update…" : pending.When == "failed" ? "Update installation was interrupted. Retry the installation." : pending.When == "launch" ? "Update scheduled for the next application start." : "Update scheduled for the next computer restart.";
         UpdateStatusText.Text = Ui.T(status);
-        if (scheduledAppUpdate?.FilesQueued == true) UpdateStatusText.Text = Ui.T("Restart Windows to finish the update. File replacement has already been scheduled.");
+        if (scheduledAppUpdate?.FilesQueued == true) UpdateStatusText.Text = Ui.T(ServiceUpdateInProgress ? "Update in progress" : "Restart Windows to finish the update. File replacement has already been scheduled.");
         UpdateErrorText.Text = appUpdates?.ErrorKey is { } error && error != status ? Ui.T(error) : "";
         UpdateErrorText.Visibility = UpdateErrorText.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         bool ready = appUpdates?.Ready == true || scheduledAppUpdate is not null;

@@ -970,7 +970,7 @@ internal static partial class Program
             "Unknown installer status is explicit and does not block update checks.");
         pendingField.SetValue(window, null);
         refreshView.Invoke(window, null);
-        pendingField.SetValue(window, new PendingAppUpdate("0.0.2", "reboot", FilesQueued: true));
+        pendingField.SetValue(window, new PendingAppUpdate("99.0.0", "reboot", FilesQueued: true));
         refreshView.Invoke(window, null);
         Assert(!((Button)window.FindName("InstallUpdateButton")).IsEnabled && !((Button)window.FindName("DownloadUpdateButton")).IsEnabled &&
             ((TextBlock)window.FindName("UpdateStatusText")).Text == Ui.T("Restart Windows to finish the update. File replacement has already been scheduled."),

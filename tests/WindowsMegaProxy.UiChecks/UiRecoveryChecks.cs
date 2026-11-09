@@ -66,6 +66,9 @@ internal static class UiRecoveryChecks
             Wait(window, Invoke(window, "RefreshServiceAsync"));
             foreach (string name in new[] { "StatusText", "ServiceStateText", "MessageText", "ConnectionsHint", "TestStatusText" })
                 Assert(((TextBlock)window.FindName(name)).Text == "Update in progress", "Installation must not suggest repair: " + name);
+            pendingField.SetValue(window, new PendingAppUpdate("0.0.0", "reboot", FilesQueued: true));
+            typeof(MainWindow).GetMethod("UpdateServiceStateView", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+            Assert(((TextBlock)window.FindName("ServiceStateText")).Text == "Update in progress", "New binaries must wait for boot verification instead of suggesting another restart or repair.");
             pendingField.SetValue(window, new PendingAppUpdate("99.0.0", "failed"));
             Wait(window, Invoke(window, "RefreshServiceAsync"));
             Assert(((TextBlock)window.FindName("StatusText")).Text == "Connection unknown", "Failed updates must not leave an indefinite installation status.");

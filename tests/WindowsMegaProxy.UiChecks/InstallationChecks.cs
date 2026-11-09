@@ -29,6 +29,8 @@ internal static class InstallationChecks
         }
         if (PendingAppUpdate.Recover(new("0.0.2", "launch"), new Version(0, 0, 2), false) is not null)
             throw new Exception("Completed next-start updates must not run again.");
+        if (PendingAppUpdate.Recover(new("0.0.2", "reboot", FilesQueued: true), new Version(0, 0, 2), false) is null)
+            throw new Exception("New binaries must retain update status until boot verification and service recovery finish.");
         foreach (bool service in new[] { false, true })
         {
             foreach (string action in new[] { "now", service ? "restart" : "launch", service ? "reboot" : "launch" })

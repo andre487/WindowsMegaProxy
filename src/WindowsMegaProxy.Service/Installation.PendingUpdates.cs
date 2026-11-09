@@ -201,7 +201,7 @@ public static partial class Installation
                     dynamic folder = UpdateTaskFolder();
                     if (oldTask is null) DeleteTask(folder, PendingAppUpdate.TaskName);
                     else folder.RegisterTask(PendingAppUpdate.TaskName, oldTask, 6, "SYSTEM", null, 5, UpdateTaskSecurity);
-                    if (mode == "service") await ScAsync("config", ServiceProtocol.Name, "start=", previous?.Mode == "service" ? "demand" : "auto");
+                    if (mode == "service") await ScAsync("config", ServiceProtocol.Name, "start=", previous is { Mode: "service", When: not "reboot" } ? "demand" : "auto");
                 }
                 throw;
             }

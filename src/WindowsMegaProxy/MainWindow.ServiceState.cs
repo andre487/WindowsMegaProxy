@@ -8,7 +8,8 @@ public partial class MainWindow
     private string serviceState = "Service: checking…";
     private bool queryingServiceState;
 
-    private bool ServiceUpdateInProgress => scheduledAppUpdate?.When is "now" or "applying";
+    private bool ServiceUpdateInProgress => scheduledAppUpdate is { } pending && (pending.When is "now" or "applying" ||
+        pending.FilesQueued && !AppUpdateTrust.IsNewer(pending.Version, AppUpdateTrust.CurrentVersion));
     private string ServiceConnectionMessage => ServiceUpdateInProgress ? Ui.T("Update in progress") : ServiceUnavailableMessage;
 
     private async Task RefreshInstallationStateAsync()
