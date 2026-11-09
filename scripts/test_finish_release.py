@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -111,6 +112,27 @@ class FinishReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "will not be moved"):
             self.finish()
 
+    def test_existing_tag_prevents_waiting_and_merging_open_pr(self):
+        self.tag = "d" * 40 + "\trefs/tags/v0.0.2"
+        wait = Mock()
+        with self.assertRaisesRegex(RuntimeError, "Choose a new version"):
+            self.finish(wait)
+        wait.assert_not_called()
+        self.assertFalse(any(method != "GET" for _, method, _ in self.calls))
+
+    def test_tag_created_during_ci_prevents_merge(self):
+        def appeared(*args):
+            self.tag = "d" * 40 + "\trefs/tags/v0.0.2"
+        with self.assertRaisesRegex(RuntimeError, "Choose a new version"):
+            self.finish(appeared)
+        self.assertFalse(any(method != "GET" for _, method, _ in self.calls))
+
+    def test_annotated_matching_tag_can_be_resumed(self):
+        self.pull.update(merged=True, merge_commit_sha=MERGED)
+        self.tag = "d" * 40 + "\trefs/tags/v0.0.2\n" + MERGED + "\trefs/tags/v0.0.2^{}"
+        self.finish()
+        self.assertFalse(any(method != "GET" for _, method, _ in self.calls))
+
     def test_extra_version_file_changes_are_rejected(self):
         self.new += "\n<UnexpectedProperty>true</UnexpectedProperty>"
         with self.assertRaisesRegex(RuntimeError, "more than version"):
@@ -137,6 +159,34 @@ class FinishReleaseTests(unittest.TestCase):
         with patch.dict("os.environ", {"GH_TOKEN": "synthetic-token", "RELEASE_VERSION": TARGET}), \
              patch.object(prepare_release, "version", return_value="0.0.1"), \
              patch.object(prepare_release, "existing_release_pr", return_value=4), \
+             patch.object(prepare_release, "release_tag", return_value=None), \
+             patch.object(prepare_release, "generate_notes") as generate, patch.object(prepare_release.sp, "run") as run:
+            prepare_release.main()
+            generate.assert_not_called()
+            run.assert_not_called()
+
+    def test_prepare_rejects_occupied_version_before_notes_or_writes(self):
+        for existing, pull in [(None, {}), (4, {"state": "OPEN"}),
+                               (4, {"state": "MERGED", "mergeCommit": {"oid": BASE}})]:
+            with self.subTest(existing=existing, pull=pull), \
+                 patch.dict("os.environ", {"GH_TOKEN": "synthetic-token", "RELEASE_VERSION": TARGET}), \
+                 patch.object(prepare_release, "version", return_value=TARGET), \
+                 patch.object(prepare_release, "existing_release_pr", return_value=existing), \
+                 patch.object(prepare_release, "release_tag", return_value=MERGED), \
+                 patch.object(prepare_release, "gh", return_value=json.dumps(pull)), \
+                 patch.object(prepare_release, "generate_notes") as generate, \
+                 patch.object(prepare_release.sp, "run") as run:
+                with self.assertRaisesRegex(RuntimeError, "Choose a new version"):
+                    prepare_release.main()
+                generate.assert_not_called()
+                run.assert_not_called()
+
+    def test_prepare_resumes_matching_merged_tag_without_notes(self):
+        with patch.dict("os.environ", {"GH_TOKEN": "synthetic-token", "RELEASE_VERSION": TARGET}), \
+             patch.object(prepare_release, "version", return_value=TARGET), \
+             patch.object(prepare_release, "existing_release_pr", return_value=4), \
+             patch.object(prepare_release, "release_tag", return_value=MERGED), \
+             patch.object(prepare_release, "gh", return_value='{"state":"MERGED","mergeCommit":{"oid":"' + MERGED + '"}}'), \
              patch.object(prepare_release, "generate_notes") as generate, patch.object(prepare_release.sp, "run") as run:
             prepare_release.main()
             generate.assert_not_called()

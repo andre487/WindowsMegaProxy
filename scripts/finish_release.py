@@ -35,6 +35,20 @@ def check_pr(pr, target, head):
     require(not pr["draft"] and (pr["state"] == "open" or pr["merged"]), "Release PR is draft or closed without merging.")
 
 
+def release_tag(target):
+    ref = "refs/tags/v" + target
+    existing = git("ls-remote", "--tags", "origin", ref, ref + "^{}")
+    refs = dict(line.split()[::-1] for line in existing.splitlines())
+    return refs.get(ref + "^{}", refs.get(ref))
+
+
+def check_release_tag(target, pr):
+    existing = release_tag(target)
+    require(not existing or pr["merged"] and existing == pr["merge_commit_sha"],
+            "Release tag already points elsewhere; it will not be moved. Choose a new version.")
+    return existing
+
+
 def full_ci(run, jobs, number, head, base):
     require(run["event"] == "pull_request" and run["head_sha"] == head
             and (not run.get("pull_requests") or any(pr["number"] == number for pr in run["pull_requests"])), "CI belongs to another PR or revision.")
@@ -72,6 +86,7 @@ def finish(target, number, head):
     require(number > 0 and bool(re.fullmatch(r"[0-9a-f]{40}", head)), "Expected PR number and full head SHA.")
     pr = api(f"pulls/{number}")
     check_pr(pr, target, head)
+    check_release_tag(target, pr)
     git("fetch", "origin", f"refs/pull/{number}/head")
     require(git("rev-parse", "FETCH_HEAD") == head, "Release PR changed while fetching.")
     parents = git("show", "-s", "--format=%P", head).split()
@@ -93,6 +108,7 @@ def finish(target, number, head):
     if not pr["merged"]:
         pr = api(f"pulls/{number}")
         check_pr(pr, target, head)
+        check_release_tag(target, pr)
         if not pr["merged"]:
             require(api("git/ref/heads/main")["object"]["sha"] == base, "main advanced after CI; refusing merge.")
             result = api(f"pulls/{number}/merge", "PUT", sha=head, merge_method="squash")
@@ -106,12 +122,7 @@ def finish(target, number, head):
             "Merged tree differs from the checked release head; refusing tag.")
     git("merge-base", "--is-ancestor", merged, "origin/main")
     tag = "v" + target
-    existing = git("ls-remote", "--tags", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}")
-    if existing:
-        refs = dict(line.split()[::-1] for line in existing.splitlines())
-        require(refs.get(f"refs/tags/{tag}^{{}}", refs.get(f"refs/tags/{tag}")) == merged,
-                "Release tag already points elsewhere; it will not be moved.")
-    else:
+    if not check_release_tag(target, pr):
         api("git/refs", "POST", ref="refs/tags/" + tag, sha=merged)
     print(f"Release {tag} tagged at {merged}; the Release workflow handles publication.")
 
