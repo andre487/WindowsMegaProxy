@@ -208,6 +208,8 @@ public static class PortableConfiguration
         ValidateEndpoint(proxy);
         if (proxy.ContainsKey("preferHttp3") && (proxy["preferHttp3"] is not JsonValue preference || !preference.TryGetValue<bool>(out _)))
             throw Invalid("preferHttp3 must be a boolean.");
+        if (proxy.ContainsKey("preferHttp2") && (proxy["preferHttp2"] is not JsonValue http2Preference || !http2Preference.TryGetValue<bool>(out _)))
+            throw Invalid("preferHttp2 must be a boolean.");
         if (proxy.ContainsKey("authProbeHost")) ProxyAuthenticationProbe.ValidateHost(String(proxy, "authProbeHost"));
         if (proxy.ContainsKey("knockHost") && proxy["knockHost"] is null) throw Invalid("Use an empty knockHost to clear it.");
         ProxyAuthenticationProbe.ValidateHost(ProxyAuthenticationProbe.Host(profile));

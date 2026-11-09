@@ -539,7 +539,7 @@ public partial class MainWindow : Window
             !shownProfiles.Zip(updated.Profiles).All(pair => System.Text.Json.Nodes.JsonNode.DeepEquals(pair.First.Data, pair.Second.Data));
         bool rulesChanged = first || rules.Count != updated.Rules.Count || !rules.Zip(updated.Rules).All(pair =>
             pair.First.Source == pair.Second.Source && pair.First.Path == pair.Second.Path && pair.First.Destination == pair.Second.Destination &&
-            pair.First.Action == pair.Second.Action && pair.First.ProfileId == pair.Second.ProfileId && pair.First.Enabled == pair.Second.Enabled && pair.First.Name == pair.Second.Name);
+            pair.First.Action == pair.Second.Action && pair.First.ProfileId == pair.Second.ProfileId && pair.First.Enabled == pair.Second.Enabled && pair.First.Name == pair.Second.Name && pair.First.PodkopThroughProxy == pair.Second.PodkopThroughProxy);
         string? selected = (ProfilesList.SelectedItem as ProxyProfile)?.Id;
         int selectedRule = RulesList.SelectedIndex;
         updatingUi = true;
@@ -599,7 +599,7 @@ public partial class MainWindow : Window
         ProfileSummary.Text = profile is null ? Ui.T("Add or import a profile on the Profiles tab")
             : profile.Supported ? profile.Name + " · " + profile.Description : profile.Availability;
         if (connected && engine!.UsedHttp3Fallback)
-            ProfileSummary.Text += " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP");
+            ProfileSummary.Text += " · " + Ui.T("HTTP/3 unavailable; using HTTPS/TCP");
         string? error = ConnectionError();
         ConnectButton.IsEnabled = canEdit && (connected || error is null);
         ConnectButton.ToolTip = connected ? null : error;
@@ -1071,7 +1071,7 @@ public partial class MainWindow : Window
                         CompleteDiagnostics(details, target.AppliedSettings!);
                         TestStatusText.Text += " · " + ConnectionSnapshot.RouteName(target.SelectedOutbound, target.AppliedSettings!);
                         if (target.Http3Selected) TestStatusText.Text += " · HTTP/3";
-                        else if (target.UsedHttp3Fallback) TestStatusText.Text += " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP");
+                        else if (target.UsedHttp3Fallback) TestStatusText.Text += " · " + Ui.T("HTTP/3 unavailable; using HTTPS/TCP");
                     }
                 }
                 finally { target.Log -= AppendDiagnosticEntry; }

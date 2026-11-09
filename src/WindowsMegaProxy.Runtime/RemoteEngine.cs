@@ -77,7 +77,7 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
 
     public HttpClient CreateProbeClient(bool throughProfile)
     {
-        var handler = new HttpClientHandler { UseProxy = throughProfile };
+        var handler = new HttpClientHandler { UseProxy = throughProfile, AllowAutoRedirect = false, UseCookies = false };
         if (throughProfile)
         {
             var access = probe ?? throw new UnauthorizedAccessException("Connection tests require administrator access.");

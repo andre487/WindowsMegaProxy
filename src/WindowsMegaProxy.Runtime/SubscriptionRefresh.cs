@@ -42,6 +42,12 @@ public static class SubscriptionRefresh
     {
         _ = SubscriptionDefinition.NormalizeUrl(url);
         using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+        return await DownloadAsync(definition, url, token, client).ConfigureAwait(false);
+    }
+
+    public static async Task<string> DownloadAsync(SubscriptionDefinition definition, string url, CancellationToken token, HttpClient client)
+    {
+        _ = SubscriptionDefinition.NormalizeUrl(url);
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("X-MegaProxy-Client", "windows");
         string version = typeof(SubscriptionRefresh).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";

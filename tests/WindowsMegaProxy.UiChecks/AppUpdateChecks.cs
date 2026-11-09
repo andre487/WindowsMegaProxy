@@ -26,6 +26,7 @@ internal static class AppUpdateChecks
         public bool UntrustedRedirect { get; set; }
         public int Downloads { get; private set; }
         public int Requests { get; private set; }
+        public int InstallerFailures { get; set; }
         public DateTimeOffset Now { get; set; } = new(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
         public CancellationTokenSource? CancelDownload { get; set; }
         public Feed() => Ed25519.GeneratePublicKey(seed, 0, Key, 0);
@@ -71,6 +72,11 @@ internal static class AppUpdateChecks
                 return Task.FromResult(Reply(signature));
             }
             Downloads++;
+            if (InstallerFailures > 0)
+            {
+                InstallerFailures--;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.GatewayTimeout));
+            }
             if (UntrustedRedirect)
             {
                 var redirect = new HttpResponseMessage(HttpStatusCode.Redirect);
@@ -109,30 +115,49 @@ internal static class AppUpdateChecks
         Check(AppUpdateTrust.PublicKey.Length == 32, "The production update verification key is pinned in the runtime.");
         string root = Path.GetFullPath("artifacts/application-updates/" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        using (var stagedFeed = new Feed())
+        using (var staged = stagedFeed.Manager(Path.Combine(root, "two-stage")))
+        {
+            await staged.CheckAsync(default);
+            Check(staged.Package is not null && !staged.Ready && stagedFeed.Downloads == 0 && staged.NotificationDue,
+                "Checking finds a signed update and offers notification without downloading the installer.");
+            await staged.CheckAsync(default, download: true);
+            Check(staged.Ready && stagedFeed.Downloads == 1, "Only the explicit download step fetches the installer.");
+        }
         using var feed = new Feed();
+        using (var directFeed = new Feed { Unavailable = true })
+        using (var proxyFeed = new Feed())
+        using (var proxyClient = new HttpClient(proxyFeed))
+        using (var proxied = directFeed.Manager(Path.Combine(root, "proxy-transport")))
+        {
+            await proxied.CheckAsync(default, transport: proxyClient);
+            Check(proxied.Package is not null && proxyFeed.Downloads == 0, "Update discovery uses the supplied proxy transport without downloading.");
+            await proxied.CheckAsync(default, download: true, transport: proxyClient);
+            Check(proxied.Ready && directFeed.Requests == 0 && proxyFeed.Downloads == 1, "Metadata, signatures and installer all use the proxy transport without direct fallback.");
+        }
         string cache = Path.Combine(root, "cache");
         using (var manager = feed.Manager(cache))
         {
             Directory.CreateDirectory(cache);
             File.WriteAllText(Path.Combine(cache, "orphaned-old-version.exe"), "orphan");
             feed.Unavailable = true;
-            await manager.CheckAsync(default);
-            Check(manager.StatusKey == "Update files are unavailable." && !manager.Ready && !manager.CheckDue, "No GitHub release is an explicit unavailable-files result and does not cause a retry loop.");
+            await manager.CheckAsync(default, download: true);
+            Check(manager.StatusKey == "Update files are unavailable." && !manager.Ready && !manager.CheckDue && feed.Requests == 1, "No GitHub release is an explicit unavailable-files result and does not cause a retry loop.");
             Check(!Directory.EnumerateFiles(cache, "*.exe").Any(), "Orphaned updates are removed.");
             feed.Unavailable = false;
-            await manager.CheckAsync(default);
+            await manager.CheckAsync(default, download: true);
             Check(manager.Ready && manager.NotificationDue && feed.Downloads == 1, "A valid signed release is downloaded and becomes installable.");
             await manager.MarkNotificationAsync(false, default);
             Check(!manager.NotificationDue, "A displayed notification is not repeated immediately.");
-            await manager.CheckAsync(default);
+            await manager.CheckAsync(default, download: true);
             Check(feed.Downloads == 1, "Repeated checks reuse a verified installer instead of downloading duplicates.");
             File.WriteAllText(manager.InstallerPath, "corrupted cached installer");
-            await manager.CheckAsync(default);
+            await manager.CheckAsync(default, download: true);
             Check(manager.Ready && feed.Downloads == 2, "A damaged cached installer is discarded and downloaded again.");
             feed.Now = feed.Now.AddDays(7);
             Check(manager.NotificationDue, "An ignored notification becomes due after one week.");
             feed.Version = "0.0.3";
-            await manager.CheckAsync(default);
+            await manager.CheckAsync(default, download: true);
             Check(manager.Package!.Version == "0.0.3" && Directory.EnumerateFiles(cache, "*.exe").Count() == 1 && !Directory.EnumerateFiles(cache, "*.part").Any(), "Only the newest installer remains in the update cache.");
             await manager.MarkNotificationAsync(true, default);
             Check(!manager.NotificationDue, "Opening the ready update acknowledges the version.");
@@ -152,7 +177,7 @@ internal static class AppUpdateChecks
             using var invalid = new Feed { BadSignature = failure == "signature", CorruptPayload = failure == "payload", UntrustedRedirect = failure == "redirect", MissingInstaller = failure == "missing" };
             string path = Path.Combine(root, failure);
             using var manager = invalid.Manager(path);
-            await manager.CheckAsync(default);
+            await manager.CheckAsync(default, download: true);
             Check(!manager.Ready && !Directory.EnumerateFiles(path, "*.exe*").Any(), "Invalid or missing updates never leave an installable or partial payload: " + failure);
             if (failure == "signature") Check(invalid.Downloads == 0, "An untrusted manifest cannot cause an installer download.");
         }
@@ -160,14 +185,39 @@ internal static class AppUpdateChecks
         using (var interrupted = new Feed { CancelDownload = stopping })
         using (var manager = interrupted.Manager(Path.Combine(root, "cancelled")))
         {
-            try { await manager.CheckAsync(stopping.Token); throw new Exception("Update cancellation was ignored."); }
+            try { await manager.CheckAsync(stopping.Token, download: true); throw new Exception("Update cancellation was ignored."); }
             catch (OperationCanceledException) { }
             Check(!Directory.EnumerateFiles(Path.Combine(root, "cancelled"), "*.exe*").Any() && manager.CheckDue, "Cancelled downloads are deleted and retried after the next launch.");
+        }
+        using (var retrying = new Feed { InstallerFailures = 1 })
+        using (var manager = retrying.Manager(Path.Combine(root, "retry")))
+        {
+            var entries = new System.Collections.Generic.List<string>();
+            manager.Log += entries.Add;
+            await manager.CheckAsync(default, download: true);
+            Check(manager.Ready && retrying.Downloads == 2 && entries.Any(line => line.Contains("github.com returned HTTP 504")),
+                "A transient installer gateway timeout is logged and retried without bypassing signature or hash verification.");
+        }
+        using (var retrying = new Feed { InstallerFailures = 10 })
+        using (var manager = retrying.Manager(Path.Combine(root, "retry-exhausted")))
+        {
+            var entries = new System.Collections.Generic.List<string>();
+            manager.Log += entries.Add;
+            await manager.CheckAsync(default, download: true);
+            Check(!manager.Ready && retrying.Downloads == 4 && entries.Last().Contains("HTTP 504"),
+                "Repeated server failures stop after four attempts and preserve the HTTP status in the final diagnostic.");
         }
         var profile = ProxyProfile.Create("Update preference fixture"); profile.Proxy["host"] = "proxy.invalid";
         var saved = new Settings { Profiles = [profile], ActiveProfileId = profile.Id }; saved.WindowsOptions[AppUpdatePolicy.Option] = false;
         var exported = PortableConfiguration.Export(saved);
         Check(!AppUpdatePolicy.Enabled(PortableConfiguration.Import(exported.ToJsonString(), new Settings())), "The automatic-update preference survives MegaProxy JSON export/import.");
+        saved.WindowsOptions[AppUpdatePolicy.ProxyOption] = true;
+        saved.Rules.Add(new RoutingRule { Destination = "podkop:youtube", Action = "system", PodkopThroughProxy = true });
+        var imported = PortableConfiguration.Import(PortableConfiguration.Export(saved).ToJsonString(), new Settings());
+        Check(AppUpdatePolicy.ThroughProxy(imported) && imported.Rules.Single().PodkopThroughProxy,
+            "Application update and per-rule Podkop proxy preferences survive import/export.");
+        imported.DefaultAction = "system";
+        Check(Configuration.UsesProxy(imported), "Background proxy downloads retain a proxy outbound even when application traffic uses system routing.");
         Console.WriteLine("Signed application updates, missing releases, cache cleanup, notification scheduling and cancellation passed; no installer executed.");
     }
 }

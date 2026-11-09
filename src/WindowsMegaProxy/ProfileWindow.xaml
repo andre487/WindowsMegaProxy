@@ -80,13 +80,19 @@
                         <ComboBoxItem Content="SSH" Tag="SSH" />
                         <ComboBoxItem Content="MASQUE α (HTTP/3)" Tag="MASQUE" />
                     </ComboBox>
-                    <CheckBox
-                        x:Name="PreferHttp3Box"
-                        Content="{DynamicResource &quot;Prefer HTTP/3&quot;}"
-                        Margin="0,0,0,8" />
+                    <StackPanel x:Name="HttpVersionPanel" Margin="0,0,0,8">
+                        <Label
+                            Content="{DynamicResource &quot;Proxy HTTP support&quot;}"
+                            Target="{Binding ElementName=HttpVersionBox}" />
+                        <ComboBox x:Name="HttpVersionBox" SelectedIndex="0">
+                            <ComboBoxItem Content="{DynamicResource &quot;Stable core (HTTP/1.1)&quot;}" />
+                            <ComboBoxItem Content="{DynamicResource &quot;Enable HTTP/2 (1.15 alpha)&quot;}" />
+                            <ComboBoxItem Content="{DynamicResource &quot;Enable HTTP/2 + HTTP/3 (1.15 alpha)&quot;}" />
+                        </ComboBox>
+                    </StackPanel>
                     <TextBlock
                         x:Name="Http3HelpText"
-                        Text="{DynamicResource &quot;HTTP/3 requires UDP and server support. MASQUE requires HTTP/3; HTTPS can fall back to the stable TCP core.&quot;}"
+                        Text="{DynamicResource &quot;HTTP/2 and HTTP/3 use the alpha core. HTTPS falls back to a lower HTTP version when unsupported. HTTP/3 requires UDP; MASQUE requires HTTP/3.&quot;}"
                         TextWrapping="Wrap"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Margin="0,0,0,16" />

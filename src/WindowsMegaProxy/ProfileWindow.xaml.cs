@@ -36,7 +36,7 @@ public partial class ProfileWindow : Window
         UsernameBox.Text = profile.Proxy["username"]?.GetValue<string>() ?? "";
         PasswordBox.Password = profile.Proxy["password"]?.GetValue<string>() ?? "";
         InvalidCertificateBox.IsChecked = profile.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false;
-        PreferHttp3Box.IsChecked = profile.PreferHttp3;
+        HttpVersionBox.SelectedIndex = profile.PreferHttp3 ? 2 : profile.PreferHttp2 ? 1 : 0;
         var jump = profile.Proxy["jump"] as System.Text.Json.Nodes.JsonObject;
         JumpHostBox.Text = jump?["host"]?.GetValue<string>() ?? "";
         JumpPortBox.Text = (jump?["port"]?.GetValue<int>() ?? 443).ToString();
@@ -90,8 +90,8 @@ public partial class ProfileWindow : Window
         }
         if (AuthProbeHostPanel is not null)
             AuthProbeHostPanel.Visibility = (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "HTTPS" ? Visibility.Visible : Visibility.Collapsed;
-        if (PreferHttp3Box is not null)
-            PreferHttp3Box.Visibility = (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string is "HTTPS" or "HTTPS_JUMP" ? Visibility.Visible : Visibility.Collapsed;
+        if (HttpVersionPanel is not null)
+            HttpVersionPanel.Visibility = (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string is "HTTPS" or "HTTPS_JUMP" ? Visibility.Visible : Visibility.Collapsed;
         if (Http3HelpText is not null)
             Http3HelpText.Visibility = (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string is "HTTPS" or "HTTPS_JUMP" or "MASQUE" ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -146,7 +146,11 @@ public partial class ProfileWindow : Window
                     SshConfiguration.Build(candidate, "validation", allowUnresolvedHostKey: true);
                 }
                 if (type == "HTTPS") { candidate.Proxy["knockHost"] = AuthProbeHostBox.Text.Trim(); candidate.Proxy.Remove("authProbeHost"); }
-                if (type is "HTTPS" or "HTTPS_JUMP") candidate.Proxy["preferHttp3"] = PreferHttp3Box.IsChecked == true;
+                if (type is "HTTPS" or "HTTPS_JUMP")
+                {
+                    candidate.Proxy["preferHttp2"] = HttpVersionBox.SelectedIndex >= 1;
+                    candidate.Proxy["preferHttp3"] = HttpVersionBox.SelectedIndex == 2;
+                }
                 if (type == "HTTPS_JUMP")
                 {
                     if (!int.TryParse(JumpPortBox.Text, out int jumpPort)) throw new ArgumentException(Ui.T("Invalid port."));

@@ -43,7 +43,7 @@ public sealed class ImportReview
         var result = new JsonObject();
         string[] keys = group switch
         {
-            "Connection" => ["type", "port", "preferHttp3", "knockHost", "authProbeHost"],
+            "Connection" => ["type", "port", "preferHttp2", "preferHttp3", "knockHost", "authProbeHost"],
             "Security" => ["allowInvalidProxyCertificate", "sshProfile", "trustedHostKey", "acceptAnyHostKey"],
             _ => []
         };

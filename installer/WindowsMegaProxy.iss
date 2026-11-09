@@ -39,8 +39,8 @@ Name: "automaticupdates"; Description: "{cm:AutomaticUpdates}"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [CustomMessages]
-english.AutomaticUpdates=Automatically check for and download application updates
-russian.AutomaticUpdates=Автоматически проверять и скачивать обновления приложения
+english.AutomaticUpdates=Automatically check for application updates
+russian.AutomaticUpdates=Автоматически проверять обновления приложения
 english.Prerequisites=Preparing required Windows components…
 russian.Prerequisites=Подготовка необходимых компонентов Windows…
 english.OperatingMode=Operating mode

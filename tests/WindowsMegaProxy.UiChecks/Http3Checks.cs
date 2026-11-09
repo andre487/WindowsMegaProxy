@@ -46,11 +46,13 @@ internal static class Http3Checks
         var originTask = ServeOriginAsync(origin, token);
         try
         {
-            foreach (bool h3 in new[] { true, false })
+            foreach (int serverVersion in new[] { 3, 2, 1 })
             {
-                using var reserve = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
-                int port = ((IPEndPoint)reserve.Client.LocalEndPoint!).Port;
-                reserve.Close();
+                bool h3 = serverVersion == 3;
+                using var reserve = new TcpListener(IPAddress.Loopback, 0);
+                reserve.Start();
+                int port = ((IPEndPoint)reserve.LocalEndpoint).Port;
+                reserve.Stop();
                 string configPath = Path.Combine(directory, h3 ? "h3-server.json" : "tcp-server.json");
                 var serverConfig = new JsonObject
                 {
@@ -58,7 +60,7 @@ internal static class Http3Checks
                     ["inbounds"] = new JsonArray(new JsonObject
                     {
                         ["type"] = "http", ["listen"] = "127.0.0.1", ["listen_port"] = port,
-                        ["version"] = h3 ? new JsonArray(1, 3) : new JsonArray(1, 2),
+                        ["version"] = h3 ? new JsonArray(1, 3) : new JsonArray(serverVersion),
                         ["users"] = new JsonArray(new JsonObject { ["username"] = "test", ["password"] = "secret" }, new JsonObject { ["username"] = "exit", ["password"] = "exit-secret" }),
                         ["tls"] = new JsonObject { ["enabled"] = true, ["certificate_path"] = certificatePath, ["key_path"] = keyPath }
                     }),
@@ -98,15 +100,15 @@ internal static class Http3Checks
                     try
                     {
                         await engine.StartAsync(settings, true, token);
-                        Assert(engine.Http3Selected == h3 && engine.UsedHttp3Fallback == !h3, "Choose HTTP/3 or stable TCP according to actual QUIC availability.");
+                        Assert(engine.Http3Selected == h3 && engine.UsedHttp3Fallback == !h3, "Choose HTTP/3 or H2/H1 fallback according to actual QUIC availability.");
                         Assert(engine.AppliedSignature == Configuration.Signature(settings) && engine.AppliedSettings!.ActiveProfile!.PreferHttp3, "Runtime fallback preserves the saved preference and reconnect signature.");
                         using var client = engine.CreateProbeClient(true);
                         string body = await client.GetStringAsync(probeUri, token);
                         Assert(body == "fixture", "Proxy transfers actual target response bytes.");
                         var current = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(directory, "test-runtime-*.json").Single()))!;
                         Assert(current["inbounds"]!.AsArray().All(item => item!["type"]!.ToString() != "tun"), "The HTTP/3 test must not create TUN.");
-                        Assert(h3 ? current["outbounds"]![0]!["version"]!.GetValue<int>() == 3 : current["outbounds"]![0]!["tls"]!["utls"]!["fingerprint"]!.ToString() == "chrome", "Stable fallback applies the configured TCP fingerprint.");
-                        Assert(messages.Any(message => message.Contains(h3 ? Configuration.Http3CoreVersion : "Starting " + Configuration.CoreVersion)), "Start the intended core binary.");
+                        Assert(h3 ? current["outbounds"]![0]!["version"]!.GetValue<int>() == 3 : current["outbounds"]![0]!["version"]!.GetValue<int>() == 2 && current["outbounds"]![0]!["tls"]!["utls"]!["fingerprint"]!.ToString() == "chrome", "H3 fallback enables H2 and applies the configured TCP fingerprint.");
+                        Assert(messages.Any(message => message.Contains("Starting " + Configuration.Http3CoreVersion)), "H3 and its H2/H1 fallback use the alpha core.");
                         if (h3)
                         {
                             await CheckUdpAsync(current, token);
@@ -121,6 +123,21 @@ internal static class Http3Checks
                     }
                     catch { File.WriteAllLines(Path.Combine(directory, "client-log.txt"), messages); throw; }
                     finally { await engine.StopAsync(); }
+
+                    var h2Settings = settings.Copy();
+                    h2Settings.ActiveProfile!.Proxy["preferHttp3"] = false;
+                    h2Settings.ActiveProfile.Proxy["preferHttp2"] = true;
+                    using (var h2Engine = new Engine(directory, probeUri))
+                    {
+                        try
+                        {
+                            await h2Engine.StartAsync(h2Settings, true, token);
+                            using var client = h2Engine.CreateProbeClient(true);
+                            Assert(await client.GetStringAsync(probeUri, token) == "fixture", "H2-only mode transfers bytes through H2 and H1-only servers without QUIC.");
+                            Assert(!h2Engine.Http3Selected && !h2Engine.UsedHttp3Fallback, "H2 mode does not probe or select H3.");
+                        }
+                        finally { await h2Engine.StopAsync(); }
+                    }
 
                     var chain = profile.Copy();
                     chain.Proxy["type"] = "HTTPS_JUMP";
@@ -138,7 +155,7 @@ internal static class Http3Checks
                             await jump.StartAsync(new Settings { Profiles = [chain], ActiveProfileId = chain.Id, DefaultAction = "proxy" }, true, token);
                             using var client = jump.CreateProbeClient(true);
                             Assert(await client.GetStringAsync(probeUri, token) == "fixture", "HTTPS Jump transfers actual bytes through both authenticated proxy hops.");
-                            Assert(jump.Http3Selected == h3 && jump.UsedHttp3Fallback == !h3, "Both Jump hops use H3 together or fall back together to the stable TCP core.");
+                            Assert(jump.Http3Selected == h3 && jump.UsedHttp3Fallback == !h3, "Both Jump hops use H3 together or fall back together to H2/H1 on alpha.");
                             if (h3)
                             {
                                 await CheckUdpAsync(JsonNode.Parse(File.ReadAllText(Directory.GetFiles(directory, "test-runtime-*.json").Single()))!, token);
@@ -205,7 +222,7 @@ internal static class Http3Checks
                 }
             }
             await CheckSocksWithoutUdpAsync(directory, token);
-            File.WriteAllText(Path.Combine(directory, "result.txt"), "Real HTTP/3 CONNECT and CONNECT-UDP, MASQUE, HTTPS Jump over TCP/H3 with separate credentials and mandatory first hop, stable fallback, hidden H3 checks on TCP/SOCKS5 without UDP, certificate/authentication rejection and cleanup passed. No TUN." + (network ? " External target HTTP/3 through the proxy confirmed." : " No external target traffic."));
+            File.WriteAllText(Path.Combine(directory, "result.txt"), "Real HTTP/3 CONNECT and CONNECT-UDP, MASQUE, HTTPS Jump over TCP/H3 with separate credentials and mandatory first hop, H2 and H1 fallback, hidden H3 checks on TCP/SOCKS5 without UDP, certificate/authentication rejection and cleanup passed. No TUN." + (network ? " External target HTTP/3 through the proxy confirmed." : " No external target traffic."));
         }
         finally
         {

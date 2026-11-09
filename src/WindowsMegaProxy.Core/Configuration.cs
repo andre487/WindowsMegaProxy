@@ -61,6 +61,7 @@ public sealed class RoutingRule : INotifyPropertyChanged
     public string Source { get; set; } = "all";
     public string Path { get; set; } = "";
     public string Destination { get; set; } = "";
+    public bool PodkopThroughProxy { get; set; }
     public string Action { get; set; } = "proxy";
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ProfileId { get; set; }
     [JsonIgnore] public string? ProfileName { get; set; }
@@ -89,18 +90,24 @@ public static class Configuration
     public static readonly string[] TlsFingerprints = ["default", "chrome", "firefox", "edge", "safari", "ios", "android", "randomized", "native"];
     public static string ResolveTlsFingerprint(string value) => value == "default" ? DefaultTlsFingerprint : value;
     public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || settings.Rules.Any(rule => rule.Enabled && rule.Action == "proxy");
+    public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || AppUpdatePolicy.ThroughProxy(settings) ||
+        settings.Rules.Any(rule => rule.Enabled && (rule.Action == "proxy" || rule.PodkopThroughProxy && PodkopCatalog.Parse(rule.Destination.Trim()).Length > 0));
     public static bool RequiresHttp3(Settings settings) => UsesProxy(settings) && settings.ActiveProfile?.UsesHttp3 == true;
+    public static bool RequiresAlpha(Settings settings) => RequiresHttp3(settings) || UsesProxy(settings) && settings.ActiveProfile?.PreferHttp2 == true;
 
     public static string Signature(Settings settings)
     {
         var snapshot = new JsonObject
         {
             ["failover"] = FailoverPolicy.Signature(settings),
+            ["podkopProxyLists"] = new JsonArray(settings.Rules.Where(rule => rule.Enabled && rule.PodkopThroughProxy)
+                .SelectMany(rule => PodkopCatalog.Parse(rule.Destination.Trim())).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
+                .Select(id => (JsonNode)JsonValue.Create(id)!).ToArray()),
             ["configuration"] = Configuration.Build(settings, 1, "snapshot", allowUnresolvedSsh: true),
             ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? ResolveTlsFingerprint(settings.TlsFingerprint) : null,
             ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,
             ["preferHttp3"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.PreferHttp3 == true,
+            ["preferHttp2"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.PreferHttp2 == true,
             ["sshFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" ? settings.ActiveProfile.Proxy["trustedHostKey"]?.DeepClone() : null,
             ["acceptAnySshKey"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" && (settings.ActiveProfile.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false)
         };
@@ -212,8 +219,9 @@ public static class Configuration
         }
         else if (profile.Type == "HTTPS")
         {
-            // The stable core's CONNECT client speaks HTTP/1.1, including when uTLS offers HTTP/2 by default.
-            outbound["tls"]!["alpn"] = new JsonArray("http/1.1");
+            if (profile.PreferHttp2) outbound["version"] = 2;
+            // Stable CONNECT only speaks HTTP/1.1; alpha negotiates H2 with HTTP/1.1 fallback.
+            outbound["tls"]!["alpn"] = profile.PreferHttp2 ? new JsonArray("h2", "http/1.1") : new JsonArray("http/1.1");
             if (!TlsFingerprints.Contains(tlsFingerprint)) throw new ArgumentException("Unsupported TLS fingerprint.");
             tlsFingerprint = ResolveTlsFingerprint(tlsFingerprint);
             if (tlsFingerprint != "native")
@@ -233,6 +241,7 @@ public static class Configuration
         foreach (string key in new[] { "username", "password" }) result.Proxy[key] = (shared ? profile.Proxy[key] : jump[key])?.DeepClone();
         result.Proxy["allowInvalidProxyCertificate"] = jump["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false;
         result.Proxy["preferHttp3"] = profile.PreferHttp3;
+        result.Proxy["preferHttp2"] = profile.PreferHttp2;
         return result;
     }
 
