@@ -79,7 +79,7 @@ public partial class App : Application
         try
         {
             var pending = AppIdentity.IsDev ? null : PendingAppUpdate.Read();
-            if (pending?.When is "applying" or "now" && PendingAppUpdate.WorkerRunning()) { Shutdown(); return; }
+            if (pending?.When is "applying" or "now") { Shutdown(); return; }
             if (standalone && pending?.When == "launch")
             {
                 try
