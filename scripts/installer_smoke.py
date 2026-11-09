@@ -1,4 +1,5 @@
 """Install/repair/uninstall only on an empty disposable GitHub-hosted runner."""
+import argparse
 import csv
 import ctypes as ct
 import json
@@ -39,6 +40,9 @@ def check_downloaded_cores(version_directory):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--suite", choices=("all", "installation", "updates"), default="all")
+    suite = parser.parse_args().suite
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted":
         raise RuntimeError("Installer smoke tests are restricted to disposable GitHub-hosted runners.")
     if not ct.windll.shell32.IsUserAnAdmin():
@@ -52,6 +56,9 @@ def main():
         raise RuntimeError("Expected exactly one preview installer.")
     logs = ROOT / "artifacts/installer-checks"
     logs.mkdir(parents=True, exist_ok=True)
+    if suite == "updates":
+        check_deferred_updates(setups[0], logs, destination, data, fresh=True)
+        return
 
     def service_path():
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\WindowsMegaProxy") as key:
@@ -127,14 +134,14 @@ def main():
             finally:
                 sp.run(["sc.exe", "sdset", "WindowsMegaProxy", original], check=True, capture_output=True)
         previous = current
-        time.sleep(1)
     check_user_install(setups[0], logs, data)
     sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'uninstall.log'}"], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
     assert sp.run(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Tray"], capture_output=True).returncode != 0
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     check_legacy_upgrade(setups[0], logs, destination, data)
-    check_deferred_updates(setups[0], logs, destination, data)
+    if suite == "all":
+        check_deferred_updates(setups[0], logs, destination, data)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
 
 
@@ -274,7 +281,7 @@ def check_user_install(setup, logs, global_data):
             assert document.findtext("t:Principals/t:Principal/t:LogonType", namespaces=namespace) == "InteractiveToken"
             assert (document.find("t:Triggers/t:LogonTrigger", namespace) is not None) == login
             assert document.findtext("t:Actions/t:Exec/t:Command", namespaces=namespace) == str(Path(helper).with_name("WindowsMegaProxy.exe"))
-        dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--", "--user-settings-check", "verify" if previous else "seed")
+        dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--no-build", "--", "--user-settings-check", "verify" if previous else "seed")
         if previous is None:
             sp.run([str(destination / "WindowsMegaProxy.Launcher.exe")], check=True, timeout=30)
             for _ in range(150):

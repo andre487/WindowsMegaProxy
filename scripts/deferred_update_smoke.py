@@ -43,14 +43,16 @@ def wait_for_tray_client():
     return wait_until(hidden_window, "The boot update did not restore exactly one hidden tray client in the logged-on session.", 30)
 
 
-def check(setup, logs, destination, data):
-    if os.environ.get("GITHUB_ACTIONS") != "true" or not ct.windll.shell32.IsUserAnAdmin():
+def check(setup, logs, destination, data, *, fresh=False):
+    if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted" or not ct.windll.shell32.IsUserAnAdmin():
         raise RuntimeError("Deferred update fixtures require an elevated disposable GitHub runner.")
     if destination != known_folder(0x26) / "WindowsMegaProxy" or data != known_folder(0x23) / "WindowsMegaProxy":
         raise RuntimeError("Unexpected fixture installation paths.")
     wait_until(lambda: service_state("WindowsMegaProxy") is None and not destination.exists(),
                "Deferred fixtures require the preceding installer tests to finish uninstalling.", 15)
-    if (data / "preservation-check.txt").read_text() != "preserved":
+    if fresh and data.exists():
+        raise RuntimeError("Refusing to replace existing settings for fresh update fixtures.")
+    if not fresh and (data / "preservation-check.txt").read_text() != "preserved":
         raise RuntimeError("Deferred fixtures require installer_smoke's own preserved test data.")
     fixture = ROOT / ".tools/deferred-update-fixture"
     started = time.time()
@@ -139,6 +141,9 @@ def check(setup, logs, destination, data):
 
     try:
         prepare("manual", 1)
+        if fresh:
+            (data / "preservation-check.txt").write_text("preserved")
+            dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", "--installed-settings-check", "seed")
         command("--install-update", "launch")
         assert pending()["When"] == "launch" and not (cache / "setup.exe").exists()
         assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == "0.0.0"
@@ -236,6 +241,8 @@ def check(setup, logs, destination, data):
         verify_settings()
         sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
                 f"/LOG={logs / 'deferred-personal-install.log'}"], check=True, timeout=600)
+        if fresh:
+            dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", "--user-settings-check", "seed")
         wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "The personal cleanup helper has not released its runtime.", 30)
         shutil.copytree(payload, personal_root, dirs_exist_ok=True)
         cache.mkdir(parents=True, exist_ok=True)
