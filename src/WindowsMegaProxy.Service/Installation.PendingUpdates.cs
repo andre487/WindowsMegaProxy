@@ -269,7 +269,7 @@ public static partial class Installation
         WriteUpdateRecord(personal, null);
         string path = PreparedPath(root);
         if (File.Exists(path)) { CheckDirectory(UpdateDirectory(root)); File.Delete(path); }
-        File.Delete(RebootReceipt(root));
+        if (File.Exists(RebootReceipt(root))) File.Delete(RebootReceipt(root));
     }
 
     private static int ApplyPendingUpdate()

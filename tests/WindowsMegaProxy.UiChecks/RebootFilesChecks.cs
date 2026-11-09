@@ -34,6 +34,7 @@ internal static class RebootFilesChecks
             try { Installation.VerifyRebootFiles(root, files); throw new Exception("Same-size payload corruption was accepted."); }
             catch (CryptographicException) { }
             if (!Installation.ContainsQueuedRebootFiles(root, [@"!\??\" + root + @"\file.dll"]) ||
+                !Installation.ContainsQueuedRebootFiles(root, [@"*1\??\" + root + @"\update\reboot\file.dll", @"*2!\??\" + root + @"\file.dll"]) ||
                 Installation.ContainsQueuedRebootFiles(root, [@"!\??\" + root + @"-other\file.dll"]))
                 throw new Exception("Pending replacement detection must stay within this installation.");
         }

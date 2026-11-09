@@ -51,26 +51,32 @@ def apply_boot_file_moves(destination, *, damage=False):
     stop_workspace_app(dev=False, workspace_only=False)
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager", 0,
                         winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as registration:
-        operations = winreg.QueryValueEx(registration, "PendingFileRenameOperations")[0]
-        assert len(operations) % 2 == 0
-        remaining = []
         applied = 0
-        for source, target in zip(operations[::2], operations[1::2]):
-            prefix = "\\??\\"
-            destination_text = target.lstrip("!")
-            if not destination_text.lower().startswith((prefix + str(destination) + "\\").lower()):
-                remaining.extend((source, target))
+        for value in ("PendingFileRenameOperations", "PendingFileRenameOperations2"):
+            try:
+                operations = winreg.QueryValueEx(registration, value)[0]
+            except FileNotFoundError:
                 continue
-            assert source.startswith(prefix)
-            original, replacement = Path(source[len(prefix):]), Path(destination_text[len(prefix):])
-            assert original.resolve().is_relative_to((destination / "update/reboot").resolve())
-            assert replacement.resolve().is_relative_to(destination.resolve())
-            if damage and replacement.name == "WindowsMegaProxy.dll":
-                original.write_bytes(b"damaged reboot payload")
-            original.replace(replacement)
-            applied += 1
+            assert len(operations) % 2 == 0
+            remaining = []
+            for source, target in zip(operations[::2], operations[1::2]):
+                prefix = "\\??\\"
+                source_text = source[2:] if source.startswith(("*1", "*2")) else source
+                destination_text = (target[2:] if target.startswith(("*1", "*2")) else target).lstrip("!")
+                if not destination_text.lower().startswith((prefix + str(destination) + "\\").lower()):
+                    remaining.extend((source, target))
+                    continue
+                assert source_text.startswith(prefix)
+                original, replacement = Path(source_text[len(prefix):]), Path(destination_text[len(prefix):])
+                assert original.resolve().is_relative_to((destination / "update/reboot").resolve())
+                assert replacement.resolve().is_relative_to(destination.resolve())
+                if damage and replacement.name == "WindowsMegaProxy.dll":
+                    original.write_bytes(b"damaged reboot payload")
+                original.replace(replacement)
+                applied += 1
+            if remaining != operations:
+                winreg.SetValueEx(registration, value, 0, winreg.REG_MULTI_SZ, remaining)
         assert applied > 0, "The updater must use Windows' early-boot replacement queue."
-        winreg.SetValueEx(registration, "PendingFileRenameOperations", 0, winreg.REG_MULTI_SZ, remaining)
 
 
 def check(setup, logs, destination, data, *, fresh=False):

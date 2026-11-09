@@ -78,14 +78,16 @@ public static partial class Installation
     public static bool HasQueuedRebootFiles(string root)
     {
         using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager");
-        var operations = key?.GetValue("PendingFileRenameOperations") as string[] ?? [];
-        return ContainsQueuedRebootFiles(root, operations);
+        return new[] { "PendingFileRenameOperations", "PendingFileRenameOperations2" }.Any(name =>
+            ContainsQueuedRebootFiles(root, key?.GetValue(name) as string[] ?? []));
     }
 
     public static bool ContainsQueuedRebootFiles(string root, string[] operations)
     {
         string prefix = @"\??\" + Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return operations.Any(path => path.TrimStart('!').StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        // Session Manager can prefix paths with existence flags before the replacement flag.
+        return operations.Any(path => (path.StartsWith("*1", StringComparison.Ordinal) || path.StartsWith("*2", StringComparison.Ordinal) ? path[2..] : path)
+            .TrimStart('!').StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 
     private static void RequireNoQueuedRebootFiles(string root)
