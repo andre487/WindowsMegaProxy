@@ -93,6 +93,13 @@ def main():
             assert document.find("t:Triggers/t:LogonTrigger", namespace) is not None
         else:
             assert task.returncode != 0, "Other modes must remove the login task."
+        tray_task = sp.run(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Tray", "/XML"], capture_output=True, text=True)
+        assert (tray_task.returncode == 0) == (mode == "service")
+        if mode == "service":
+            document = ET.fromstring(tray_task.stdout)
+            namespace = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+            assert document.findtext("t:Principals/t:Principal/t:RunLevel", default="LeastPrivilege", namespaces=namespace) == "LeastPrivilege"
+            assert document.findtext("t:Principals/t:Principal/t:GroupId", namespaces=namespace) == "S-1-5-32-545"
         assert Path(current).parent == destination, "Service must use the fixed protected directory."
         assert not (destination / "versions").exists()
         if previous:
@@ -124,6 +131,7 @@ def main():
     check_user_install(setups[0], logs, data)
     sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'uninstall.log'}"], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None, "Uninstall must remove its service."
+    assert sp.run(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Tray"], capture_output=True).returncode != 0
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     check_legacy_upgrade(setups[0], logs, destination, data)
     check_deferred_updates(setups[0], logs, destination, data)

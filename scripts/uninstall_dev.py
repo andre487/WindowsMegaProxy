@@ -19,7 +19,7 @@ RUN_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
 
 
 def is_dev_task(task):
-    return re.fullmatch(r"WindowsMegaProxy\.Dev(?:\.Login|-S-1-\d+(?:-\d+)*)?", task.rsplit("\\", 1)[-1], re.IGNORECASE) is not None
+    return re.fullmatch(r"WindowsMegaProxy\.Dev(?:\.Login|\.Tray|-S-1-\d+(?:-\d+)*)?", task.rsplit("\\", 1)[-1], re.IGNORECASE) is not None
 
 
 def startup_records():

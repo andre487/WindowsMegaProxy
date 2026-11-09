@@ -1345,7 +1345,7 @@ public partial class MainWindow : Window
         WriteLog("Error: " + error.GetType().Name);
         if (!IsVisible) { updateNoticeVersion = null; tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("Operation failed. Open the application window."), Forms.ToolTipIcon.Error); }
     }
-    private void ShowWindow() { Show(); WindowState = WindowState.Normal; Activate(); }
+    private void ShowWindow() { Show(); WindowState = WindowState.Normal; Activate(); _ = OpenPendingChannelConflictAsync(); }
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
     [System.Runtime.InteropServices.DllImport("user32.dll")]

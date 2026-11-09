@@ -77,7 +77,7 @@ public static partial class Installation
             string root = InstallRoot(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
             CheckDirectory(root);
             CloseClients(root);
-            if (command == "--prepare-uninstall") { if (!AppIdentity.IsDev) CancelPendingUpdate(root, false); ConfigureLogin("manual"); return 0; }
+            if (command == "--prepare-uninstall") { if (!AppIdentity.IsDev) CancelPendingUpdate(root, false); ConfigureLogin("manual"); ConfigureTray("manual"); return 0; }
             if (command == "--set-mode" && !AppIdentity.IsDev)
             {
                 CancelPendingUpdate(root, false);
@@ -127,11 +127,7 @@ public static partial class Installation
                 key.SetValue("Mode", mode);
                 key.SetValue("HelperPath", Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable));
             }
-            using (var startup = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"))
-            {
-                if (mode == "service") startup.SetValue(ServiceProtocol.Name, $"\"{Path.Combine(root, AppIdentity.Executable)}\" --tray");
-                else startup.DeleteValue(ServiceProtocol.Name, false);
-            }
+            ConfigureTray(mode);
             if (command == "--set-mode") Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, AppIdentity.Executable)) { UseShellExecute = true })?.Dispose();
             return 0;
         }

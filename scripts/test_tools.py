@@ -105,7 +105,7 @@ class ToolsChecks(unittest.TestCase):
             self.assertEqual(commands.call_count, 2)
 
     def test_dev_cleanup_matches_only_its_own_task_names(self):
-        for task in (r"\WindowsMegaProxy.Dev.Login", r"\WindowsMegaProxy.Dev-S-1-5-21-1001", r"\WindowsMegaProxy.Dev"):
+        for task in (r"\WindowsMegaProxy.Dev.Login", r"\WindowsMegaProxy.Dev.Tray", r"\WindowsMegaProxy.Dev-S-1-5-21-1001", r"\WindowsMegaProxy.Dev"):
             self.assertTrue(uninstall_dev.is_dev_task(task))
         for task in (r"\WindowsMegaProxy.Login", r"\WindowsMegaProxy-S-1-5-21-1001", r"\Other.Dev.Login", r"\WindowsMegaProxy.Development"):
             self.assertFalse(uninstall_dev.is_dev_task(task))
