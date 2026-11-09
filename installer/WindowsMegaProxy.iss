@@ -305,6 +305,13 @@ begin
   Result := '';
   try
     SelectedMode;
+    if not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then begin
+      if not Exec(ExpandConstant('{sys}\dism.exe'), '/Online /Add-Capability /CapabilityName:OpenSSH.Client~~~~0.0.1.0 /NoRestart', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+        RaiseException('Could not start Windows OpenSSH Client installation.');
+      if Code = 3010 then begin NeedsRestart := True; RaiseException('Restart Windows before continuing installation.'); end;
+      if (Code <> 0) or not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then
+        RaiseException('OpenSSH Client installation failed. Retry after checking Windows Update access.');
+    end;
     if IsBootUpdate then begin
       if SelectedMode <> 'service' then RaiseException('Early-boot updates require service mode.');
       ExtractTemporaryFiles('{tmp}\reboot\*');
@@ -312,13 +319,6 @@ begin
         '--stage-reboot-files "' + ExpandConstant('{tmp}\reboot') + '"', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
         RaiseException('Could not verify and schedule the reboot payload. See the application log.');
       Exit;
-    end;
-    if not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then begin
-      if not Exec(ExpandConstant('{sys}\dism.exe'), '/Online /Add-Capability /CapabilityName:OpenSSH.Client~~~~0.0.1.0 /NoRestart', '', SW_HIDE, ewWaitUntilTerminated, Code) then
-        RaiseException('Could not start Windows OpenSSH Client installation.');
-      if Code = 3010 then begin NeedsRestart := True; RaiseException('Restart Windows before continuing installation.'); end;
-      if (Code <> 0) or not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then
-        RaiseException('OpenSSH Client installation failed. Retry after checking Windows Update access.');
     end;
     PrepareExistingInstallation;
   except
