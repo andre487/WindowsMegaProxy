@@ -21,10 +21,11 @@ public sealed class ProxyProfile : INotifyPropertyChanged
     [JsonIgnore] public string Type => Proxy["type"]!.GetValue<string>();
     [JsonIgnore] public string Host => Proxy["host"]!.GetValue<string>();
     [JsonIgnore] public int Port => Proxy["port"]!.GetValue<int>();
-    [JsonIgnore] public bool Supported => Type is "HTTPS" or "HTTPS_JUMP" or "SOCKS5" or "HTTP" or "MASQUE" or "SSH";
+    [JsonIgnore] public bool Supported => Type is "HTTPS" or "HTTPS_JUMP" or "SOCKS5" or "HTTP" or "MASQUE" or "SSH" or "SSH_JUMP";
     [JsonIgnore] public bool PreferHttp3 => Type is "HTTPS" or "HTTPS_JUMP" && (Proxy["preferHttp3"]?.GetValue<bool>() ?? false);
     [JsonIgnore] public bool PreferHttp2 => Type is "HTTPS" or "HTTPS_JUMP" && ((Proxy["preferHttp2"]?.GetValue<bool>() ?? false) || PreferHttp3);
     [JsonIgnore] public bool UsesHttp3 => Type == "MASQUE" || PreferHttp3;
+    [JsonIgnore] public bool AllowIpv6 => Data["routing"]?["allowIpv6"]?.GetValue<bool>() ?? true;
     [JsonIgnore] public string Description => $"{Host}:{Port} · {Type}";
     [JsonIgnore] public string SelectionLabel => $"{Name} · {Type}";
     [JsonIgnore] public string Availability => Supported ? "" : Ui.T("This connection type is not supported by the Windows client yet");

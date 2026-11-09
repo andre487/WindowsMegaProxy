@@ -41,7 +41,7 @@ internal static class DnsChecks
         var custom = ProfileDns.Build(profile);
         Check(custom["server"]!.ToString() == "2001:db8::1" && custom["server_port"]!.GetValue<int>() == 8443 && custom["path"]!.ToString() == "/query/test%2Ftoken", "Custom URL preserves IPv6, port and escaped path.");
         File.WriteAllText("artifacts/dns-checks/custom.json", Configuration.Build(settings, 9999, "test").ToJsonString(Configuration.JsonOptions));
-        foreach (string address in new[] { "https://dns.example/query?token=secret", "http://dns.example/", "tcp://1.1.1.1", "udp://1.1.1.1", "https://user:secret@dns.example/", "https://dns.example/#fragment", "https://dns.example:0/", "https://dns.example/a b" })
+        foreach (string address in new[] { "https://dns.example/query?token=secret", "http://dns.example/", "tcp://dns.example", "udp://1.1.1.1", "tcp://1.1.1.1:0", "https://user:secret@dns.example/", "https://dns.example/#fragment", "https://dns.example:0/", "https://dns.example/a b" })
         {
             profile.Data["dns"]!["customDohUrl"] = address;
             Reject(() => Configuration.Build(settings, 9999, "test"));

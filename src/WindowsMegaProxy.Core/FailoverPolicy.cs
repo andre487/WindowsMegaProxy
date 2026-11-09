@@ -37,6 +37,6 @@ public static class FailoverPolicy
     {
         ["options"] = settings.SharedOptions["failover"]?.DeepClone(),
         ["profiles"] = new JsonArray(settings.Profiles.Where(profile => profile.Supported && (Mode(settings) == "ALL" || Selected(settings).Contains(profile.Id)))
-            .Select(profile => (JsonNode)new JsonObject { ["id"] = profile.Id, ["proxy"] = profile.Proxy.DeepClone(), ["dns"] = profile.Data["dns"]?.DeepClone() }).ToArray())
+            .Select(profile => (JsonNode)new JsonObject { ["id"] = profile.Id, ["proxy"] = profile.Proxy.DeepClone(), ["dns"] = profile.Data["dns"]?.DeepClone(), ["routing"] = profile.Data["routing"]?.DeepClone() }).ToArray())
     };
 }

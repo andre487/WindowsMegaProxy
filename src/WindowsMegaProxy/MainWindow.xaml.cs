@@ -485,6 +485,12 @@ public partial class MainWindow : Window
         updated.Theme = (string)((ComboBoxItem)ThemeBox.SelectedItem).Tag;
         updated.TlsFingerprint = (string)((ComboBoxItem)TlsFingerprintBox.SelectedItem).Tag;
         updated.BootstrapDnsProvider = (string)((ComboBoxItem)BootstrapDnsBox.SelectedItem).Tag;
+        if (!int.TryParse(MtuBox.Text, out int mtu) || mtu is < 1280 or > 65535)
+            throw new ArgumentException(Ui.T("MTU must be between 1280 and 65535 bytes."));
+        updated.TunMtu = mtu;
+        updated.TrafficUnits = (string)((ComboBoxItem)TrafficUnitsBox.SelectedItem).Tag;
+        updated.SharedOptions["ssh"] ??= new System.Text.Json.Nodes.JsonObject();
+        updated.SharedOptions["ssh"]!["authMode"] = (string)((ComboBoxItem)SshAuthModeBox.SelectedItem).Tag;
         if (!applyingAutostart) updated.LaunchAtSignIn = AutostartBox.IsChecked == true;
         updated.Rules = rules.Select(rule => rule.Copy()).ToList();
         return updated;
@@ -582,6 +588,12 @@ public partial class MainWindow : Window
                 .First(item => (string)item.Tag == Configuration.DefaultTlsFingerprint).Content.ToString()!.Trim());
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
             SelectTag(BootstrapDnsBox, updated.BootstrapDnsProvider);
+            MtuBox.Text = updated.TunMtu.ToString();
+            SelectTag(TrafficUnitsBox, updated.TrafficUnits);
+            string authMode = SshConfiguration.AuthMode(updated);
+            if (!SshAuthModeBox.Items.Cast<ComboBoxItem>().Any(item => (string)item.Tag == authMode))
+                SshAuthModeBox.Items.Add(new ComboBoxItem { Content = authMode, Tag = authMode });
+            SelectTag(SshAuthModeBox, authMode);
             ShowAllConnectionsBox.IsChecked = updated.ShowAllConnections;
             if (profilesChanged)
             {
@@ -658,17 +670,12 @@ public partial class MainWindow : Window
         if (!Dispatcher.CheckAccess()) { await Dispatcher.InvokeAsync(() => SaveSshHostKey(update)).Task.Unwrap(); return; }
         var updated = PortableConfiguration.Copy(settings);
         var profile = updated.Profiles.FirstOrDefault(item => item.Id == update.ProfileId);
-        if (profile is null || profile.Type != "SSH" || profile.Port != update.Port ||
-            !string.Equals(profile.Host.Trim('[', ']'), update.Host.Trim('[', ']'), StringComparison.OrdinalIgnoreCase) ||
-            (profile.Proxy["trustedHostKey"]?.GetValue<string>() ?? "") != update.PreviousFingerprint)
+        if (!SshConfiguration.ApplyKey(profile, update))
             throw new InvalidOperationException(Ui.T("The SSH profile changed during key verification. Connect again."));
-        if (profile.Data["windows"] is not System.Text.Json.Nodes.JsonObject) profile.Data["windows"] = new System.Text.Json.Nodes.JsonObject();
-        profile.Data["windows"]!["sshHostKey"] = update.PublicKey;
-        profile.Proxy["trustedHostKey"] = update.Fingerprint;
         await CommitSettingsAsync(updated);
         var persisted = durable?.Settings.Profiles.FirstOrDefault(item => item.Id == update.ProfileId);
-        if (persisted is null || persisted.Type != "SSH" || !string.Equals(persisted.Host.Trim('[', ']'), update.Host.Trim('[', ']'), StringComparison.OrdinalIgnoreCase) || persisted.Port != update.Port ||
-            persisted.Proxy["trustedHostKey"]?.ToString() != update.Fingerprint)
+        var endpoint = update.Hop == "jump" ? persisted?.Proxy["jump"] : persisted?.Proxy;
+        if (endpoint?["trustedHostKey"]?.ToString() != update.Fingerprint)
             throw new InvalidOperationException(Ui.T("The SSH profile changed during key verification. Connect again."));
         WriteLog("Saved the verified SSH server key.");
     }
@@ -845,7 +852,7 @@ public partial class MainWindow : Window
         RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, BootstrapDnsBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, BootstrapDnsBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
@@ -905,13 +912,15 @@ public partial class MainWindow : Window
         {
             var snapshot = await Task.Run(() => current.GetConnectionsAsync(showAll));
             if (current != engine || !CanPollConnections() || language != Ui.Language || showAll != (ShowAllConnectionsBox.IsChecked == true)) return;
-            UpdateConnections(snapshot.Rows);
+            UpdateConnections(snapshot.Rows.Select(row => new ConnectionRow(row.Process, row.Destination, row.Network, row.Route,
+                ConnectionSnapshot.Bytes(row.UploadedBytes, settings.TrafficUnits), ConnectionSnapshot.Bytes(row.DownloadedBytes, settings.TrafficUnits),
+                row.RouteGroup, row.UploadedBytes, row.DownloadedBytes, row.Id)).ToArray());
             ConnectionsHint.Text = Ui.F("Shown: {0} of {1}.", snapshot.Rows.Count, snapshot.Total);
             var now = DateTimeOffset.UtcNow;
             if (previousTrafficTime != default)
             {
                 double seconds = (now - previousTrafficTime).TotalSeconds;
-                TrafficText.Text = $"↑ {ConnectionSnapshot.Bytes(Math.Max(0, snapshot.Upload - previousUpload) / seconds)}/s   ↓ {ConnectionSnapshot.Bytes(Math.Max(0, snapshot.Download - previousDownload) / seconds)}/s";
+                TrafficText.Text = $"↑ {ConnectionSnapshot.Bytes(Math.Max(0, snapshot.Upload - previousUpload) / seconds, settings.TrafficUnits)}/s   ↓ {ConnectionSnapshot.Bytes(Math.Max(0, snapshot.Download - previousDownload) / seconds, settings.TrafficUnits)}/s";
             }
             previousTrafficTime = now; previousUpload = snapshot.Upload; previousDownload = snapshot.Download;
         }
@@ -1034,7 +1043,7 @@ public partial class MainWindow : Window
         await RefreshConnectionsAsync();
     }
 
-    private async void PreferencesChanged(object sender, SelectionChangedEventArgs e)
+    private async void PreferencesChanged(object sender, RoutedEventArgs e)
     {
         if (!canEdit || updatingUi || quitting) return;
         try { await CommitSettingsAsync(CaptureSettings()); }
@@ -1209,8 +1218,15 @@ public partial class MainWindow : Window
                     try
                     {
                         using var probe = target.CreateProbeClient(throughProfile);
-                        await Task.Run(() => NetworkDiagnostics.MeasureAsync(probe, name, size, protocol, throughProfile,
+                        void LogSpeed(string message) { AppendDiagnosticEntry(message); WriteLog(message); }
+                        if (protocol == "h3" && await target.MeasureHttp3Async(throughProfile, size, result => Update(throughProfile, result), LogSpeed, token) is { } h3)
+                        {
+                            Update(throughProfile, h3 with { Reputation = await IpReputation.CheckAsync(probe, h3.Ip, LogSpeed, token) });
+                            continue;
+                        }
+                        var measured = await Task.Run(() => NetworkDiagnostics.MeasureAsync(probe, name, size, protocol == "h3" ? "h2" : protocol, throughProfile,
                             result => Update(throughProfile, result), message => { AppendDiagnosticEntry(message); WriteLog(message); }, token), token);
+                        Update(throughProfile, measured with { Reputation = await IpReputation.CheckAsync(probe, measured.Ip, LogSpeed, token) });
                     }
                     catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
                     {
@@ -1243,6 +1259,7 @@ public partial class MainWindow : Window
             new SpeedMetricRow(Ui.T("Latency"), direct.Latency, profile.Latency),
             new SpeedMetricRow(Ui.T("Download"), direct.Download, profile.Download),
             new SpeedMetricRow(Ui.T("Upload"), direct.Upload, profile.Upload),
+            new SpeedMetricRow(Ui.T("IP reputation (ProxyCheck)"), Ui.T(direct.Reputation), Ui.T(profile.Reputation)),
             new SpeedMetricRow(Ui.T("Status"), Ui.T(direct.Status), Ui.T(profile.Status))
         };
     }

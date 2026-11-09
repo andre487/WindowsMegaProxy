@@ -72,20 +72,6 @@ public sealed partial class Engine : IEngine
             runtime.ActiveProfile.Proxy["preferHttp3"] = false;
         }
         if (validatedHttp3.HasValue) Log?.Invoke("Reusing the failover candidate's verified HTTP transport.");
-        if (Configuration.UsesProxy(runtime) && runtime.ActiveProfile is { Type: "SSH" } ssh && !(ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false))
-        {
-            string previous = ssh.Proxy["trustedHostKey"]?.GetValue<string>() ?? "";
-            string key = await SshConfiguration.ReadHostKeyAsync(ssh.Host, ssh.Port, previous, cancellationToken, allowChangedKey: true);
-            string fingerprint = SshConfiguration.Fingerprint(key);
-            var update = new SshHostKeyUpdate(ssh.Id, ssh.Name, ssh.Host, ssh.Port, previous, fingerprint, key);
-            if (previous.Length > 0 && previous != fingerprint && (ConfirmSshHostKeyChange is null || !await ConfirmSshHostKeyChange(update)))
-                throw new InvalidOperationException("The SSH server key changed. Connection cancelled.");
-            if ((previous != fingerprint || SshConfiguration.PublicKey(ssh) != key) && SaveSshHostKey is not null) await SaveSshHostKey(update).ConfigureAwait(false);
-            if (ssh.Data["windows"] is not JsonObject) ssh.Data["windows"] = new JsonObject();
-            ssh.Data["windows"]!["sshHostKey"] = key;
-            ssh.Proxy["trustedHostKey"] = fingerprint;
-            Log?.Invoke(previous.Length == 0 ? "Accepted and pinned a new SSH server key." : "Verified the SSH server key.");
-        }
         if (validatedHttp3 is null && Configuration.RequiresHttp3(settings) && settings.ActiveProfile!.PreferHttp3)
         {
             var config = Configuration.Build(runtime, 1, "probe");
@@ -120,12 +106,6 @@ public sealed partial class Engine : IEngine
         await StartCoreAsync(runtime, testOnly, cancellationToken);
         AppliedSettings = PortableConfiguration.Copy(settings);
         SetPodkopWarningMetadata(AppliedSettings, podkopWarnings);
-        if (runtime.ActiveProfile is { Type: "SSH" } appliedSsh && AppliedSettings.ActiveProfile is { } savedSsh)
-        {
-            if (savedSsh.Data["windows"] is not JsonObject) savedSsh.Data["windows"] = new JsonObject();
-            savedSsh.Data["windows"]!["sshHostKey"] = appliedSsh.Data["windows"]?["sshHostKey"]?.DeepClone();
-            savedSsh.Proxy["trustedHostKey"] = appliedSsh.Proxy["trustedHostKey"]?.DeepClone();
-        }
         AppliedSignature = Configuration.Signature(AppliedSettings);
         if (!testOnly && PodkopCatalog.Used(runtime).Length > 0)
         {
@@ -191,6 +171,11 @@ public sealed partial class Engine : IEngine
         {
             ["inbound"] = new JsonArray("diagnostic-proxy"), ["action"] = "route", ["outbound"] = SelectedOutbound
         });
+        if (HasProbeProfile && settings.ActiveProfile?.AllowIpv6 == false)
+            config["route"]!["rules"]!.AsArray().Insert(0, new JsonObject
+            {
+                ["inbound"] = new JsonArray("diagnostic-proxy"), ["ip_version"] = 6, ["action"] = "reject"
+            });
         Log?.Invoke($"Starting {(alpha ? Configuration.Http3CoreVersion : Configuration.CoreVersion)} core; HTTP/3={Http3Selected}; HTTP/2={settings.ActiveProfile?.PreferHttp2 == true}; TUN={!testOnly}.");
         client.Dispose();
         client = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
@@ -261,6 +246,13 @@ public sealed partial class Engine : IEngine
         var handler = new HttpClientHandler { UseProxy = throughProfile, AllowAutoRedirect = false, MaxResponseHeadersLength = 64 };
         if (throughProfile) handler.Proxy = new WebProxy($"socks5://127.0.0.1:{probePort}") { Credentials = new NetworkCredential("diagnostic", probeSecret) };
         return new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan, DefaultRequestVersion = HttpVersion.Version20, DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower };
+    }
+
+    public Task<SpeedResult?> MeasureHttp3Async(bool throughProfile, int megabytes, Action<SpeedResult> update, Action<string> log, CancellationToken token)
+    {
+        if (throughProfile && (!Running || !HasProbeProfile)) throw new InvalidOperationException("No active diagnostic profile.");
+        return Http3Speed.MeasureAsync(throughProfile ? new ProbeAccess(probePort, probeSecret) : null,
+            throughProfile ? "Through profile" : "Without profile", megabytes, update, log, token);
     }
 
     public async Task<string> CheckHttp3Async(CancellationToken token)

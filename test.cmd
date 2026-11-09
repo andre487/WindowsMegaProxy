@@ -22,6 +22,8 @@ if not exist .tools\sing-box-h3\sing-box.exe (
   echo HTTP/3 core missing. Run setup.cmd.
   exit /b 1
 )
+call scripts\tools.cmd scripts\build_diagnostics.py --test
+if errorlevel 1 exit /b %errorlevel%
 .tools\sing-box-h3\sing-box.exe check -c artifacts\http3-test-config.json
 if errorlevel 1 exit /b %errorlevel%
 for %%F in (artifacts\ssh-*.json artifacts\jump-test-config.json) do (

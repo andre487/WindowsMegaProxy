@@ -97,6 +97,7 @@ internal static partial class Program
         }
         if (args.Contains("--engine-check")) { CheckEngineAsync().GetAwaiter().GetResult(); return; }
         if (args.Contains("--app-update-check")) { AppUpdateChecks.RunAsync().GetAwaiter().GetResult(); return; }
+        Http3SpeedChecks.RunAsync().GetAwaiter().GetResult();
         AppUpdateChecks.RunAsync().GetAwaiter().GetResult();
         ControllerChecks.RunAsync().GetAwaiter().GetResult();
         ConfigurationRefreshChecks.RunAsync().GetAwaiter().GetResult();
@@ -208,8 +209,24 @@ internal static partial class Program
                     Layout(window);
                     string summary = ((TextBlock)window.FindName("ProfileSummary")).Text;
                     var transport = (TextBlock)window.FindName("TransportText");
+                    var status = (TextBlock)window.FindName("StatusText");
+                    var serviceStatus = (TextBlock)window.FindName("ServiceStateText");
+                    var protocolInline = (System.Windows.Documents.InlineUIContainer)transport.Parent;
+                    var statusLine = (TextBlock)protocolInline.Parent;
+                    var statusItems = statusLine.Inlines.OfType<System.Windows.Documents.InlineUIContainer>().ToArray();
+                    Assert(statusItems[1] == protocolInline && statusItems[0].Child == status &&
+                        statusItems[2].Child == serviceStatus &&
+                        transport.FontSize == serviceStatus.FontSize,
+                        "Protocol belongs between connection and service status, with the service font size.");
+                    serviceStatus.Visibility = Visibility.Visible;
+                    serviceStatus.Text = "Service: running";
+                    Layout(window);
+                    double Baseline(TextBlock text) => text.TranslatePoint(new Point(0, text.BaselineOffset), statusLine).Y;
+                    Assert(Math.Abs(Baseline(status) - Baseline(transport)) <= 1 &&
+                        Math.Abs(Baseline(status) - Baseline(serviceStatus)) <= 1,
+                        "Connection, protocol and service text share a baseline despite different font sizes.");
                     var trayIcon = (System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
-                    Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && transport.Text == "HTTP/3 · QUIC" && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
+                    Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && transport.Text == "(HTTP/3 · QUIC)" && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
                     Assert(trayIcon.Text.Contains("Running H3 profile") && trayIcon.Text.Contains("HTTP/3") && !trayIcon.Text.Contains("SSH KZ") && !trayIcon.Text.Contains("TLS"), "Tray details use the applied profile and omit unavailable TLS negotiation data.");
                     fakeEngine.AppliedSettings!.ActiveProfile!.Data["name"] = new string('x', 200) + "😀";
                     updateSummary.Invoke(window, null);
@@ -217,7 +234,7 @@ internal static partial class Program
                     fakeEngine.AppliedSettings.ActiveProfile.Proxy["type"] = "HTTPS";
                     fakeEngine.Http3Selected = false; fakeEngine.UsedHttp3Fallback = true;
                     updateSummary.Invoke(window, null);
-                    Assert(transport.Text == "HTTP/1.1" && trayIcon.Text.EndsWith("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/3"), "HTTP/3 fallback reports the actual HTTP/1.1 transport in the window and tray.");
+                    Assert(transport.Text == "(HTTP/1.1)" && trayIcon.Text.EndsWith("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/3"), "HTTP/3 fallback reports the actual HTTP/1.1 transport in the window and tray.");
                     fakeEngine.AppliedSettings.ActiveProfile.Proxy["preferHttp2"] = true;
                     updateSummary.Invoke(window, null);
                     Assert(transport.Visibility == Visibility.Collapsed && !trayIcon.Text.Contains("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/2"), "Do not label H2/H1 negotiation as a known HTTP version.");
@@ -227,7 +244,7 @@ internal static partial class Program
                     fakeEngine.UsedHttp3Fallback = false;
                     updateSummary.Invoke(window, null);
                     Assert(((TextBlock)window.FindName("ProfileSummary")).Text.Contains("SSH KZ") && !((TextBlock)window.FindName("ProfileSummary")).Text.Contains("HTTP/3"), "After reconnect the summary switches to the applied SSH profile and drops H3.");
-                    Assert(transport.Text == "SSH" && trayIcon.Text.Contains("SSH KZ") && trayIcon.Text.EndsWith("SSH"), "SSH updates the window and tray without stale H3 details.");
+                    Assert(transport.Text == "(SSH)" && trayIcon.Text.Contains("SSH KZ") && trayIcon.Text.EndsWith("SSH"), "SSH updates the window and tray without stale H3 details.");
                     Wait(window, testConnection.DisconnectAsync());
                     updateSummary.Invoke(window, null);
                     Assert(transport.Visibility == Visibility.Collapsed && !trayIcon.Text.Contains("SSH KZ"), "Disconnect clears active transport and profile details.");
@@ -442,6 +459,17 @@ internal static partial class Program
             bootstrapDns.SelectedIndex = 3;
             Layout(window);
             Assert(saved[^1].BootstrapDnsProvider == "GOOGLE", "Bootstrap DNS autosaves.");
+            var mtu = (TextBox)window.FindName("MtuBox");
+            mtu.Text = "1400";
+            mtu.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));
+            Layout(window);
+            Assert(saved[^1].TunMtu == 1400, "MTU autosaves on leaving the field.");
+            ((ComboBox)window.FindName("TrafficUnitsBox")).SelectedIndex = 1;
+            Layout(window);
+            Assert(saved[^1].TrafficUnits == "SI", "Traffic units autosave.");
+            ((ComboBox)window.FindName("SshAuthModeBox")).SelectedIndex = 1;
+            Layout(window);
+            Assert(SshConfiguration.AuthMode(saved[^1]) == "PASSWORD_ONLY", "SSH authentication mode autosaves in portable shared options.");
             typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [PortableConfiguration.Copy(saved[^1])]);
             Assert((string)((ComboBoxItem)bootstrapDns.SelectedItem).Tag == "GOOGLE", "Bootstrap DNS restores from saved settings.");
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
@@ -747,7 +775,7 @@ internal static partial class Program
             {
                 var input = editorProfile.Copy();
                 input.Proxy["type"] = type;
-                if (type == "SSH")
+                if (type is "SSH" or "SSH_JUMP")
                 {
                     string key = "ssh-ed25519 " + Convert.ToBase64String(Convert.FromHexString("0000000B7373682D6564323535313900000020" + new string('0', 64)));
                     input.Proxy["username"] = "test"; input.Proxy["password"] = "secret";
@@ -778,8 +806,8 @@ internal static partial class Program
                 Assert(edit.ShowDialog() == true && edit.Profile?.Name == "Renamed profile", "The profile editor saves the user's changes.");
                 Assert(edit.Profile!.Data["browser"]!["futureField"]!.ToString() == "retain", "Editing a profile preserves foreign platform fields.");
                 Assert(edit.Profile.CountryCode == "JP" && edit.Profile.ColorIndex == 0, "Selecting a country and automatic color uses the flag's dominant color.");
-                if (type == "SSH_JUMP") Assert(System.Text.Json.Nodes.JsonNode.DeepEquals(input.Proxy, edit.Profile.Proxy), "Unsupported Jump settings stay unchanged when renamed.");
-                if (type == "SSH") Assert(edit.Profile.Supported && SshConfiguration.Build(edit.Profile, "test")["host_key"]![0]!.ToString() == SshConfiguration.PublicKey(input), "SSH editing preserves the pinned server key and creates a verified SSH outbound.");
+                if (type == "SSH_JUMP") Assert(edit.Profile.Supported && Configuration.BuildOutbound(edit.Profile, "test", allowUnresolvedSsh: true)["detour"]!.ToString() == "jump", "SSH Jump editing creates a chained SSH outbound.");
+                if (type == "SSH") Assert(edit.Profile.Supported && SshConfiguration.Build(edit.Profile, "test")["host_key"] is null && SshConfiguration.PublicKey(edit.Profile) == SshConfiguration.PublicKey(input), "SSH editing preserves imported pins for other clients but accepts any server key on Windows.");
                 if (type == "HTTPS") Assert(edit.Profile.PreferHttp3, "The profile editor saves the shared preferHttp3 option.");
                 if (type == "HTTPS") Assert(ProfileDns.Provider(edit.Profile) == "QUAD9", "The editor saves the portable DNS provider.");
                 if (type == "SOCKS5") Assert(ProfileDns.CustomUrl(edit.Profile) == "https://dns.example/query/test", "The editor saves custom DoH URLs.");

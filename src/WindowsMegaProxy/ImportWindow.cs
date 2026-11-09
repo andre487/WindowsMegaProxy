@@ -31,6 +31,13 @@ public sealed class ImportWindow : Window
         root.Children.Add(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         panel.Children.Add(new TextBlock { Text = Ui.F("Import {0} profiles. Unsupported entries skipped: {1}.", review.Import.Profiles.Count, review.Import.Skipped), TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock { Text = Ui.T("Choose which existing options to replace. Unchecked options and missing profiles are kept."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) });
+        if (review.UnsupportedOptions.Count > 0)
+            panel.Children.Add(new TextBlock
+            {
+                Text = Ui.T("These options are preserved but are not applied by the Windows client:") + "\n" +
+                    string.Join("\n", review.UnsupportedOptions.Select(option => "• " + Ui.T(option))),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8)
+            });
         foreach (var group in review.Options.GroupBy(option => option.ProfileId))
         {
             panel.Children.Add(new TextBlock { Text = group.First().ProfileName, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });

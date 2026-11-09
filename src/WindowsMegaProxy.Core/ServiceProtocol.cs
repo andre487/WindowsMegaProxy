@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace WindowsMegaProxy;
 
-public sealed record SshHostKeyUpdate(string ProfileId, string ProfileName, string Host, int Port, string PreviousFingerprint, string Fingerprint, string PublicKey);
+public sealed record SshHostKeyUpdate(string ProfileId, string ProfileName, string Host, int Port, string PreviousFingerprint, string Fingerprint, string PublicKey, string Hop = "destination");
 public sealed record ProbeAccess(int Port, string Secret);
 public sealed record ServiceLogChunk(byte[] Data, bool Done = false, string? Error = null);
 public sealed record ServiceStatus(bool Running, Settings? AppliedSettings, string? AppliedSignature, bool Http3Selected,

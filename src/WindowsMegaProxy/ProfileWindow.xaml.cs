@@ -39,20 +39,19 @@ public partial class ProfileWindow : Window
         HttpVersionBox.SelectedIndex = profile.PreferHttp3 ? 2 : profile.PreferHttp2 ? 1 : 0;
         var jump = profile.Proxy["jump"] as System.Text.Json.Nodes.JsonObject;
         JumpHostBox.Text = jump?["host"]?.GetValue<string>() ?? "";
-        JumpPortBox.Text = (jump?["port"]?.GetValue<int>() ?? 443).ToString();
+        JumpPortBox.Text = (jump?["port"]?.GetValue<int>() ?? (profile.Type == "SSH_JUMP" ? 22 : 443)).ToString();
+        JumpPrivateKeyBox.Text = jump?["privateKey"]?.GetValue<string>() ?? "";
         SameJumpAuthenticationBox.IsChecked = jump?["sameAuthentication"]?.GetValue<bool>() ?? true;
         JumpUsernameBox.Text = jump?["username"]?.GetValue<string>() ?? "";
         JumpPasswordBox.Password = jump?["password"]?.GetValue<string>() ?? "";
         JumpInvalidCertificateBox.IsChecked = jump?["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false;
         SameJumpAuthenticationChanged(this, null!);
         PrivateKeyBox.Text = profile.Proxy["privateKey"]?.GetValue<string>() ?? "";
-        SshHostKeyBox.Text = SshConfiguration.PublicKey(profile);
-        SshFingerprintText.Text = profile.Proxy["trustedHostKey"]?.GetValue<string>() ?? "";
-        AcceptAnyHostKeyBox.IsChecked = profile.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false;
         string sshProfile = profile.Proxy["sshProfile"]?.GetValue<string>() ?? "DEFAULT";
         if (!SshConfiguration.Profiles.Contains(sshProfile)) SshProfileBox.Items.Add(new ComboBoxItem { Content = sshProfile, Tag = sshProfile });
         SshProfileBox.SelectedItem = SshProfileBox.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == sshProfile);
         AuthProbeHostBox.Text = ProxyAuthenticationProbe.Host(profile);
+        AllowIpv6Box.IsChecked = profile.AllowIpv6;
         foreach (var provider in ProfileDns.Providers)
             DnsProviderBox.Items.Add(new ComboBoxItem { Content = Ui.T(provider.Name), Tag = provider.Id });
         string dnsProvider = ProfileDns.Provider(profile);
@@ -87,14 +86,19 @@ public partial class ProfileWindow : Window
 
     private void TypeChanged(object sender, SelectionChangedEventArgs e)
     {
-        bool ssh = (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "SSH";
-        bool jump = (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "HTTPS_JUMP";
+        string? type = (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        bool ssh = type is "SSH" or "SSH_JUMP";
+        bool jump = type is "HTTPS_JUMP" or "SSH_JUMP";
+        if (JumpPrivateKeyPanel is not null) JumpPrivateKeyPanel.Visibility = ssh ? Visibility.Visible : Visibility.Collapsed;
+        if (JumpInvalidCertificateBox is not null) JumpInvalidCertificateBox.Visibility = ssh ? Visibility.Collapsed : Visibility.Visible;
         if (JumpFields is not null) JumpFields.Visibility = jump ? Visibility.Visible : Visibility.Collapsed;
         if (SshFields is not null) SshFields.Visibility = ssh ? Visibility.Visible : Visibility.Collapsed;
         if (!initializing && PortBox is not null)
         {
             if (ssh && PortBox.Text == "443") PortBox.Text = "22";
             else if (!ssh && PortBox.Text == "22") PortBox.Text = "443";
+            if (ssh && JumpPortBox.Text == "443") JumpPortBox.Text = "22";
+            else if (!ssh && JumpPortBox.Text == "22") JumpPortBox.Text = "443";
         }
         if (InvalidCertificateBox is not null)
         {
@@ -146,27 +150,11 @@ public partial class ProfileWindow : Window
                 candidate.Proxy["port"] = port;
                 candidate.Proxy["username"] = UsernameBox.Text;
                 candidate.Proxy["password"] = PasswordBox.Password;
-                if (type == "SSH")
+                if (type is "SSH" or "SSH_JUMP")
                 {
                     candidate.Proxy["privateKey"] = PrivateKeyBox.Text;
                     candidate.Proxy["sshProfile"] = (string)((ComboBoxItem)SshProfileBox.SelectedItem).Tag;
-                    bool acceptAny = AcceptAnyHostKeyBox.IsChecked == true;
-                    if (acceptAny && !(original.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false) &&
-                        MessageBox.Show(this, Ui.T("Accept any SSH server key? The server identity will not be verified."), "SSH", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-                    candidate.Proxy["acceptAnyHostKey"] = acceptAny;
-                    string key = SshHostKeyBox.Text.Trim();
-                    if (key.Length > 0)
-                    {
-                        if (candidate.Data["windows"] is not System.Text.Json.Nodes.JsonObject) candidate.Data["windows"] = new System.Text.Json.Nodes.JsonObject();
-                        candidate.Data["windows"]!["sshHostKey"] = key;
-                        string actual = SshConfiguration.Fingerprint(key);
-                        string trusted = original.Proxy["trustedHostKey"]?.GetValue<string>() ?? "";
-                        if (trusted.Length > 0 && trusted != actual && MessageBox.Show(this,
-                            Ui.F("Replace the trusted SSH fingerprint?\nPrevious: {0}\nNew: {1}", trusted, actual), "SSH", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-                        candidate.Proxy["trustedHostKey"] = actual;
-                    }
-                    else if (candidate.Data["windows"] is System.Text.Json.Nodes.JsonObject windows) windows.Remove("sshHostKey");
-                    SshConfiguration.Build(candidate, "validation", allowUnresolvedHostKey: true);
+                    SshConfiguration.Build(candidate, "validation");
                 }
                 if (type == "HTTPS") { candidate.Proxy["knockHost"] = AuthProbeHostBox.Text.Trim(); candidate.Proxy.Remove("authProbeHost"); }
                 if (type is "HTTPS" or "HTTPS_JUMP")
@@ -174,7 +162,7 @@ public partial class ProfileWindow : Window
                     candidate.Proxy["preferHttp2"] = HttpVersionBox.SelectedIndex >= 1;
                     candidate.Proxy["preferHttp3"] = HttpVersionBox.SelectedIndex == 2;
                 }
-                if (type == "HTTPS_JUMP")
+                if (type is "HTTPS_JUMP" or "SSH_JUMP")
                 {
                     if (!int.TryParse(JumpPortBox.Text, out int jumpPort) || jumpPort is < 1 or > 65535)
                     {
@@ -185,11 +173,16 @@ public partial class ProfileWindow : Window
                     options["host"] = JumpHostBox.Text.Trim(); options["port"] = jumpPort;
                     options["sameAuthentication"] = SameJumpAuthenticationBox.IsChecked == true;
                     options["username"] = JumpUsernameBox.Text; options["password"] = JumpPasswordBox.Password;
-                    bool invalidJump = JumpInvalidCertificateBox.IsChecked == true;
+                    if (type == "SSH_JUMP")
+                    {
+                        options["privateKey"] = JumpPrivateKeyBox.Text;
+                    }
+                    bool invalidJump = type == "HTTPS_JUMP" && JumpInvalidCertificateBox.IsChecked == true;
                     if (invalidJump && !(original.Proxy["jump"]?["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false) &&
                         MessageBox.Show(this, Ui.T("Disable jump certificate verification? This weakens connection security."), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
                     options["allowInvalidProxyCertificate"] = invalidJump;
                     if (candidate.Proxy["jump"] is null) candidate.Proxy["jump"] = options;
+                    if (type == "SSH_JUMP") SshConfiguration.Build(Configuration.JumpProfile(candidate), "validation");
                 }
                 bool insecure = type is "HTTPS" or "HTTPS_JUMP" or "MASQUE" && InvalidCertificateBox.IsChecked == true;
                 if (insecure && !(original.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false) &&
@@ -197,6 +190,11 @@ public partial class ProfileWindow : Window
                 candidate.Proxy["allowInvalidProxyCertificate"] = insecure;
             }
             string provider = (string)((ComboBoxItem)DnsProviderBox.SelectedItem).Tag;
+            if ((AllowIpv6Box.IsChecked == true) != original.AllowIpv6)
+            {
+                candidate.Data["routing"] ??= new System.Text.Json.Nodes.JsonObject();
+                candidate.Data["routing"]!["allowIpv6"] = AllowIpv6Box.IsChecked == true;
+            }
             if (provider != ProfileDns.Provider(original) || DnsUrlBox.Text.Trim() != ProfileDns.CustomUrl(original))
             {
                 var dns = candidate.Data["dns"] as System.Text.Json.Nodes.JsonObject;
@@ -223,27 +221,6 @@ public partial class ProfileWindow : Window
     private void SameJumpAuthenticationChanged(object sender, RoutedEventArgs e)
     {
         if (JumpCredentials is not null) JumpCredentials.IsEnabled = SameJumpAuthenticationBox.IsChecked != true;
-    }
-
-    private void SshHostKeyChanged(object sender, TextChangedEventArgs e)
-    {
-        if (SshFingerprintText is null) return;
-        try { SshFingerprintText.Text = SshHostKeyBox.Text.Trim().Length == 0 ? "" : SshConfiguration.Fingerprint(SshHostKeyBox.Text.Trim()); }
-        catch (ArgumentException) { SshFingerprintText.Text = Ui.T("Enter an OpenSSH server public key."); }
-    }
-
-    private async void ReadSshHostKeyClick(object sender, RoutedEventArgs e)
-    {
-        ReadSshHostKeyButton.IsEnabled = false;
-        try
-        {
-            if (!int.TryParse(PortBox.Text, out int port)) throw new ArgumentException(Ui.T("Invalid port."));
-            SshHostKeyBox.Text = await SshConfiguration.ReadHostKeyAsync(HostBox.Text.Trim(), port,
-                original.Proxy["trustedHostKey"]?.GetValue<string>() ?? "", System.Threading.CancellationToken.None);
-            ErrorText.Text = "";
-        }
-        catch (Exception error) { ErrorText.Text = error is OperationCanceledException or TimeoutException ? Ui.T("Could not read the SSH server key.") : error.Message; }
-        finally { ReadSshHostKeyButton.IsEnabled = true; }
     }
 
     private void LoadPrivateKeyClick(object sender, RoutedEventArgs e)

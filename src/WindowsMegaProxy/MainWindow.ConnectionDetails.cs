@@ -17,10 +17,10 @@ public partial class MainWindow
             "HTTPS" or "HTTPS_JUMP" when profile.PreferHttp2 => "",
             "HTTPS" or "HTTPS_JUMP" or "HTTP" => "HTTP/1.1",
             "SOCKS5" => "SOCKS5",
-            "SSH" => "SSH",
+            "SSH" or "SSH_JUMP" => "SSH",
             _ => ""
         };
-        TransportText.Text = protocol;
+        TransportText.Text = protocol.Length == 0 ? "" : "(" + protocol + ")";
         TransportText.Visibility = protocol.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (tray is null) return;
         string heading = BrandLabel(unavailable ? "MegaProxy — service unavailable" : connected ? "MegaProxy — TUN connected" : "MegaProxy — disconnected");

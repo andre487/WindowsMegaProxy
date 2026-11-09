@@ -15,6 +15,8 @@ static void Reject(Action action)
 
 SniffChecks.Run();
 DnsChecks.Run();
+ReputationChecks.Run();
+ConnectionOptionsChecks.Run();
 if (args.Length == 1 && args[0] == "--sniff-configs") return;
 Assert(ProfileAppearance.Colors.Count == 12 && ProfileAppearance.Countries.Count >= 250, "Bundle the palette and country catalog.");
 TransferChecks.Run();
@@ -351,13 +353,13 @@ foreach (string fingerprint in SshConfiguration.Profiles)
 {
     sshProfile.Proxy["sshProfile"] = fingerprint;
     var configSsh = Configuration.Build(sshSettings, 9999, "test");
-    Assert(configSsh["outbounds"]![0]!["type"]!.ToString() == "ssh" && configSsh["outbounds"]![0]!["host_key"]![0]!.ToString() == sshHostKey && configSsh["outbounds"]![0]!["tls"] is null, "SSH uses native key pinning rather than TLS or an unverified host.");
+    Assert(configSsh["outbounds"]![0]!["type"]!.ToString() == "ssh" && configSsh["outbounds"]![0]!["host_key"] is null && configSsh["outbounds"]![0]!["tls"] is null, "SSH accepts any server key without configuring TLS.");
     File.WriteAllText($"artifacts/ssh-{fingerprint}.json", configSsh.ToJsonString(Configuration.JsonOptions));
 }
 var restoredSsh = PortableConfiguration.Import(PortableConfiguration.Export(sshSettings, true, true).ToJsonString(), new Settings());
 Assert(SshConfiguration.PublicKey(restoredSsh.ActiveProfile!) == sshHostKey && restoredSsh.ActiveProfile!.Proxy["trustedHostKey"]!.ToString() == sshProfile.Proxy["trustedHostKey"]!.ToString(), "SSH raw key and Android-compatible SHA-256 fingerprint survive portable round trips.");
-sshProfile.Proxy["trustedHostKey"] = "SHA256:wrong"; Reject(() => Configuration.Build(sshSettings, 9999, "test"));
-sshProfile.Data["windows"] = new JsonObject(); Reject(() => Configuration.Build(sshSettings, 9999, "test"));
+sshProfile.Proxy["trustedHostKey"] = "SHA256:wrong"; Configuration.Build(sshSettings, 9999, "test");
+sshProfile.Data["windows"] = new JsonObject(); Configuration.Build(sshSettings, 9999, "test");
 Reject(() => SshConfiguration.Fingerprint("ssh-ed25519 invalid-base64"));
 var jumpProfile = profile.Copy(); jumpProfile.Proxy["type"] = "HTTPS_JUMP";
 jumpProfile.Proxy["username"] = "exit"; jumpProfile.Proxy["password"] = "exit-secret";

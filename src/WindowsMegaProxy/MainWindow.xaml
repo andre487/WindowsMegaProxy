@@ -231,28 +231,32 @@
                         Text="{DynamicResource &quot;Connection&quot;}"
                         Style="{DynamicResource CaptionTextBlockStyle}"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <WrapPanel>
-                        <TextBlock
-                            x:Name="StatusText"
-                            Text="{DynamicResource &quot;Disconnected&quot;}"
-                            Style="{DynamicResource SubtitleTextBlockStyle}"
-                            Margin="0,4,0,4"
-                            AutomationProperties.LiveSetting="Polite" />
-                        <TextBlock
-                            x:Name="ServiceStateText"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Margin="16,4,0,4"
-                            VerticalAlignment="Center"
-                            Visibility="Collapsed"
-                            AutomationProperties.LiveSetting="Polite" />
-                    </WrapPanel>
-                    <TextBlock
-                        x:Name="TransportText"
-                        FontSize="12"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Margin="0,0,0,4"
-                        Visibility="Collapsed"
-                        AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock TextWrapping="Wrap">
+                        <InlineUIContainer BaselineAlignment="Baseline">
+                            <TextBlock
+                                x:Name="StatusText"
+                                Text="{DynamicResource &quot;Disconnected&quot;}"
+                                Style="{DynamicResource SubtitleTextBlockStyle}"
+                                Margin="0,4,0,4"
+                                AutomationProperties.LiveSetting="Polite" />
+                        </InlineUIContainer>
+                        <InlineUIContainer BaselineAlignment="Baseline">
+                            <TextBlock
+                                x:Name="TransportText"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Margin="8,4,0,4"
+                                Visibility="Collapsed"
+                                AutomationProperties.LiveSetting="Polite" />
+                        </InlineUIContainer>
+                        <InlineUIContainer BaselineAlignment="Baseline">
+                            <TextBlock
+                                x:Name="ServiceStateText"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Margin="16,4,0,4"
+                                Visibility="Collapsed"
+                                AutomationProperties.LiveSetting="Polite" />
+                        </InlineUIContainer>
+                    </TextBlock>
                     <TextBlock
                         x:Name="RoutingWarningText"
                         TextWrapping="Wrap"
@@ -1131,6 +1135,35 @@
                                             Text="{DynamicResource &quot;Resolves proxy server names directly, before connecting. Automatic uses Cloudflare for proxy-default mode and Windows DNS otherwise. Does not replace application DNS.&quot;}"
                                             TextWrapping="Wrap"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <Label
+                                            Content="{DynamicResource &quot;SSH authentication&quot;}"
+                                            Target="{Binding ElementName=SshAuthModeBox}"
+                                            Padding="0"
+                                            Margin="0,20,0,4" />
+                                        <ComboBox x:Name="SshAuthModeBox" Width="220" HorizontalAlignment="Left" SelectionChanged="PreferencesChanged">
+                                            <ComboBoxItem Content="{DynamicResource &quot;Automatic&quot;}" Tag="AUTO" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;Password only&quot;}" Tag="PASSWORD_ONLY" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;Private key only&quot;}" Tag="KEY_ONLY" />
+                                        </ComboBox>
+                                        <Label
+                                            Content="MTU"
+                                            Target="{Binding ElementName=MtuBox}"
+                                            Padding="0"
+                                            Margin="0,20,0,4" />
+                                        <TextBox x:Name="MtuBox" Width="120" HorizontalAlignment="Left" LostFocus="PreferencesChanged" />
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;1280–65535 bytes. Applies after reconnection.&quot;}"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Margin="0,4,0,16" />
+                                        <Label
+                                            Content="{DynamicResource &quot;Traffic units&quot;}"
+                                            Target="{Binding ElementName=TrafficUnitsBox}"
+                                            Padding="0"
+                                            Margin="0,0,0,4" />
+                                        <ComboBox x:Name="TrafficUnitsBox" Width="220" HorizontalAlignment="Left" SelectionChanged="PreferencesChanged">
+                                            <ComboBoxItem Content="IEC (KiB, MiB, GiB)" Tag="IEC" />
+                                            <ComboBoxItem Content="SI (KB, MB, GB)" Tag="SI" />
+                                        </ComboBox>
                                     </StackPanel>
                                 </Border>
                                 <Border

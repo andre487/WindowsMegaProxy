@@ -44,12 +44,14 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
     {
         ServiceReply reply;
         string instance = client.InstanceId ?? (await client.CallAsync(new("hello"), cancellationToken).ConfigureAwait(false)).InstanceId!;
-        try { reply = await client.CallAsync(new("start", TestOnly: testOnly, InstanceId: instance), cancellationToken).ConfigureAwait(false); }
-        catch (ServiceHostKeyException key)
+        for (int attempt = 0; ; attempt++)
         {
-            if (!await confirmKey(key.Update).ConfigureAwait(false)) throw new OperationCanceledException("SSH key change was not accepted.");
-            await client.CallAsync(new("acceptHostKey", HostKey: key.Update, InstanceId: instance), cancellationToken).ConfigureAwait(false);
-            reply = await client.CallAsync(new("start", TestOnly: testOnly, InstanceId: instance), cancellationToken).ConfigureAwait(false);
+            try { reply = await client.CallAsync(new("start", TestOnly: testOnly, InstanceId: instance), cancellationToken).ConfigureAwait(false); break; }
+            catch (ServiceHostKeyException key) when (attempt < 2)
+            {
+                if (!await confirmKey(key.Update).ConfigureAwait(false)) throw new OperationCanceledException("SSH key change was not accepted.");
+                await client.CallAsync(new("acceptHostKey", HostKey: key.Update, InstanceId: instance), cancellationToken).ConfigureAwait(false);
+            }
         }
         lease = reply.Lease;
         borrowed = testOnly && lease is null;
@@ -86,6 +88,10 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
         }
         return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
     }
+
+    public Task<SpeedResult?> MeasureHttp3Async(bool throughProfile, int megabytes, Action<SpeedResult> update, Action<string> log, CancellationToken token) =>
+        Http3Speed.MeasureAsync(throughProfile ? probe ?? throw new UnauthorizedAccessException("No diagnostic access.") : null,
+            throughProfile ? "Through profile" : "Without profile", megabytes, update, log, token);
 
     public async Task<string> CheckHttp3Async(CancellationToken token) =>
         (await client.CallAsync(new("http3", Lease: lease, InstanceId: InstanceId, Generation: Generation), token).ConfigureAwait(false)).Text ?? "";

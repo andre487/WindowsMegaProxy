@@ -14,6 +14,7 @@ public sealed class ImportReview
     public List<ImportOption> Options { get; } = [];
     public List<ProxyProfile> Missing { get; }
     public bool HasGlobalOptions { get; }
+    public IReadOnlyList<string> UnsupportedOptions { get; }
     public bool UnsafeTrust => Import.Profiles.Any(profile => Unsafe(profile.Proxy));
     private static bool Unsafe(JsonObject proxy) => new[] { "allowInvalidProxyCertificate", "acceptAnyHostKey" }.Any(key => proxy[key]?.GetValue<bool>() == true)
         || proxy["jump"] is JsonObject jump && Unsafe(jump);
@@ -22,6 +23,15 @@ public sealed class ImportReview
     public ImportReview(ProfileImport import, Settings current)
     {
         Import = import;
+        var unsupported = new List<string>();
+        if (import.Document["tls"]?["customJa3"]?.ToString() is { Length: > 0 } ||
+            import.Profiles.Any(profile => profile.Data["tls"]?["customJa3"]?.ToString() is { Length: > 0 }))
+            unsupported.Add("Custom JA3 / QUIC fingerprints");
+        if (import.Document["ssh"] is JsonObject ssh && new[] { "keepaliveSeconds", "maxChannels", "rotationMinutes", "rotationMb" }.Any(ssh.ContainsKey))
+            unsupported.Add("SSH keepalive, channel limits and session rotation");
+        if (import.Profiles.Any(profile => ProfileDns.Provider(profile) == "CUSTOM" && ProfileDns.CustomUrl(profile).Contains('?')))
+            unsupported.Add("DoH URL query parameters");
+        UnsupportedOptions = unsupported;
         this.current = current.Copy();
         ProfileTransfer.MatchListProfiles(import, current.Profiles, subscription: false);
         var candidate = PortableConfiguration.Import(import.Document.ToJsonString(), current);
@@ -55,7 +65,9 @@ public sealed class ImportReview
                 if (jump.ContainsKey(key)) fields[key] = jump[key]?.DeepClone();
             result["jump"] = fields;
         }
-        if (group == "Security" && profile["windows"] is JsonObject windows && windows.ContainsKey("sshHostKey")) result["windows:sshHostKey"] = windows["sshHostKey"]?.DeepClone();
+        if (group == "Security" && profile["windows"] is JsonObject windows)
+            foreach (string name in new[] { "sshHostKey", "sshJumpHostKey" })
+                if (windows.ContainsKey(name)) result["windows:" + name] = windows[name]?.DeepClone();
         foreach (string key in group switch { "Security" => new[] { "tls" }, "DNS" => ["dns"], "Routing" => ["routing"], _ => [] })
             if (profile.ContainsKey(key)) result["profile:" + key] = profile[key]?.DeepClone();
         return result;

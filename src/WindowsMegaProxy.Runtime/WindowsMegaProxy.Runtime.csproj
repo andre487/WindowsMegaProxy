@@ -5,5 +5,23 @@
         <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
         <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
         <EmbeddedResource Include="../../assets/update-public-key.txt" LogicalName="WindowsMegaProxy.UpdatePublicKey" />
+        <Content
+            Include="../../artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe"
+            Link="WindowsMegaProxy.Diagnostics.exe"
+            CopyToOutputDirectory="PreserveNewest"
+            CopyToPublishDirectory="PreserveNewest" />
+        <Content
+            Include="../../artifacts/diagnostics/Diagnostics-NOTICES.txt"
+            Link="Notices/Diagnostics-NOTICES.txt"
+            CopyToOutputDirectory="PreserveNewest"
+            CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
+    <Target
+        Name="BuildHttp3Diagnostics"
+        BeforeTargets="PrepareForBuild"
+        Inputs="../../native/diagnostics/main.go;../../native/diagnostics/go.mod;../../native/diagnostics/go.sum;../../native/diagnostics/LICENSE;../../scripts/build_diagnostics.py"
+        Outputs="../../artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe;../../artifacts/diagnostics/Diagnostics-NOTICES.txt"
+        Condition="'$(DesignTimeBuild)' != 'true'">
+        <Exec Command="&quot;$(MSBuildProjectDirectory)\..\..\scripts\tools.cmd&quot; &quot;$(MSBuildProjectDirectory)\..\..\scripts\build_diagnostics.py&quot;" />
+    </Target>
 </Project>
