@@ -8,6 +8,15 @@ internal static class InstallationChecks
 {
     public static void Run()
     {
+        var checkLock = typeof(PendingAppUpdate).GetMethod("CheckWorkerLock", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        string? diagnostic = null;
+        bool Check(Func<Stream> open) => (bool)checkLock.Invoke(null, [open, (Action<string>)(message => diagnostic = message)])!;
+        if (Check(() => throw new UnauthorizedAccessException("Protected staging directory.")) || diagnostic is null)
+            throw new Exception("An inaccessible update lock must allow client recovery and log the reason.");
+        if (!Check(() => throw new IOException("Sharing violation", unchecked((int)0x80070020))))
+            throw new Exception("A held installer lock must still prevent a competing client startup.");
+        if (Check(() => new MemoryStream()) || Check(() => throw new FileNotFoundException()) || Check(() => throw new DirectoryNotFoundException()))
+            throw new Exception("An available or missing lock must not suppress client startup.");
         foreach (string state in new[] { "now", "applying" })
         {
             var pending = new PendingAppUpdate("0.0.2", state);

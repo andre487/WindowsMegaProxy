@@ -55,16 +55,27 @@ public sealed record PendingAppUpdate(string Version, string When)
         pending.When is "now" or "applying" ? pending with { When = workerRunning ? pending.When : "failed" } :
         pending.When == "failed" || AppUpdateTrust.IsNewer(pending.Version, installed) ? pending : null;
 
-    public static bool WorkerRunning()
+    public static bool WorkerRunning() => CheckWorkerLock(
+        () => new FileStream(Path.Combine(AppContext.BaseDirectory, "update", "install.lock"), FileMode.Open, FileAccess.Read, FileShare.None),
+        LogRecovery);
+
+    private static bool CheckWorkerLock(Func<Stream> openLock, Action<string> log)
     {
         try
         {
-            using var lease = new FileStream(Path.Combine(AppContext.BaseDirectory, "update", "install.lock"), FileMode.Open, FileAccess.Read, FileShare.None);
+            using var lease = openLock();
             return false;
         }
         catch (IOException error) when ((error.HResult & 0xFFFF) is 32 or 33) { return true; }
         catch (FileNotFoundException) { return false; }
         catch (DirectoryNotFoundException) { return false; }
+        catch (UnauthorizedAccessException error)
+        {
+            // An unelevated client cannot inspect the protected staging directory.
+            // The elevated installer still enforces the exclusive lock before any writes.
+            log("Cannot inspect the protected update lock; opening the recovery interface: " + error.Message);
+            return false;
+        }
     }
 
     public static async Task RequestAsync(string action, bool applyPending = false)
