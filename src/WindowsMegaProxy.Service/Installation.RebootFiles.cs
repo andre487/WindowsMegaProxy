@@ -135,6 +135,7 @@ public static partial class Installation
             // MoveFileEx preserves the source ACL: installed binaries must remain readable by clients.
             var security = new FileSecurity();
             security.SetAccessRuleProtection(true, false);
+            security.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
             foreach (var sid in new[] { WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinUsersSid })
                 security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid, null),
                     sid == WellKnownSidType.BuiltinUsersSid ? FileSystemRights.ReadAndExecute : FileSystemRights.FullControl, AccessControlType.Allow));
