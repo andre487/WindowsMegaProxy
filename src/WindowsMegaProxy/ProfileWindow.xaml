@@ -39,6 +39,7 @@
                         <ComboBoxItem Content="HTTPS Jump" Tag="HTTPS_JUMP" />
                         <ComboBoxItem Content="SOCKS5" Tag="SOCKS5" />
                         <ComboBoxItem Content="SSH" Tag="SSH" />
+                        <ComboBoxItem Content="SSH Jump" Tag="SSH_JUMP" />
                         <ComboBoxItem Content="MASQUE α (HTTP/3)" Tag="MASQUE" />
                     </ComboBox>
                     <Grid Margin="0,0,0,16">
@@ -128,6 +129,21 @@
                                 Padding="0"
                                 Margin="0,0,0,4" />
                             <PasswordBox x:Name="JumpPasswordBox" Margin="0,0,0,12" />
+                            <StackPanel x:Name="JumpPrivateKeyPanel">
+                                <Label
+                                    Content="{DynamicResource &quot;Jump private key&quot;}"
+                                    Target="{Binding ElementName=JumpPrivateKeyBox}"
+                                    Padding="0"
+                                    Margin="0,0,0,4" />
+                                <TextBox
+                                    x:Name="JumpPrivateKeyBox"
+                                    AcceptsReturn="True"
+                                    Height="100"
+                                    VerticalScrollBarVisibility="Auto"
+                                    HorizontalScrollBarVisibility="Auto"
+                                    FontFamily="Consolas"
+                                    Margin="0,0,0,12" />
+                            </StackPanel>
                         </StackPanel>
                         <CheckBox
                             x:Name="JumpInvalidCertificateBox"
@@ -165,39 +181,6 @@
                             Click="LoadPrivateKeyClick"
                             HorizontalAlignment="Left"
                             Margin="0,6,0,16" />
-                        <Label
-                            Content="{DynamicResource &quot;Server public key&quot;}"
-                            Target="{Binding ElementName=SshHostKeyBox}"
-                            Padding="0"
-                            Margin="0,0,0,4" />
-                        <TextBox
-                            x:Name="SshHostKeyBox"
-                            TextChanged="SshHostKeyChanged"
-                            HorizontalScrollBarVisibility="Auto"
-                            FontFamily="Consolas" />
-                        <TextBox
-                            x:Name="SshFingerprintText"
-                            IsReadOnly="True"
-                            BorderThickness="0"
-                            Background="Transparent"
-                            TextWrapping="Wrap"
-                            Margin="0,4,0,0"
-                            AutomationProperties.Name="{DynamicResource &quot;Trusted SSH server fingerprint&quot;}" />
-                        <Button
-                            x:Name="ReadSshHostKeyButton"
-                            Content="{DynamicResource &quot;Read server key&quot;}"
-                            Click="ReadSshHostKeyClick"
-                            HorizontalAlignment="Left"
-                            Margin="0,6,0,8" />
-                        <TextBlock
-                            Text="{DynamicResource &quot;Accept-new: the first server key is saved automatically when connecting. A changed key requires confirmation. SSH supports TCP only.&quot;}"
-                            TextWrapping="Wrap"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Margin="0,0,0,12" />
-                        <CheckBox
-                            x:Name="AcceptAnyHostKeyBox"
-                            Content="{DynamicResource &quot;Accept any SSH server key (insecure)&quot;}"
-                            Margin="0,0,0,16" />
                     </StackPanel>
                     <CheckBox
                         x:Name="InvalidCertificateBox"
@@ -217,6 +200,38 @@
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Margin="0,4,0,0" />
                 </StackPanel>
+                <CheckBox
+                    x:Name="AllowIpv6Box"
+                    Content="{DynamicResource &quot;Allow IPv6 destinations through this profile&quot;}"
+                    Margin="0,0,0,16" />
+                <Expander Header="DNS" Margin="0,0,0,16">
+                    <StackPanel Margin="0,12,0,0">
+                        <Label
+                            Content="{DynamicResource &quot;DNS provider&quot;}"
+                            Target="{Binding ElementName=DnsProviderBox}"
+                            Padding="0"
+                            Margin="0,0,0,4" />
+                        <ComboBox x:Name="DnsProviderBox" SelectionChanged="DnsProviderChanged" />
+                        <StackPanel x:Name="DnsUrlPanel" Visibility="Collapsed" Margin="0,12,0,0">
+                            <Label
+                                Content="{DynamicResource &quot;Custom DNS URL&quot;}"
+                                Target="{Binding ElementName=DnsUrlBox}"
+                                Padding="0"
+                                Margin="0,0,0,4" />
+                            <TextBox x:Name="DnsUrlBox" />
+                            <TextBlock
+                                Text="{DynamicResource &quot;HTTPS DoH, or tcp://IP:53 / udp://IP:53. Plain DNS uses the proxy and is unencrypted after the proxy.&quot;}"
+                                TextWrapping="Wrap"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Margin="0,4,0,0" />
+                        </StackPanel>
+                        <TextBlock
+                            Text="{DynamicResource &quot;Used through the active proxy when the default route is the active profile. System mode keeps Windows DNS. Apps using their own encrypted DNS are not redirected.&quot;}"
+                            TextWrapping="Wrap"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Margin="0,8,0,0" />
+                    </StackPanel>
+                </Expander>
                 <Expander Header="{DynamicResource &quot;Appearance&quot;}" Margin="0,0,0,16">
                     <StackPanel Margin="0,12,0,0">
                         <Label

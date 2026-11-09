@@ -43,7 +43,7 @@ public partial class MainWindow
             if (quitting) return;
             settingsPage = page;
             SettingsDetailHost.Content = null;
-            foreach (var form in new FrameworkElement[] { AppearanceSettings, StartupSettings, FingerprintSettings, LogSettings, UpdatesSettings, DynamicSettingsCard })
+            foreach (var form in new FrameworkElement[] { AppearanceSettings, StartupSettings, ConnectionSettings, LogSettings, UpdatesSettings, DynamicSettingsCard })
                 form.Visibility = Visibility.Collapsed;
             string? title = null;
             FrameworkElement? selected = null;
@@ -51,7 +51,7 @@ public partial class MainWindow
             {
                 case "appearance": title = "Appearance"; selected = AppearanceSettings; break;
                 case "startup": title = "Application startup"; selected = StartupSettings; break;
-                case "fingerprints": title = "TLS fingerprints"; selected = FingerprintSettings; break;
+                case "connection": title = "Connection settings"; selected = ConnectionSettings; break;
                 case "log": title = "Log"; selected = LogSettings; break;
                 case "updates": title = "Updates"; selected = UpdatesSettings; UpdateAppUpdatesView(); break;
                 case "subscription":

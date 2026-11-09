@@ -15,7 +15,7 @@ namespace WindowsMegaProxy;
 
 public sealed record DiagnosticResult(string ExitIp, string? Country, int LatencyMs, string Http3);
 public sealed record SpeedResult(string Route, string Ip = "—", string Country = "—", string Protocol = "—",
-    string Latency = "—", string Download = "—", string Upload = "—", string Status = "Waiting");
+    string Latency = "—", string Download = "—", string Upload = "—", string Status = "Waiting", string Reputation = "—");
 
 public static class NetworkDiagnostics
 {

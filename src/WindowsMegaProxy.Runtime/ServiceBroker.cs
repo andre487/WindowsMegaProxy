@@ -219,13 +219,8 @@ public sealed class ServiceBroker : IAsyncDisposable
         {
             var next = PortableConfiguration.Copy(settings);
             var profile = next.Profiles.FirstOrDefault(item => item.Id == update.ProfileId);
-            if (profile?.Type != "SSH" || profile.Host != update.Host || profile.Port != update.Port ||
-                (profile.Proxy["trustedHostKey"]?.GetValue<string>() ?? "") != update.PreviousFingerprint ||
-                SshConfiguration.Fingerprint(update.PublicKey) != update.Fingerprint)
+            if (!SshConfiguration.ApplyKey(profile, update))
                 throw new IOException("The SSH profile changed during key verification. Connect again.");
-            if (profile.Data["windows"] is not JsonObject) profile.Data["windows"] = new JsonObject();
-            profile.Data["windows"]!["sshHostKey"] = update.PublicKey;
-            profile.Proxy["trustedHostKey"] = update.Fingerprint;
             store.Save(next);
             settings = next;
             Interlocked.Increment(ref revision);

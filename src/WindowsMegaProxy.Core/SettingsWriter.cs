@@ -9,13 +9,14 @@ namespace WindowsMegaProxy;
 public sealed record SettingsAnalysis(Settings Settings, string? Signature, string? Error)
 {
     public static bool SameNetwork(Settings a, Settings b) => a.DefaultAction == b.DefaultAction && a.BypassLan == b.BypassLan &&
-        a.TlsFingerprint == b.TlsFingerprint && a.ActiveProfileId == b.ActiveProfileId &&
+        a.TunMtu == b.TunMtu && a.TlsFingerprint == b.TlsFingerprint && a.BootstrapDnsProvider == b.BootstrapDnsProvider && a.ActiveProfileId == b.ActiveProfileId &&
         AppUpdatePolicy.ThroughProxy(a) == AppUpdatePolicy.ThroughProxy(b) &&
+        SshConfiguration.AuthMode(a) == SshConfiguration.AuthMode(b) &&
         JsonNode.DeepEquals(a.SharedOptions["failover"], b.SharedOptions["failover"]) &&
-        (FailoverPolicy.Mode(a) == "DISABLED" || a.Profiles.Count == b.Profiles.Count && a.Profiles.Zip(b.Profiles).All(pair => pair.First.Id == pair.Second.Id && JsonNode.DeepEquals(pair.First.Proxy, pair.Second.Proxy))) &&
+        (FailoverPolicy.Mode(a) == "DISABLED" || a.Profiles.Count == b.Profiles.Count && a.Profiles.Zip(b.Profiles).All(pair => pair.First.Id == pair.Second.Id && JsonNode.DeepEquals(pair.First.Proxy, pair.Second.Proxy) && JsonNode.DeepEquals(pair.First.Data["dns"], pair.Second.Data["dns"]) && JsonNode.DeepEquals(pair.First.Data["routing"], pair.Second.Data["routing"]))) &&
         a.Rules.Count == b.Rules.Count && a.Rules.Zip(b.Rules).All(pair => pair.First.Source == pair.Second.Source &&
             pair.First.Path == pair.Second.Path && pair.First.Destination == pair.Second.Destination && pair.First.Action == pair.Second.Action && pair.First.Enabled == pair.Second.Enabled && pair.First.PodkopThroughProxy == pair.Second.PodkopThroughProxy) &&
-        JsonNode.DeepEquals(a.ActiveProfile?.Proxy, b.ActiveProfile?.Proxy);
+        JsonNode.DeepEquals(a.ActiveProfile?.Proxy, b.ActiveProfile?.Proxy) && JsonNode.DeepEquals(a.ActiveProfile?.Data["dns"], b.ActiveProfile?.Data["dns"]) && JsonNode.DeepEquals(a.ActiveProfile?.Data["routing"], b.ActiveProfile?.Data["routing"]);
 
     public static SettingsAnalysis Prepare(Settings settings, SettingsAnalysis? previous = null)
     {

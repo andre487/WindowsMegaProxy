@@ -29,12 +29,16 @@ def main():
     directory = ROOT / 'artifacts/ssh-checks'
     directory.mkdir(parents=True, exist_ok=True)
     host_key, client_key, other_key = (paramiko.RSAKey.generate(2048) for _ in range(3))
+    ecdsa_key = paramiko.ECDSAKey.generate()
     origin = ThreadingHTTPServer(('127.0.0.1', 0), Origin)
     threading.Thread(target=origin.serve_forever, daemon=True).start()
     stop = threading.Event()
     sessions = []
 
     class Server(paramiko.ServerInterface):
+        def __init__(self):
+            self.destinations = {}
+
         def check_auth_password(self, username, password):
             return paramiko.AUTH_SUCCESSFUL if username == 'test' and password == 'secret' else paramiko.AUTH_FAILED
 
@@ -45,11 +49,14 @@ def main():
             return 'publickey,password'
 
         def check_channel_direct_tcpip_request(self, _channel, _source, destination):
-            return paramiko.OPEN_SUCCEEDED if destination == ('127.0.0.1', origin.server_port) else paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
+            if destination not in (('127.0.0.1', origin.server_port), listener.getsockname()):
+                return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
+            self.destinations[_channel] = destination
+            return paramiko.OPEN_SUCCEEDED
 
-    def relay(channel):
+    def relay(channel, destination):
         try:
-            with socket.create_connection(('127.0.0.1', origin.server_port), timeout=5) as target:
+            with socket.create_connection(destination, timeout=5) as target:
                 target.settimeout(None)
                 while not stop.is_set():
                     for source in select.select([channel, target], [], [], 0.5)[0]:
@@ -65,11 +72,13 @@ def main():
         sessions.append(transport)
         try:
             transport.add_server_key(host_key)
-            transport.start_server(server=Server())
+            transport.add_server_key(ecdsa_key)
+            server = Server()
+            transport.start_server(server=server)
             while transport.is_active() and not stop.is_set():
                 channel = transport.accept(0.5)
                 if channel is not None:
-                    threading.Thread(target=relay, args=(channel,), daemon=True).start()
+                    threading.Thread(target=relay, args=(channel, server.destinations[channel.chanid]), daemon=True).start()
         except (paramiko.SSHException, EOFError, OSError):
             pass
         finally:

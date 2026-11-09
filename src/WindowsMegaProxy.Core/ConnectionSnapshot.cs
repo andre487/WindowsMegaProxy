@@ -81,10 +81,12 @@ public sealed record ConnectionSnapshot(IReadOnlyList<ConnectionRow> Rows, int T
         _ => tag
     };
 
-    public static string Bytes(double value)
+    public static string Bytes(double value, string units = "IEC")
     {
         int unit = 0;
-        while (value >= 1024 && unit < 3) { value /= 1024; unit++; }
-        return $"{value:0.#} {Ui.T(unit switch { 0 => "B", 1 => "KiB", 2 => "MiB", _ => "GiB" })}";
+        int divisor = units == "SI" ? 1000 : 1024;
+        while (value >= divisor && unit < 3) { value /= divisor; unit++; }
+        string[] labels = units == "SI" ? ["B", "KB", "MB", "GB"] : ["B", "KiB", "MiB", "GiB"];
+        return $"{value:0.#} {labels[unit]}";
     }
 }

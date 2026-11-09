@@ -25,6 +25,8 @@ public interface IEngine : IDisposable
     Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll);
     HttpClient CreateProbeClient(bool throughProfile);
     Task<string> CheckHttp3Async(CancellationToken token);
+    Task<SpeedResult?> MeasureHttp3Async(bool throughProfile, int megabytes, Action<SpeedResult> update,
+        Action<string> log, CancellationToken token) => Task.FromResult<SpeedResult?>(null);
 }
 
 // Commands enter synchronously on the UI thread; all work is owned until shutdown completes.

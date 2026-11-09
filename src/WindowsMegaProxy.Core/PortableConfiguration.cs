@@ -92,6 +92,7 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("language")) candidate.Language = String(windows, "language");
                     if (windows.ContainsKey("theme")) candidate.Theme = String(windows, "theme");
                     if (windows.ContainsKey("tlsFingerprint")) candidate.TlsFingerprint = String(windows, "tlsFingerprint");
+                    if (windows.ContainsKey("bootstrapDnsProvider")) candidate.BootstrapDnsProvider = String(windows, "bootstrapDnsProvider");
                     if (windows.ContainsKey("launchAtSignIn")) candidate.LaunchAtSignIn = windows["launchAtSignIn"]!.GetValue<bool>();
                     if (windows.ContainsKey("rules")) candidate.Rules = windows["rules"]!.Deserialize<List<RoutingRule>>(PortableOptions) ?? throw Invalid(Ui.T("Invalid Windows rules."));
                 }
@@ -148,6 +149,7 @@ public static class PortableConfiguration
             windows["language"] = settings.Language;
             windows["theme"] = settings.Theme;
             windows["tlsFingerprint"] = settings.TlsFingerprint;
+            windows["bootstrapDnsProvider"] = settings.BootstrapDnsProvider;
             windows["launchAtSignIn"] = settings.LaunchAtSignIn ?? false;
             windows["rules"] = JsonSerializer.SerializeToNode(settings.Rules, PortableOptions);
         }
@@ -166,8 +168,11 @@ public static class PortableConfiguration
             throw Invalid(Ui.T("Invalid local settings."));
         if (settings.Profiles.Count > 1000 || settings.Rules.Count > 1000) throw Invalid(Ui.T("At most 1,000 profiles and rules are allowed."));
         if (settings.LogSizeMb is < 1 or > 100) throw Invalid(Ui.T("Log size must be between 1 and 100 MiB."));
+        if (settings.TunMtu is < 1280 or > 65535) throw Invalid(Ui.T("MTU must be between 1280 and 65535 bytes."));
+        if (settings.TrafficUnits is not ("IEC" or "SI")) throw Invalid("Invalid traffic units.");
         if (settings.Language is not ("en" or "ru") || settings.Theme is not ("auto" or "light" or "dark")) throw Invalid("Invalid language or theme.");
         if (!Configuration.TlsFingerprints.Contains(settings.TlsFingerprint)) throw Invalid("Unsupported TLS fingerprint.");
+        _ = ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, false);
         _ = ConfigurationSubscription.Get(settings);
         _ = AppUpdatePolicy.Enabled(settings);
         FailoverPolicy.Validate(settings);
@@ -193,15 +198,25 @@ public static class PortableConfiguration
     public static void ValidateProfile(ProxyProfile profile, bool portable = false)
     {
         var data = profile.Data;
+        if (data["routing"] is { } routing && (routing is not JsonObject || routing["allowIpv6"] is { } ipv6 &&
+            (ipv6 is not JsonValue flag || !flag.TryGetValue<bool>(out _)))) throw Invalid("Invalid profile IPv6 setting.");
+        if (data["dns"] is { } dns)
+        {
+            if (dns is not JsonObject) throw Invalid(Ui.T("Invalid DNS settings."));
+            foreach (string field in new[] { "provider", "customDohUrl" })
+                if (dns[field] is { } value && (value is not JsonValue text || !text.TryGetValue<string>(out var content) || content.Length > 2048))
+                    throw Invalid(Ui.T("Invalid DNS settings."));
+        }
         var id = String(data, "id");
         if (string.IsNullOrWhiteSpace(id) || id.Length > 256 || String(data, "name").Length > 256) throw Invalid(Ui.T("Invalid profile name or ID."));
         if (data["color"] is not null && data["color"]!.GetValue<int>() < 0) throw Invalid(Ui.T("Invalid profile color."));
         var country = String(data, "countryCode");
         if (country.Length != 0 && (country.Length != 2 || country.Any(character => character is < 'A' or > 'Z'))) throw Invalid(Ui.T("Invalid country code."));
         var proxy = data["proxy"]?.AsObject() ?? throw Invalid(Ui.T("The profile has no proxy object."));
-        if (data["windows"] is JsonObject options && options.ContainsKey("sshHostKey") &&
-            (options["sshHostKey"] is not JsonValue keyValue || !keyValue.TryGetValue<string>(out var rawKey) || rawKey.Length > 16384))
-            throw Invalid(Ui.T("Enter an OpenSSH server public key."));
+        if (data["windows"] is JsonObject options)
+            foreach (string name in new[] { "sshHostKey", "sshJumpHostKey" })
+                if (options.ContainsKey(name) && (options[name] is not JsonValue keyValue || !keyValue.TryGetValue<string>(out var rawKey) || rawKey.Length > 16384))
+                    throw Invalid(Ui.T("Enter an OpenSSH server public key."));
         var type = String(proxy, "type");
         if (type is not ("HTTPS" or "SOCKS5" or "HTTPS_JUMP" or "SSH" or "SSH_JUMP" or "MASQUE") && !(type == "HTTP" && !portable))
             throw Invalid(Ui.T("Profile type is not part of the MegaProxy v8 format."));

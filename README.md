@@ -4,13 +4,15 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 
 ## Features
 
-- **Proxy profiles:** HTTPS, SOCKS5, SSH, HTTPS Jump and experimental MASQUE (HTTP/3). Create, edit, duplicate and switch profiles, with colors and country flags.
+- **Proxy profiles:** HTTPS, SOCKS5, SSH, HTTPS Jump, SSH Jump and experimental MASQUE (HTTP/3). Create, edit, duplicate and switch profiles, with colors and country flags. SSH Jump verifies both server keys independently.
 - **Installation scope:** system-wide with shared administrator-managed settings and optional Windows service, or current-user with personal encrypted settings and a protected scheduled launch. Current-user installation requires an administrator account; normal launches need no repeated UAC approval.
 - **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses, subnets and Podkop community lists. Podkop rules can refresh their lists through the connected proxy, using cached lists before connection. Use the active profile, system mode or blocking; system mode is the default.
 - **HTTP versions:** choose the stable core (HTTP/1.1), HTTP/2 or HTTP/2 + HTTP/3 for HTTPS and HTTPS Jump. H2/H3 use the bundled 1.15 alpha core, with fallback to lower versions when unsupported. HTTP/3 checks appear only for supported transports.
-- **Connection monitoring:** grouped connections, traffic rates, sortable columns and copyable application paths.
-- **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests.
-- **Security options:** certificate verification, SSH accept-new with confirmation of changed server keys, password or private-key SSH authentication, TCP TLS and SSH fingerprint presets, and knock-host checks for masked HTTPS proxies.
+- **Connection monitoring:** grouped connections, traffic rates with IEC/SI units, sortable columns and copyable application paths. Configurable MTU and per-profile IPv6 destinations.
+- **Profile DNS:** Cloudflare, Google, Quad9, Yandex Basic/Safe/Family or custom HTTPS DoH and TCP/UDP DNS endpoints. Used through the active proxy when it is the default route; system mode retains Windows DNS. UDP DNS requires a UDP-capable profile and never falls back to a direct connection. Custom URL query strings are unsupported.
+- **Bootstrap DNS:** independently choose Windows DNS or a built-in DoH provider to resolve proxy server names directly before connecting, including selective proxy routing. Automatic preserves the existing mode-dependent behavior.
+- **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests, including client HTTP/3 through SOCKS5 UDP. Speed results include ProxyCheck exit-IP reputation for each route; this is not proof of anonymity.
+- **Security options:** certificate verification, password or private-key SSH authentication, TCP TLS and SSH fingerprint presets, and knock-host checks for masked HTTPS proxies.
 - **Configuration transfer:** import MegaProxy JSON v1–8, FoxyProxy JSON, ProxyList and SuperProxy. Export MegaProxy JSON or ProxyList; review changed settings and optionally remove missing profiles. Passwords and private keys are excluded by default. Other clients' settings are preserved.
 - **Subscriptions:** HTTPS sources with backups, optional Basic authentication, automatic/manual updates and subscription definitions imported from JSON. Updates preserve local profiles and require reconnecting to apply network changes.
 - **Failover:** optional selected/all-profile backups in profile order, triggered by proxy transport failures; retains certificate and SSH key checks.
@@ -27,6 +29,8 @@ See [screenshots of the main sections](docs/screenshots/README.md) in light and 
 Native installer and release packages: see [installer builds](installer/README.md).
 
 Requires Windows 10/11 x64 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+The build downloads a pinned Go SDK into `.tools` for the standalone HTTP/3 diagnostic client. Go is not required on users' computers.
 
 ```cmd
 setup.cmd
@@ -60,4 +64,6 @@ See [antivirus notes and official dependency sources](docs/ANTIVIRUS.md) for pos
 
 See the [Privacy Policy](PRIVACY.md) for local storage, network requests and third-party services.
 
-Application code is licensed under [MIT](LICENSE). Third-party components and [artwork](assets/branding/README.md) retain their respective licenses.
+The .NET application is licensed under [MIT](LICENSE). The standalone [HTTP/3 diagnostic helper](native/diagnostics/LICENSE) is GPL-3.0-or-later. Third-party components and [artwork](assets/branding/README.md) retain their respective licenses; packages include their notices.
+
+SSH and SSH Jump accept any server host key. Imported host-key pins are preserved for other clients but are not enforced by the Windows client.

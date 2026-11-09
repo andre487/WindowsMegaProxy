@@ -28,6 +28,9 @@ public sealed class Settings
     public string Language { get; set; } = Ui.DefaultLanguage(Ui.WindowsLanguage);
     public string Theme { get; set; } = "auto";
     public string TlsFingerprint { get; set; } = "default";
+    public string BootstrapDnsProvider { get; set; } = "auto";
+    public int TunMtu { get; set; } = 1500;
+    public string TrafficUnits { get; set; } = "IEC";
     public List<RoutingRule> Rules { get; set; } = [];
 
     [JsonIgnore] public ProxyProfile? ActiveProfile => Profiles.FirstOrDefault(profile => profile.Id == ActiveProfileId);
@@ -108,8 +111,10 @@ public static class Configuration
             ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,
             ["preferHttp3"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.PreferHttp3 == true,
             ["preferHttp2"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.PreferHttp2 == true,
-            ["sshFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" ? settings.ActiveProfile.Proxy["trustedHostKey"]?.DeepClone() : null,
-            ["acceptAnySshKey"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH" && (settings.ActiveProfile.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false)
+            ["sshFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "SSH" or "SSH_JUMP" ? settings.ActiveProfile.Proxy["trustedHostKey"]?.DeepClone() : null,
+            ["acceptAnySshKey"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "SSH" or "SSH_JUMP" && (settings.ActiveProfile.Proxy["acceptAnyHostKey"]?.GetValue<bool>() ?? false),
+            ["sshJumpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH_JUMP" ? settings.ActiveProfile.Proxy["jump"]?["trustedHostKey"]?.DeepClone() : null,
+            ["acceptAnySshJumpKey"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type == "SSH_JUMP" && (settings.ActiveProfile.Proxy["jump"]?["acceptAnyHostKey"]?.GetValue<bool>() ?? false)
         };
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot.ToJsonString())));
     }
@@ -129,15 +134,17 @@ public static class Configuration
         if (UsesProxy(settings))
         {
             var selected = settings.ActiveProfile ?? throw new ArgumentException(Ui.T("Select a connection profile."));
-            outbounds.Insert(0, BuildOutbound(selected, "proxy", settings.TlsFingerprint, allowUnresolvedSsh));
-            if (selected.Type == "HTTPS_JUMP") outbounds.Insert(1, BuildOutbound(JumpProfile(selected), "jump", settings.TlsFingerprint));
+            outbounds.Insert(0, BuildOutbound(selected, "proxy", settings.TlsFingerprint, allowUnresolvedSsh, SshConfiguration.AuthMode(settings)));
+            if (selected.Type is "HTTPS_JUMP" or "SSH_JUMP") outbounds.Insert(1, BuildOutbound(JumpProfile(selected), "jump", settings.TlsFingerprint, allowUnresolvedSsh, SshConfiguration.AuthMode(settings)));
+            foreach (var outbound in outbounds.Where(item => item!["tag"]!.ToString() is "proxy" or "jump" && item["detour"] is null))
+                outbound!["domain_resolver"] = "bootstrap";
         }
 
         var rules = new JsonArray
         {
             proxyDefault ? new JsonObject { ["port"] = 53, ["action"] = "hijack-dns" }
                 : new JsonObject { ["port"] = 53, ["action"] = "route", ["outbound"] = "direct" },
-            new JsonObject { ["process_name"] = new JsonArray("sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe"), ["action"] = "route", ["outbound"] = "direct" }
+            new JsonObject { ["process_name"] = new JsonArray("sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe", "WindowsMegaProxy.Diagnostics.exe"), ["action"] = "route", ["outbound"] = "direct" }
         };
         var sniffedSources = new HashSet<string>(StringComparer.Ordinal);
         foreach (var rule in settings.Rules.Where(rule => rule.Enabled))
@@ -157,11 +164,19 @@ public static class Configuration
                     rules.Add(sniff);
                 }
             }
+            if (rule.Action == "proxy" && settings.ActiveProfile?.AllowIpv6 == false)
+            {
+                var ipv6 = built.DeepClone().AsObject();
+                ipv6["ip_version"] = 6; ipv6["action"] = "reject"; ipv6.Remove("outbound");
+                rules.Add(ipv6);
+            }
             rules.Add(built);
         }
         var tunAddresses = TunAddresses.Select([], AppIdentity.IsDev);
         if (settings.BypassLan)
             rules.Add(new JsonObject { ["ip_is_private"] = true, ["action"] = "route", ["outbound"] = "direct" });
+        if (proxyDefault && settings.ActiveProfile?.AllowIpv6 == false)
+            rules.Add(new JsonObject { ["ip_version"] = 6, ["action"] = "reject" });
         if (settings.DefaultAction == "block") rules.Add(new JsonObject { ["action"] = "reject" });
 
         return new JsonObject
@@ -170,23 +185,23 @@ public static class Configuration
             ["dns"] = new JsonObject
             {
                 ["servers"] = proxyDefault ? new JsonArray(
-                    new JsonObject { ["type"] = "https", ["tag"] = "bootstrap", ["server"] = "1.1.1.1", ["path"] = "/dns-query" },
-                    new JsonObject { ["type"] = "https", ["tag"] = "dns", ["server"] = "1.1.1.1", ["path"] = "/dns-query", ["detour"] = "proxy" })
-                    : new JsonArray(new JsonObject { ["type"] = "local", ["tag"] = "bootstrap" }),
-                ["final"] = proxyDefault ? "dns" : "bootstrap",
-                ["strategy"] = "prefer_ipv4", ["reverse_mapping"] = true
+                    ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, proxyDefault),
+                    ProfileDns.Build(settings.ActiveProfile!))
+                    : new JsonArray(ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, proxyDefault), new JsonObject { ["type"] = "local", ["tag"] = "system" }),
+                ["final"] = proxyDefault ? "dns" : "system",
+                ["strategy"] = proxyDefault && settings.ActiveProfile?.AllowIpv6 == false ? "ipv4_only" : "prefer_ipv4", ["reverse_mapping"] = true
             },
             ["inbounds"] = new JsonArray(new JsonObject
             {
                 ["type"] = "tun", ["tag"] = "tun", ["interface_name"] = AppIdentity.DisplayName,
                 ["address"] = new JsonArray(tunAddresses.Ipv4, tunAddresses.Ipv6),
-                ["mtu"] = 1500, ["auto_route"] = true, ["strict_route"] = proxyDefault,
+                ["mtu"] = settings.TunMtu, ["auto_route"] = true, ["strict_route"] = proxyDefault,
                 ["dns_mode"] = proxyDefault ? "hijack" : "disabled"
             }),
             ["outbounds"] = outbounds,
             ["route"] = new JsonObject
             {
-                ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = "bootstrap", ["rules"] = rules,
+                ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = proxyDefault ? "bootstrap" : "system", ["rules"] = rules,
                 ["rule_set"] = new JsonArray(PodkopCatalog.Groups(settings).Select(ids => (JsonNode)PodkopCatalog.Definition(ids)).ToArray()),
                 ["final"] = proxyDefault ? "proxy" : "direct"
             },
@@ -194,15 +209,15 @@ public static class Configuration
         };
     }
 
-    public static JsonObject BuildOutbound(ProxyProfile profile, string tag, string tlsFingerprint = "default", bool allowUnresolvedSsh = false)
+    public static JsonObject BuildOutbound(ProxyProfile profile, string tag, string tlsFingerprint = "default", bool allowUnresolvedSsh = false, string sshAuthMode = "AUTO")
     {
         PortableConfiguration.ValidateProfile(profile);
         if (!profile.Supported) throw new ArgumentException(profile.Availability);
-        if (profile.Type == "SSH") return SshConfiguration.Build(profile, tag, allowUnresolvedSsh);
-        if (profile.Type == "HTTPS_JUMP")
+        if (profile.Type == "SSH") return SshConfiguration.Build(profile, tag, sshAuthMode);
+        if (profile.Type is "HTTPS_JUMP" or "SSH_JUMP")
         {
-            var exit = profile.Copy(); exit.Proxy["type"] = "HTTPS";
-            var output = BuildOutbound(exit, tag, tlsFingerprint);
+            var exit = profile.Copy(); exit.Proxy["type"] = profile.Type == "SSH_JUMP" ? "SSH" : "HTTPS";
+            var output = BuildOutbound(exit, tag, tlsFingerprint, allowUnresolvedSsh, sshAuthMode);
             output["detour"] = "jump";
             return output;
         }
@@ -254,8 +269,18 @@ public static class Configuration
         var jump = profile.Proxy["jump"]!.AsObject();
         bool shared = jump["sameAuthentication"]?.GetValue<bool>() ?? true;
         var result = ProxyProfile.Create("Jump");
+        result.Proxy["type"] = profile.Type == "SSH_JUMP" ? "SSH" : "HTTPS";
         result.Proxy["host"] = jump["host"]!.DeepClone(); result.Proxy["port"] = jump["port"]!.DeepClone();
-        foreach (string key in new[] { "username", "password" }) result.Proxy[key] = (shared ? profile.Proxy[key] : jump[key])?.DeepClone();
+        foreach (string key in new[] { "username", "password", "privateKey" })
+            if ((shared ? profile.Proxy[key] : jump[key]) is { } credential) result.Proxy[key] = credential.DeepClone();
+        if (profile.Type == "SSH_JUMP")
+        {
+            foreach (string key in new[] { "trustedHostKey", "acceptAnyHostKey" })
+                if (jump[key] is { } value) result.Proxy[key] = value.DeepClone();
+            result.Proxy["sshProfile"] = profile.Proxy["sshProfile"]?.DeepClone();
+            if (profile.Data["windows"]?["sshJumpHostKey"] is { } publicKey)
+                result.Data["windows"] = new JsonObject { ["sshHostKey"] = publicKey.DeepClone() };
+        }
         result.Proxy["allowInvalidProxyCertificate"] = jump["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false;
         result.Proxy["preferHttp3"] = profile.PreferHttp3;
         result.Proxy["preferHttp2"] = profile.PreferHttp2;

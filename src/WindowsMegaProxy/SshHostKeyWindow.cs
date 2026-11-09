@@ -19,6 +19,7 @@ public sealed class SshHostKeyWindow : Window
         var panel = new StackPanel { Margin = new Thickness(24) };
         Content = panel;
         panel.Children.Add(new TextBlock { Text = update.ProfileName + " · " + update.Host + ":" + update.Port, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        if (update.Hop == "jump") panel.Children.Add(new TextBlock { Text = "SSH Jump", Margin = new Thickness(0, 4, 0, 0) });
         panel.Children.Add(new TextBlock
         {
             Text = Ui.T("The server key differs from the saved key. The server may have been reinstalled, or the connection may be intercepted. Verify the new fingerprint before trusting it."),
