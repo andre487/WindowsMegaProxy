@@ -1,4 +1,5 @@
 {
+    "{0} is running. Click to choose which version to keep.": "{0} уже работает. Нажмите, чтобы выбрать, какую версию оставить.",
     "When should the update be installed?": "Когда установить обновление?",
     "Update now": "Обновить сейчас",
     "While the service is updating, connections will use the system network settings.": "На время обновления службы соединения будут использовать системные настройки сети.",

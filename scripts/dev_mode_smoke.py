@@ -34,7 +34,7 @@ def main():
             assert not (root / "versions").exists()
             assert service_state(NAME) == (4 if mode == "service" else None)
             tasks, _ = startup_records()
-            assert bool(tasks) == (mode == "login")
+            assert bool(tasks) == (mode in ("login", "service"))
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, RUN_KEY) as startup:
                 try:
                     tray_startup = winreg.QueryValueEx(startup, NAME)[0]

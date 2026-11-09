@@ -1093,6 +1093,20 @@ internal static partial class Program
         box.Select(0, 0);
         Layout(window);
         window.Hide();
+        var notifyConflict = typeof(MainWindow).GetMethod("NotifyChannelConflictIfHidden", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Assert(!(bool)notifyConflict.Invoke(window, [false])!, "A hidden client without a conflict does not request a decision.");
+        Assert((bool)notifyConflict.Invoke(window, [true])!, "A hidden client defers the channel decision to a notification.");
+        var conflictTray = (System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
+        Assert(!window.IsVisible && conflictTray.Visible && conflictTray.BalloonTipText.Contains(ChannelControl.OtherDisplayName),
+            "The waiting client stays in the tray and identifies the conflicting channel in its notification.");
+        var conflictSettings = (Settings)typeof(MainWindow).GetField("settings", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
+        bool autoConnect = conflictSettings.AutoConnect;
+        conflictSettings.AutoConnect = false;
+        typeof(MainWindow).GetMethod("UpdateNotificationClicked", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [null, EventArgs.Empty]);
+        Assert(window.IsVisible && !(bool)typeof(MainWindow).GetField("channelConflictPending", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!,
+            "Clicking the conflict notification opens the client and consumes its pending decision independently of update notices.");
+        conflictSettings.AutoConnect = autoConnect;
+        window.Hide();
         Assert(ChannelControl.ActivateWindow(new WindowInteropHelper(window).Handle), "A duplicate launch can address the existing window through the activation handshake.");
         Layout(window);
         Assert(window.IsVisible, "Activation restores a hidden tray window without starting another connection.");

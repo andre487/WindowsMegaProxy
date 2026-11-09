@@ -76,6 +76,7 @@ public partial class MainWindow
 
     private async Task CheckAppUpdatesCoreAsync(bool manual)
     {
+        if (channelConflictPending) return;
         if (automaticUpdateChecks)
         {
             scheduledAppUpdate = await Task.Run(PendingAppUpdate.Read, updatesStopping.Token);
@@ -97,6 +98,7 @@ public partial class MainWindow
 
     private async void UpdateNotificationClicked(object? sender, EventArgs e)
     {
+        if (!quitting && channelConflictPending) { ShowWindow(); return; }
         if (quitting || updateNoticeVersion is null) return;
         try { await TrackFileAsync(OpenUpdateNotificationAsync()); }
         catch (OperationCanceledException) when (updatesStopping.IsCancellationRequested) { }

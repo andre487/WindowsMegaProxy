@@ -56,6 +56,12 @@ public static partial class Installation
                 string legacy = Path.Combine(root, "versions");
                 if (Directory.Exists(legacy)) { CheckDirectory(legacy); Directory.Delete(legacy, true); }
                 log.Write("Installation cleanup completed; only the current application version is retained.");
+                // The old boot updater also calls this new helper after clearing its pending record.
+                if (!UserInstallation.IsUser && System.Diagnostics.Process.GetCurrentProcess().SessionId == 0 && StartupConfiguration.Mode == "service")
+                {
+                    try { RestoreTrayClients(log); }
+                    catch (Exception error) { log.Write($"Could not restore tray clients: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}."); }
+                }
                 return 0;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)

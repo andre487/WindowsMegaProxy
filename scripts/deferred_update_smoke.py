@@ -19,7 +19,7 @@ from build import product_version, publish_options
 from common import ROOT, digest, dotnet
 from install import known_folder
 from package import merge, signed_manifest, version
-from run import stop_workspace_app, workspace_windows
+from run import stop_workspace_app, user32, workspace_windows
 from service_control import running_images, service_state
 
 
@@ -119,7 +119,13 @@ def check(setup, logs, destination, data):
         wait_until(lambda: sp.check_output(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", query], text=True).strip() == str(expected_result),
                    "The SYSTEM update worker reported an unexpected result.", 30)
         assert service_start() == 2
-        assert not workspace_windows("MegaProxy") and "windowsmegaproxy.exe" not in running_images(), "Boot updates must not open a session-zero UI."
+        user32.IsWindowVisible.argtypes = [ct.c_void_p]
+        wait_until(lambda: bool(workspace_windows("MegaProxy")), "The boot update did not restore the tray client in the logged-on session.", 30)
+        windows = workspace_windows("MegaProxy")
+        assert len(windows) == 1 and not user32.IsWindowVisible(windows[0][0]), "Boot updates must restore a hidden tray client."
+        session = ct.c_uint32()
+        assert ct.windll.kernel32.ProcessIdToSessionId(windows[0][1], ct.byref(session)) and session.value > 0, "The tray client must never run in session zero."
+        stop_workspace_app(dev=False, workspace_only=False)
         sp.run(["schtasks.exe", "/Delete", "/TN", simulation, "/F"], check=True, capture_output=True)
 
     try:
