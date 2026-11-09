@@ -98,7 +98,7 @@ def main():
         if mode == "service":
             document = ET.fromstring(tray_task.stdout)
             namespace = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
-            assert document.findtext("t:Principals/t:Principal/t:RunLevel", namespaces=namespace) == "LeastPrivilege"
+            assert document.findtext("t:Principals/t:Principal/t:RunLevel", default="LeastPrivilege", namespaces=namespace) == "LeastPrivilege"
             assert document.findtext("t:Principals/t:Principal/t:GroupId", namespaces=namespace) == "S-1-5-32-545"
         assert Path(current).parent == destination, "Service must use the fixed protected directory."
         assert not (destination / "versions").exists()
