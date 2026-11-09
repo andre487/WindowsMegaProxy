@@ -70,10 +70,21 @@ internal static partial class Program
         Assert(Descendants(editor).OfType<Expander>().Any(item => !item.IsExpanded && item.Header as string == Ui.T("Appearance")), "Appearance is secondary and collapsed initially.");
         editor.Close();
 
-        var export = new ExportWindow();
-        export.Show(); Layout(export);
-        Assert(UIElementAutomationPeer.CreatePeerForElement((ComboBox)export.FindName("FormatBox"))!.GetName() == Ui.T("Format"), "Export format has a programmatically associated label.");
-        export.Close();
+        string previousLanguage = Ui.Language;
+        foreach (string language in new[] { "en", "ru" })
+        {
+            var export = new ExportWindow { Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
+            UiTheme.Apply(language, "light", export);
+            export.Show(); Layout(export);
+            var format = (ComboBox)export.FindName("FormatBox");
+            var label = (Label)export.FindName("FormatLabel");
+            string actual = UIElementAutomationPeer.CreatePeerForElement(format)!.GetName();
+            Assert(actual == Ui.T("Format"), $"Export format UIA name ({language}): expected '{Ui.T("Format")}', got '{actual}'.");
+            Assert(System.Windows.Automation.AutomationProperties.GetLabeledBy(format) == label && label.Target == format,
+                "Export format keeps its programmatic label association.");
+            export.Close();
+        }
+        UiTheme.Apply(previousLanguage, "dark", window);
 
         var text = new TextBlock { Height = 500, Width = 900 };
         var inner = new ScrollViewer { Content = text, Height = 100, Width = 200, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
