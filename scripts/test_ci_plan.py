@@ -101,5 +101,26 @@ class CiPlanTests(unittest.TestCase):
                 self.assertEqual((root / 'output').read_text(encoding='utf-8'), f'mode={expected}\ntree=tree\n')
 
 
+    def test_gate_requires_every_selected_job_and_rejects_failures(self):
+        for mode, active in [('docs', ()), ('reuse', ()), ('ui', ('code',)),
+                             ('full', ('code', 'network', 'installer'))]:
+            needs = {'plan': {'result': 'success', 'outputs': {'mode': mode}}}
+            needs.update({name: {'result': 'success' if name in active else 'skipped'}
+                          for name in ('code', 'network', 'installer')})
+            ci_plan.verify_results(needs)
+            for name in needs:
+                for result in ('failure', 'cancelled', 'skipped'):
+                    if result == needs[name]['result']:
+                        continue
+                    with self.subTest(mode=mode, job=name, result=result):
+                        broken = copy.deepcopy(needs)
+                        broken[name]['result'] = result
+                        with self.assertRaises(ValueError):
+                            ci_plan.verify_results(broken)
+        needs['plan']['outputs']['mode'] = 'unknown'
+        with self.assertRaises(KeyError):
+            ci_plan.verify_results(needs)
+
+
 if __name__ == '__main__':
     unittest.main()

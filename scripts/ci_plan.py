@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess as sp
+import sys
 from pathlib import Path
 
 
@@ -53,6 +54,19 @@ def reusable(repo, commit, tree):
     return None
 
 
+def verify_results(needs):
+    if needs['plan']['result'] != 'success':
+        raise ValueError('CI plan did not succeed.')
+    selected = needs['plan']['outputs']['mode']
+    expected = {
+        'docs': (), 'reuse': (), 'ui': ('code',), 'full': ('code', 'network', 'installer'),
+    }[selected]
+    for name in ('code', 'network', 'installer'):
+        required = 'success' if name in expected else 'skipped'
+        if needs[name]['result'] != required:
+            raise ValueError(f"{name}: expected {required}, got {needs[name]['result']}.")
+
+
 def main():
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
     tree = git('rev-parse', 'HEAD^{tree}')
@@ -77,4 +91,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if sys.argv[1:] == ['--verify']:
+        verify_results(json.loads(os.environ['CI_NEEDS']))
+    else:
+        main()

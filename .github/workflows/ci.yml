@@ -32,10 +32,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci_plan.py
 
-  windows-tests:
+  code:
     needs: plan
-    if: always()
-    name: Windows tests and checks
+    if: needs.plan.outputs.mode == 'ui' || needs.plan.outputs.mode == 'full'
+    name: Code and UI checks
     runs-on: windows-2025
     timeout-minutes: 30
     defaults:
@@ -46,89 +46,33 @@ jobs:
       UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}\.tools\python
       UV_CACHE_DIR: ${{ github.workspace }}\.tools\uv-cache
     steps:
-      - name: Require a successful test plan
-        if: needs.plan.result != 'success'
-        run: exit /b 1
-
-      - name: "Release CI identity: PR ${{ github.event.pull_request.number }} head ${{ github.event.pull_request.head.sha }} base ${{ github.event.pull_request.base.sha }}"
-        if: github.event_name == 'pull_request'
-        run: echo Checking the recorded pull request revision and base.
-
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Install uv
-        if: needs.plan.outputs.mode == 'ui' || needs.plan.outputs.mode == 'full'
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Download development dependencies
-        if: needs.plan.outputs.mode == 'ui' || needs.plan.outputs.mode == 'full'
         run: setup.cmd
 
       - name: Test Python tools
-        if: needs.plan.outputs.mode == 'ui' || needs.plan.outputs.mode == 'full'
         run: tools-test.cmd
 
       - name: Test configuration, diagnostics and TraceProbe
-        if: needs.plan.outputs.mode == 'ui' || needs.plan.outputs.mode == 'full'
         run: test.cmd
 
       - name: Test Windows interface
-        if: needs.plan.outputs.mode == 'ui' || needs.plan.outputs.mode == 'full'
         run: ui-test.cmd
 
-      - name: Test HTTP/3 and HTTPS Jump on local servers
-        if: needs.plan.outputs.mode == 'full'
-        run: h3-test.cmd
-
-      - name: Test SSH on a local server
-        if: needs.plan.outputs.mode == 'full'
-        run: ssh-test.cmd
-
-      - name: Publish self-contained application folders
-        if: needs.plan.outputs.mode == 'full'
-        run: build.cmd
-
-      - name: Compile preview installer and verify update packages
-        if: needs.plan.outputs.mode == 'full'
-        run: build-installer.cmd --preview --skip-build
-
-      - name: Verify checksums with the release publishing tool
-        if: needs.plan.outputs.mode == 'full'
-        shell: bash
-        working-directory: artifacts/release-preview
-        run: sha256sum --check SHA256SUMS
-
-      - name: Upload preview installer
-        if: needs.plan.outputs.mode == 'full'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: windows-installer-preview
-          path: artifacts/release-preview/*
-          retention-days: 7
-
       - name: Test DEV identity, resources and isolation
-        if: needs.plan.outputs.mode == 'ui' || needs.plan.outputs.mode == 'full'
         run: scripts\dotnet.cmd run --project tests\WindowsMegaProxy.UiChecks -c Release -p:MegaProxyDev=true
-
-      - name: Publish DEV without touching installed services
-        if: needs.plan.outputs.mode == 'full'
-        run: build.cmd --dev
-
-      - name: Test installer on disposable runner without activating TUN
-        if: needs.plan.outputs.mode == 'full'
-        run: scripts\tools.cmd scripts\installer_smoke.py
-
-      - name: Test all DEV modes and complete startup cleanup
-        if: needs.plan.outputs.mode == 'full'
-        run: scripts\tools.cmd scripts\dev_mode_smoke.py
 
       - name: Upload test reports and interface screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: windows-test-results
+          name: windows-code-results
           path: |
             artifacts/**/result.txt
             artifacts/**/failure.txt
@@ -137,6 +81,142 @@ jobs:
             artifacts/installer-checks/*.log
           if-no-files-found: warn
           retention-days: 7
+
+  network:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    name: HTTP3 and SSH checks
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: cmd
+    env:
+      UV_PYTHON: '3.13'
+      UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}\.tools\python
+      UV_CACHE_DIR: ${{ github.workspace }}\.tools\uv-cache
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Download development dependencies
+        run: setup.cmd
+
+      - name: Test HTTP/3 and HTTPS Jump on local servers
+        run: h3-test.cmd
+
+      - name: Test SSH on a local server
+        run: ssh-test.cmd
+
+      - name: Upload test reports and interface screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-network-results
+          path: |
+            artifacts/**/result.txt
+            artifacts/**/failure.txt
+            artifacts/ui-checks/*.png
+            artifacts/ui-checks-dev/*.png
+            artifacts/installer-checks/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  installer:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    name: Installer and DEV mode checks
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: cmd
+    env:
+      UV_PYTHON: '3.13'
+      UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}\.tools\python
+      UV_CACHE_DIR: ${{ github.workspace }}\.tools\uv-cache
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Download development dependencies
+        run: setup.cmd
+
+      - name: Publish self-contained application folders
+        run: build.cmd
+
+      - name: Compile preview installer and verify update packages
+        run: build-installer.cmd --preview --skip-build
+
+      - name: Verify checksums with the release publishing tool
+        shell: bash
+        working-directory: artifacts/release-preview
+        run: sha256sum --check SHA256SUMS
+
+      - name: Upload preview installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-installer-preview
+          path: artifacts/release-preview/*
+          retention-days: 7
+
+      - name: Publish DEV without touching installed services
+        run: build.cmd --dev
+
+      - name: Build test fixtures for installed settings and channel switching
+        run: |
+          call scripts\dotnet.cmd build tests\WindowsMegaProxy.UiChecks -c Release
+          if errorlevel 1 exit /b %errorlevel%
+          call scripts\dotnet.cmd build tests\WindowsMegaProxy.UiChecks -c Release -p:MegaProxyDev=true
+          if errorlevel 1 exit /b %errorlevel%
+
+      - name: Test installer on disposable runner without activating TUN
+        run: scripts\tools.cmd scripts\installer_smoke.py
+
+      - name: Test all DEV modes and complete startup cleanup
+        run: scripts\tools.cmd scripts\dev_mode_smoke.py
+
+      - name: Upload test reports and interface screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-installer-results
+          path: |
+            artifacts/**/result.txt
+            artifacts/**/failure.txt
+            artifacts/ui-checks/*.png
+            artifacts/ui-checks-dev/*.png
+            artifacts/installer-checks/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  windows-tests:
+    needs: [plan, code, network, installer]
+    if: always()
+    name: Windows tests and checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Verify all selected jobs
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_plan.py --verify
+
+      - name: "Release CI identity: PR ${{ github.event.pull_request.number }} head ${{ github.event.pull_request.head.sha }} base ${{ github.event.pull_request.base.sha }}"
+        if: github.event_name == 'pull_request'
+        run: echo Checking the recorded pull request revision and base.
 
       - name: "Verified tree: ${{ needs.plan.outputs.tree }}"
         run: echo All selected checks passed for this tree.
