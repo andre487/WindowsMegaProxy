@@ -135,13 +135,30 @@ public static class Configuration
 
         var rules = new JsonArray
         {
-            new JsonObject { ["action"] = "sniff" },
-            proxyDefault ? new JsonObject { ["protocol"] = "dns", ["action"] = "hijack-dns" }
-                : new JsonObject { ["protocol"] = "dns", ["action"] = "route", ["outbound"] = "direct" },
+            proxyDefault ? new JsonObject { ["port"] = 53, ["action"] = "hijack-dns" }
+                : new JsonObject { ["port"] = 53, ["action"] = "route", ["outbound"] = "direct" },
             new JsonObject { ["process_name"] = new JsonArray("sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe"), ["action"] = "route", ["outbound"] = "direct" }
         };
+        var sniffedSources = new HashSet<string>(StringComparer.Ordinal);
         foreach (var rule in settings.Rules.Where(rule => rule.Enabled))
-            rules.Add(BuildRule(rule));
+        {
+            var built = BuildRule(rule);
+            if (built.ContainsKey("domain") || built.ContainsKey("domain_suffix") || built.ContainsKey("rule_set"))
+            {
+                string source = built["process_path_regex"]?.ToJsonString() ?? "";
+                if (!sniffedSources.Contains("") && sniffedSources.Add(source))
+                {
+                    // DNS reverse mappings are ambiguous on shared IPs; SNI/Host must still be inspected.
+                    var sniff = new JsonObject
+                    {
+                        ["action"] = "sniff", ["sniffer"] = new JsonArray("tls", "http", "quic")
+                    };
+                    if (built["process_path_regex"] is { } paths) sniff["process_path_regex"] = paths.DeepClone();
+                    rules.Add(sniff);
+                }
+            }
+            rules.Add(built);
+        }
         var tunAddresses = TunAddresses.Select([], AppIdentity.IsDev);
         if (settings.BypassLan)
             rules.Add(new JsonObject { ["ip_is_private"] = true, ["action"] = "route", ["outbound"] = "direct" });

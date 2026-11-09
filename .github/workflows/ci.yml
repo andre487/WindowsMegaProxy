@@ -112,6 +112,9 @@ jobs:
       - name: Test SSH on a local server
         run: ssh-test.cmd
 
+      - name: Test selective domain sniffing on local servers
+        run: scripts\tools.cmd scripts\sniff_test.py
+
       - name: Upload test reports and interface screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

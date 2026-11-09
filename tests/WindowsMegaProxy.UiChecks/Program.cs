@@ -75,13 +75,14 @@ internal static partial class Program
         if (RecoveryChecks.RunFixture(args)) return;
         if (args.Contains("--service-fatal-fixture")) { ServiceLifetime.ExitAfterFailure(() => throw new IOException("Injected event log failure.")); return; }
         if (args.Contains("--service-stability-check")) { ServiceStabilityChecks.RunAsync().GetAwaiter().GetResult(); return; }
-        if (args.Contains("--ui-recovery-check"))
+        if (args.Contains("--ui-recovery-check") || args.Contains("--startup-check"))
         {
             var recoveryApp = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(recoveryApp.Dispatcher));
             recoveryApp.Resources.MergedDictionaries.Add(new ResourceDictionary
             { Source = new Uri("pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml") });
-            UiRecoveryChecks.Run();
+            if (args.Contains("--startup-check")) StartupChecks.Run();
+            else UiRecoveryChecks.Run();
             return;
         }
         System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
@@ -106,6 +107,7 @@ internal static partial class Program
         RecoveryChecks.RunAsync().GetAwaiter().GetResult();
         ServiceStabilityChecks.RunAsync().GetAwaiter().GetResult();
         UiRecoveryChecks.RunIsolatedAsync().GetAwaiter().GetResult();
+        StartupChecks.RunIsolatedAsync().GetAwaiter().GetResult();
         UpdateInstallChecks.RunIsolatedAsync().GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(app.Dispatcher));
@@ -479,6 +481,14 @@ internal static partial class Program
                 new ConnectionRow("z-profile", "example.com:443", "TCP", "Test proxy", "0 B", "0 B", 0)
             };
             var updateConnections = typeof(MainWindow).GetMethod("UpdateConnections", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            sections.SelectedIndex = 0;
+            var manyRows = Enumerable.Range(0, 1000).Select(i => new ConnectionRow(@"C:\Synthetic\App.exe", "example.com:443", "TCP", "Profile", "0 B", "0 B", i % 3, id: i.ToString())).ToArray();
+            updateConnections.Invoke(window, [manyRows]);
+            Layout(window);
+            var virtualGrid = (DataGrid)window.FindName("ConnectionsGrid");
+            Assert(ScrollViewer.GetCanContentScroll(virtualGrid) && Descendants(virtualGrid).OfType<DataGridRow>().Count() < 100,
+                "Grouped connection tables must realize only visible rows, not all 1,000 connections.");
+            Assert(ScrollViewer.GetCanContentScroll((DataGrid)window.FindName("RulesList")), "Rules also retain logical scrolling and row virtualization.");
             updateConnections.Invoke(window, [groupedRows]);
             var connectionView = (System.Windows.Data.ListCollectionView)((DataGrid)window.FindName("ConnectionsGrid")).ItemsSource;
             connectionView.SortDescriptions.Add(new System.ComponentModel.SortDescription("Process", System.ComponentModel.ListSortDirection.Descending));

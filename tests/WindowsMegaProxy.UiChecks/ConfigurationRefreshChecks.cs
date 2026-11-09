@@ -85,12 +85,17 @@ internal static class ConfigurationRefreshChecks
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new Exception("Fresh cache must avoid network"));
         string before = File.ReadAllText(path);
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-2));
+        await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new Exception("Startup must not wait for a refresh with a verified cache."), preferCache: true);
+        Check(File.ReadAllText(path) == before && File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-1), "Fast bootstrap preserves the cache age so the background worker still refreshes it.");
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new Exception("An expired proxy-only cache must remain usable offline."), cacheOnly: true);
         Check(File.ReadAllText(path) == before, "Proxy-only bootstrap retains even an expired verified cache.");
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => Task.FromResult("https://invalid.example/path"));
         Check(File.ReadAllText(path) == before, "Invalid list updates retain the last verified copy.");
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new HttpRequestException("offline"));
         string unavailable = await cache.GetAsync("youtube", CancellationToken.None, (_, _) => throw new IOException("offline"));
+        int firstDownloads = 0;
+        await cache.GetAsync("news", CancellationToken.None, (_, _) => { firstDownloads++; return Task.FromResult("news.example"); }, preferCache: true);
+        Check(firstDownloads == 1, "Without a verified cache, a direct first download still runs before startup.");
         Check(cache.Unavailable.Contains("youtube") && JsonNode.Parse(File.ReadAllText(unavailable))!["rules"]!.AsArray().Count == 0, "Missing first-download sources become visibly inactive instead of aborting the connection.");
         var proxy = ProxyProfile.Create("Rule set check"); proxy.Proxy["host"] = "proxy.example";
         var rules = new Settings { Profiles = [proxy], ActiveProfileId = proxy.Id, Rules = [new() { Destination = "podkop:discord,youtube" }] };

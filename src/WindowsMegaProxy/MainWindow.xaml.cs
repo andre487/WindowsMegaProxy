@@ -29,6 +29,10 @@ public partial class MainWindow : Window
     private string? serviceInstance;
     private string? serviceAccessDiagnostic;
     private readonly Func<Task<Settings>> loadLegacy;
+    private readonly Task<Settings>? initialSettings;
+    private readonly Task<ServiceReply>? initialServiceReply;
+    private readonly bool customAutostart;
+    private readonly System.Diagnostics.Stopwatch startup = System.Diagnostics.Stopwatch.StartNew();
     private long serviceRevision;
     private readonly string? installScript = FindInstallScript();
     private Settings settings;
@@ -108,6 +112,11 @@ public partial class MainWindow : Window
         service = serviceClient ?? (persistSettings is null && !standalone ? new ServiceClient() : null);
         this.loadLegacy = loadLegacy ?? (() => Task.Run<Settings>(standalone ? StartupConfiguration.LoadLocal : SettingsStore.Load));
         automaticUpdateChecks = persistSettings is null && loadLegacy is null;
+        if (persistSettings is null)
+        {
+            if (service is null) initialSettings = TrackFileAsync(this.loadLegacy());
+            else initialServiceReply = TrackFileAsync(Task.Run(() => service.InitializeAsync(this.loadLegacy, updatesStopping.Token), updatesStopping.Token));
+        }
         this.appUpdates = appUpdates ?? (automaticUpdateChecks ? new AppUpdateManager() : null);
         this.installAppUpdate = installAppUpdate ?? (action => PendingAppUpdate.RequestAsync(action));
         this.chooseAppUpdate = chooseAppUpdate ?? (() =>
@@ -123,6 +132,7 @@ public partial class MainWindow : Window
             Interlocked.Exchange(ref serviceRevision, reply.Revision);
         }));
         this.setAutostart = setAutostart ?? (_ => Task.CompletedTask);
+        customAutostart = getAutostart is not null;
         this.getAutostart = getAutostart ?? (service is null ? () => Task.FromResult(StartupConfiguration.Mode == "login") : async () => (await service.CallAsync(new("status"))).AutoStart);
         this.diagnosticsOnEnter = diagnosticsOnEnter ?? (() => RunConnectionTestAsync());
         // Preserve existing log history until the saved limit has been loaded.
@@ -218,7 +228,17 @@ public partial class MainWindow : Window
             try { await connection.DisconnectAsync(); }
             catch (Exception error) { ShowError(error); }
         });
+        WriteLog($"Startup: window constructed in {startup.ElapsedMilliseconds} ms.");
+        ContentRendered += FirstContentRendered;
     }
+
+    private void FirstContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= FirstContentRendered;
+        WriteLog($"Startup: first window render after {startup.ElapsedMilliseconds} ms.");
+    }
+
+    internal void RecordStartupPreparation(long milliseconds) => WriteLog($"Startup: pre-window checks took {milliseconds} ms.");
 
     private void OpenGitHub(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
@@ -269,10 +289,12 @@ public partial class MainWindow : Window
         try
         {
             Settings loaded;
-            if (service is null) loaded = await TrackFileAsync(this.loadLegacy());
+            bool? initialAutostart = null;
+            if (service is null) loaded = await (initialSettings ?? TrackFileAsync(this.loadLegacy()));
             else
             {
-                var reply = await service.InitializeAsync(this.loadLegacy);
+                var reply = await (initialServiceReply ?? service.InitializeAsync(this.loadLegacy));
+                initialAutostart = reply.AutoStart;
                 canEdit = reply.CanEdit;
                 serviceAvailable = true; serviceTesting = reply.Testing; serviceInstance = reply.InstanceId;
                 loaded = reply.Settings ?? new Settings();
@@ -283,13 +305,16 @@ public partial class MainWindow : Window
                 connection.Attach(remote);
             }
             if (quitting) return;
+            WriteLog($"Startup: settings received after {startup.ElapsedMilliseconds} ms.");
             ApplySettings(loaded);
             await analysisTask;
             ObserveLogTask(logWriter.SetLimitAsync(settings.LogSizeMb));
-            bool enabled = await getAutostart();
+            bool enabled = !customAutostart && initialAutostart is { } serviceAutostart ? serviceAutostart : await getAutostart();
             AutostartBox.IsChecked = enabled;
             autoConnect = canEdit && !serviceTesting && settings.AutoConnect;
+            WriteLog($"Startup: interface ready after {startup.ElapsedMilliseconds} ms.");
         }
+        catch (OperationCanceledException) when (quitting) { return; }
         catch (Exception error)
         {
             if (service is not null)

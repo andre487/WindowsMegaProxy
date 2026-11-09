@@ -13,6 +13,8 @@ static void Reject(Action action)
     throw new Exception("Invalid settings were accepted.");
 }
 
+SniffChecks.Run();
+if (args.Length == 1 && args[0] == "--sniff-configs") return;
 Assert(ProfileAppearance.Colors.Count == 12 && ProfileAppearance.Countries.Count >= 250, "Bundle the palette and country catalog.");
 TransferChecks.Run();
 var defaultTun = TunAddresses.Select([], false);

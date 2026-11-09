@@ -12,6 +12,7 @@ public partial class App : Application
     private IDisposable? runtime;
     protected override async void OnStartup(StartupEventArgs e)
     {
+        var startup = Stopwatch.StartNew();
         base.OnStartup(e);
         SetCurrentProcessExplicitAppUserModelID(AppIdentity.Name);
         if (e.Args.Length == 2 && e.Args[0] == "--resolve-channel-conflict")
@@ -94,7 +95,9 @@ public partial class App : Application
                 }
             }
             if (standalone) runtime = StartupConfiguration.ClaimRuntime();
+            long preparationMs = startup.ElapsedMilliseconds;
             var window = new MainWindow(Array.Exists(e.Args, arg => arg == "--tray"), standalone: standalone);
+            window.RecordStartupPreparation(preparationMs);
             MainWindow = window;
             window.Show();
         }
