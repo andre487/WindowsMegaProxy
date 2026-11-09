@@ -105,10 +105,11 @@ public sealed partial class Engine
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
         try
         {
-            var result = await RunCoreToolAsync(CoreExecutable(Configuration.RequiresHttp3(runtime)), config, http3ProbeUri.ToString(), deadline.Token).ConfigureAwait(false);
+            var result = await RunCoreToolAsync(CoreExecutable(Configuration.RequiresAlpha(runtime)), config, http3ProbeUri.ToString(), deadline.Token).ConfigureAwait(false);
             if (result.ExitCode == 0) return;
             if (runtime.ActiveProfile!.PreferHttp3 && Http3Fallback.IsUnavailable([result.Error]))
             {
+                runtime.ActiveProfile.Proxy["preferHttp2"] = true;
                 runtime.ActiveProfile.Proxy["preferHttp3"] = false;
                 await CheckCandidateAsync(runtime, token).ConfigureAwait(false);
                 return;

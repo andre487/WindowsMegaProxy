@@ -23,6 +23,7 @@ public sealed class ProxyProfile : INotifyPropertyChanged
     [JsonIgnore] public int Port => Proxy["port"]!.GetValue<int>();
     [JsonIgnore] public bool Supported => Type is "HTTPS" or "HTTPS_JUMP" or "SOCKS5" or "HTTP" or "MASQUE" or "SSH";
     [JsonIgnore] public bool PreferHttp3 => Type is "HTTPS" or "HTTPS_JUMP" && (Proxy["preferHttp3"]?.GetValue<bool>() ?? false);
+    [JsonIgnore] public bool PreferHttp2 => Type is "HTTPS" or "HTTPS_JUMP" && ((Proxy["preferHttp2"]?.GetValue<bool>() ?? false) || PreferHttp3);
     [JsonIgnore] public bool UsesHttp3 => Type == "MASQUE" || PreferHttp3;
     [JsonIgnore] public string Description => $"{Host}:{Port} · {Type}";
     [JsonIgnore] public string SelectionLabel => $"{Name} · {Type}";

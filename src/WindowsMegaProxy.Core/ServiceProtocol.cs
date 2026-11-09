@@ -67,7 +67,7 @@ public static class ServiceView
             visible.Data["id"] = profile.Id;
             foreach (string key in new[] { "color", "countryCode" })
                 if (profile.Data[key] is { } value) visible.Data[key] = value.DeepClone();
-            foreach (string key in new[] { "type", "host", "port", "preferHttp3" })
+            foreach (string key in new[] { "type", "host", "port", "preferHttp2", "preferHttp3" })
                 if (profile.Proxy[key] is { } value) visible.Proxy[key] = value.DeepClone();
             if (profile.Proxy["jump"] is System.Text.Json.Nodes.JsonObject jump)
             {

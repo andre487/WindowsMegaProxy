@@ -213,6 +213,9 @@ internal static partial class Program
                     fakeEngine.Http3Selected = false; fakeEngine.UsedHttp3Fallback = true;
                     updateSummary.Invoke(window, null);
                     Assert(transport.Text == "HTTP/1.1" && trayIcon.Text.EndsWith("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/3"), "HTTP/3 fallback reports the actual HTTP/1.1 transport in the window and tray.");
+                    fakeEngine.AppliedSettings.ActiveProfile.Proxy["preferHttp2"] = true;
+                    updateSummary.Invoke(window, null);
+                    Assert(transport.Visibility == Visibility.Collapsed && !trayIcon.Text.Contains("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/2"), "Do not label H2/H1 negotiation as a known HTTP version.");
                     Assert(((Button)window.FindName("ConnectButton")).IsEnabled && ((Button)window.FindName("ReconnectButton")).IsEnabled, "Accept-new enables SSH reconnect without a manually pasted server key.");
                     fakeEngine.AppliedSettings = pendingSettings;
                     fakeEngine.Http3Selected = false;
@@ -740,7 +743,8 @@ internal static partial class Program
                     ((TextBox)edit.FindName("NameBox")).Text = "Renamed profile";
                     ((ComboBox)edit.FindName("CountryBox")).SelectedItem = ProfileAppearance.Countries.First(country => country.Code == "JP");
                     ((ComboBox)edit.FindName("ColorBox")).SelectedIndex = 0;
-                    if (type == "HTTPS") ((CheckBox)edit.FindName("PreferHttp3Box")).IsChecked = true;
+                    if (type == "HTTPS") ((ComboBox)edit.FindName("HttpVersionBox")).SelectedIndex = 2;
+                    if (type == "HTTPS_JUMP") ((ComboBox)edit.FindName("HttpVersionBox")).SelectedIndex = 1;
                     Descendants(edit).OfType<Button>().First(button => button.Content as string == "Сохранить")
                         .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 }));
@@ -750,6 +754,7 @@ internal static partial class Program
                 if (type == "SSH_JUMP") Assert(System.Text.Json.Nodes.JsonNode.DeepEquals(input.Proxy, edit.Profile.Proxy), "Unsupported Jump settings stay unchanged when renamed.");
                 if (type == "SSH") Assert(edit.Profile.Supported && SshConfiguration.Build(edit.Profile, "test")["host_key"]![0]!.ToString() == SshConfiguration.PublicKey(input), "SSH editing preserves the pinned server key and creates a verified SSH outbound.");
                 if (type == "HTTPS") Assert(edit.Profile.PreferHttp3, "The profile editor saves the shared preferHttp3 option.");
+                if (type == "HTTPS_JUMP") Assert(edit.Profile.PreferHttp2 && !edit.Profile.PreferHttp3, "The profile editor saves H2 without enabling H3.");
                 if (type == "MASQUE") Assert(edit.Profile.Supported && edit.Profile.UsesHttp3 && !edit.Profile.PreferHttp3, "MASQUE is editable and requires HTTP/3 without an optional fallback switch.");
                 if (type == "HTTPS_JUMP") Assert(edit.Profile.Supported && edit.Profile.Proxy["jump"]!["username"]!.ToString() == "jump-user" && edit.Profile.Proxy["jump"]!["futureJump"]!.GetValue<bool>(), "Jump editing preserves separate credentials and unknown server options.");
             }

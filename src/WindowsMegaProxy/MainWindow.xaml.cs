@@ -599,7 +599,7 @@ public partial class MainWindow : Window
         ProfileSummary.Text = profile is null ? Ui.T("Add or import a profile on the Profiles tab")
             : profile.Supported ? profile.Name + " · " + profile.Description : profile.Availability;
         if (connected && engine!.UsedHttp3Fallback)
-            ProfileSummary.Text += " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP");
+            ProfileSummary.Text += " · " + Ui.T("HTTP/3 unavailable; using HTTPS/TCP");
         string? error = ConnectionError();
         ConnectButton.IsEnabled = canEdit && (connected || error is null);
         ConnectButton.ToolTip = connected ? null : error;
@@ -1071,7 +1071,7 @@ public partial class MainWindow : Window
                         CompleteDiagnostics(details, target.AppliedSettings!);
                         TestStatusText.Text += " · " + ConnectionSnapshot.RouteName(target.SelectedOutbound, target.AppliedSettings!);
                         if (target.Http3Selected) TestStatusText.Text += " · HTTP/3";
-                        else if (target.UsedHttp3Fallback) TestStatusText.Text += " · " + Ui.T("HTTP/3 unavailable; using stable HTTPS/TCP");
+                        else if (target.UsedHttp3Fallback) TestStatusText.Text += " · " + Ui.T("HTTP/3 unavailable; using HTTPS/TCP");
                     }
                 }
                 finally { target.Log -= AppendDiagnosticEntry; }

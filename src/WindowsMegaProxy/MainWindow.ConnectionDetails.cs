@@ -14,6 +14,7 @@ public partial class MainWindow
         string protocol = profile?.Type switch
         {
             "HTTPS" or "HTTPS_JUMP" or "MASQUE" when engine!.Http3Selected => "HTTP/3 · QUIC",
+            "HTTPS" or "HTTPS_JUMP" when profile.PreferHttp2 => "",
             "HTTPS" or "HTTPS_JUMP" or "HTTP" => "HTTP/1.1",
             "SOCKS5" => "SOCKS5",
             "SSH" => "SSH",

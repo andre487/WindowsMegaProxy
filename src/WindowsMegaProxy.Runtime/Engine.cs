@@ -90,7 +90,7 @@ public sealed partial class Engine : IEngine
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(15));
             Log?.Invoke("Checking HTTP/3 proxy availability without TUN.");
-            var result = await RunCoreToolAsync(CoreExecutable(http3: true), config, http3ProbeUri.ToString(), deadline.Token);
+            var result = await RunCoreToolAsync(CoreExecutable(alpha: true), config, http3ProbeUri.ToString(), deadline.Token);
             if (result.ExitCode != 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -99,9 +99,10 @@ public sealed partial class Engine : IEngine
                     Log?.Invoke("HTTP/3 selection failed; refusing automatic TCP fallback.");
                     throw new HttpRequestException("HTTP/3 proxy connection failed. Check the certificate, credentials and server compatibility.");
                 }
-                runtime.ActiveProfile!.Proxy["preferHttp3"] = false;
+                runtime.ActiveProfile!.Proxy["preferHttp2"] = true;
+                runtime.ActiveProfile.Proxy["preferHttp3"] = false;
                 UsedHttp3Fallback = true;
-                Log?.Invoke("HTTP/3 unavailable; selecting the stable core and HTTPS over TCP.");
+                Log?.Invoke("HTTP/3 unavailable; selecting HTTP/2 with HTTP/1.1 fallback on the alpha core.");
             }
             else Log?.Invoke("HTTP/3 selected; the proxy test request succeeded.");
         }
@@ -122,14 +123,15 @@ public sealed partial class Engine : IEngine
         }
     }
 
-    private string CoreExecutable(bool http3) => (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(http3 ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
-        ?? Path.Combine(AppContext.BaseDirectory, "dependencies", http3 ? "sing-box-h3" : "sing-box", AppIdentity.CoreExecutable);
+    private string CoreExecutable(bool alpha) => (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(alpha ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
+        ?? Path.Combine(AppContext.BaseDirectory, "dependencies", alpha ? "sing-box-h3" : "sing-box", AppIdentity.CoreExecutable);
 
     private async Task StartCoreAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
     {
         if (Running) return;
         Http3Selected = Configuration.RequiresHttp3(settings);
-        var executable = CoreExecutable(Http3Selected);
+        bool alpha = Configuration.RequiresAlpha(settings);
+        var executable = CoreExecutable(alpha);
         if (!File.Exists(executable)) throw new FileNotFoundException(AppIdentity.IsDev
             ? "The development core is missing. Run setup.cmd and run.cmd."
             : "The bundled network core is missing. Repair the application using the installer.");
@@ -176,7 +178,7 @@ public sealed partial class Engine : IEngine
         {
             ["inbound"] = new JsonArray("diagnostic-proxy"), ["action"] = "route", ["outbound"] = SelectedOutbound
         });
-        Log?.Invoke($"Starting {(Http3Selected ? Configuration.Http3CoreVersion : Configuration.CoreVersion)} core; HTTP/3={Http3Selected}; TUN={!testOnly}.");
+        Log?.Invoke($"Starting {(alpha ? Configuration.Http3CoreVersion : Configuration.CoreVersion)} core; HTTP/3={Http3Selected}; HTTP/2={settings.ActiveProfile?.PreferHttp2 == true}; TUN={!testOnly}.");
         client.Dispose();
         client = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
         client.BaseAddress = new Uri($"http://127.0.0.1:{port}/");
@@ -279,7 +281,7 @@ public sealed partial class Engine : IEngine
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(8));
         string url = $"http3://{host}" + (host == "www.cloudflare.com" ? "/cdn-cgi/trace" : "/");
-        try { return (await RunCoreToolAsync(CoreExecutable(http3: false), config, url, deadline.Token)).ExitCode == 0; }
+        try { return (await RunCoreToolAsync(CoreExecutable(alpha: false), config, url, deadline.Token)).ExitCode == 0; }
         catch (Exception error) when (error is IOException || error is OperationCanceledException && !token.IsCancellationRequested) { return false; }
     }
 

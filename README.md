@@ -7,7 +7,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 - **Proxy profiles:** HTTPS, SOCKS5, SSH, HTTPS Jump and experimental MASQUE (HTTP/3). Create, edit, duplicate and switch profiles, with colors and country flags.
 - **Installation scope:** system-wide with shared administrator-managed settings and optional Windows service, or current-user with personal encrypted settings and a protected scheduled launch. Current-user installation requires an administrator account; normal launches need no repeated UAC approval.
 - **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses, subnets and Podkop community lists. Podkop rules can refresh their lists through the connected proxy, using cached lists before connection. Use the active profile, system mode or blocking; system mode is the default.
-- **HTTP/3:** optional preference for HTTPS and HTTPS Jump, with TCP fallback when available. HTTP/3 checks appear only for supported transports.
+- **HTTP versions:** choose the stable core (HTTP/1.1), HTTP/2 or HTTP/2 + HTTP/3 for HTTPS and HTTPS Jump. H2/H3 use the bundled 1.15 alpha core, with fallback to lower versions when unsupported. HTTP/3 checks appear only for supported transports.
 - **Connection monitoring:** grouped connections, traffic rates, sortable columns and copyable application paths.
 - **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests.
 - **Security options:** certificate verification, SSH accept-new with confirmation of changed server keys, password or private-key SSH authentication, TCP TLS and SSH fingerprint presets, and knock-host checks for masked HTTPS proxies.
