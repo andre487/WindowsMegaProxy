@@ -539,7 +539,7 @@ public partial class MainWindow : Window
             !shownProfiles.Zip(updated.Profiles).All(pair => System.Text.Json.Nodes.JsonNode.DeepEquals(pair.First.Data, pair.Second.Data));
         bool rulesChanged = first || rules.Count != updated.Rules.Count || !rules.Zip(updated.Rules).All(pair =>
             pair.First.Source == pair.Second.Source && pair.First.Path == pair.Second.Path && pair.First.Destination == pair.Second.Destination &&
-            pair.First.Action == pair.Second.Action && pair.First.ProfileId == pair.Second.ProfileId && pair.First.Enabled == pair.Second.Enabled && pair.First.Name == pair.Second.Name);
+            pair.First.Action == pair.Second.Action && pair.First.ProfileId == pair.Second.ProfileId && pair.First.Enabled == pair.Second.Enabled && pair.First.Name == pair.Second.Name && pair.First.PodkopThroughProxy == pair.Second.PodkopThroughProxy);
         string? selected = (ProfilesList.SelectedItem as ProxyProfile)?.Id;
         int selectedRule = RulesList.SelectedIndex;
         updatingUi = true;

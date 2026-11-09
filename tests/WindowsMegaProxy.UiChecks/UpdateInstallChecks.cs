@@ -31,7 +31,7 @@ internal static class UpdateInstallChecks
         string root = Path.GetFullPath("artifacts/update-install/" + Guid.NewGuid().ToString("N"));
         using var feed = new AppUpdateChecks.Feed();
         using var manager = feed.Manager(Path.Combine(root, "cache"));
-        manager.CheckAsync(default).GetAwaiter().GetResult();
+        manager.CheckAsync(default, download: true).GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(app.Dispatcher));
         app.Resources.MergedDictionaries.Add(new ResourceDictionary

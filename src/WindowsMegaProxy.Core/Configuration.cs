@@ -61,6 +61,7 @@ public sealed class RoutingRule : INotifyPropertyChanged
     public string Source { get; set; } = "all";
     public string Path { get; set; } = "";
     public string Destination { get; set; } = "";
+    public bool PodkopThroughProxy { get; set; }
     public string Action { get; set; } = "proxy";
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ProfileId { get; set; }
     [JsonIgnore] public string? ProfileName { get; set; }
@@ -89,7 +90,8 @@ public static class Configuration
     public static readonly string[] TlsFingerprints = ["default", "chrome", "firefox", "edge", "safari", "ios", "android", "randomized", "native"];
     public static string ResolveTlsFingerprint(string value) => value == "default" ? DefaultTlsFingerprint : value;
     public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || settings.Rules.Any(rule => rule.Enabled && rule.Action == "proxy");
+    public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || AppUpdatePolicy.ThroughProxy(settings) ||
+        settings.Rules.Any(rule => rule.Enabled && (rule.Action == "proxy" || rule.PodkopThroughProxy && PodkopCatalog.Parse(rule.Destination.Trim()).Length > 0));
     public static bool RequiresHttp3(Settings settings) => UsesProxy(settings) && settings.ActiveProfile?.UsesHttp3 == true;
 
     public static string Signature(Settings settings)
@@ -97,6 +99,9 @@ public static class Configuration
         var snapshot = new JsonObject
         {
             ["failover"] = FailoverPolicy.Signature(settings),
+            ["podkopProxyLists"] = new JsonArray(settings.Rules.Where(rule => rule.Enabled && rule.PodkopThroughProxy)
+                .SelectMany(rule => PodkopCatalog.Parse(rule.Destination.Trim())).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
+                .Select(id => (JsonNode)JsonValue.Create(id)!).ToArray()),
             ["configuration"] = Configuration.Build(settings, 1, "snapshot", allowUnresolvedSsh: true),
             ["tcpFingerprint"] = Configuration.UsesProxy(settings) && settings.ActiveProfile?.Type is "HTTPS" or "HTTPS_JUMP" ? ResolveTlsFingerprint(settings.TlsFingerprint) : null,
             ["transport"] = Configuration.UsesProxy(settings) ? settings.ActiveProfile?.Type : null,

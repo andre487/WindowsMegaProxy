@@ -6,7 +6,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 
 - **Proxy profiles:** HTTPS, SOCKS5, SSH, HTTPS Jump and experimental MASQUE (HTTP/3). Create, edit, duplicate and switch profiles, with colors and country flags.
 - **Installation scope:** system-wide with shared administrator-managed settings and optional Windows service, or current-user with personal encrypted settings and a protected scheduled launch. Current-user installation requires an administrator account; normal launches need no repeated UAC approval.
-- **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses, subnets and Podkop community lists. Use the active profile, system mode or blocking; system mode is the default.
+- **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses, subnets and Podkop community lists. Podkop rules can refresh their lists through the connected proxy, using cached lists before connection. Use the active profile, system mode or blocking; system mode is the default.
 - **HTTP/3:** optional preference for HTTPS and HTTPS Jump, with TCP fallback when available. HTTP/3 checks appear only for supported transports.
 - **Connection monitoring:** grouped connections, traffic rates, sortable columns and copyable application paths.
 - **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests.
@@ -15,7 +15,7 @@ A native Windows 10/11 proxy client for the MegaProxy family. Route all applicat
 - **Subscriptions:** HTTPS sources with backups, optional Basic authentication, automatic/manual updates and subscription definitions imported from JSON. Updates preserve local profiles and require reconnecting to apply network changes.
 - **Failover:** optional selected/all-profile backups in profile order, triggered by proxy transport failures; retains certificate and SSH key checks.
 - **Windows integration:** manual launch, elevated startup at sign-in, or a shared Windows service; the active profile and transport in the system tray and main window, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
-- **Application updates:** daily checks and downloads from GitHub Releases, signed manifests and installation notifications. Update immediately or at the next application start; service installations can update during the next computer restart or restart now. Automatic checks can be disabled in settings or during installation.
+- **Application updates:** daily checks on GitHub Releases, signed manifests, and separate download and installation actions. Checks and downloads can use the connected proxy profile. Update immediately or at the next application start; service installations can update during the next computer restart or restart now. Automatic checks can be disabled in settings or during installation.
 - **Shared service:** one protected configuration for the machine; administrator accounts can edit without repeated UAC prompts, other users have a read-only interface.
 - **Appearance:** English and Russian, automatic/light/dark themes and Windows display scaling.
 - **Logs:** local rotating logs, configurable size and export. Log entries are always in English.

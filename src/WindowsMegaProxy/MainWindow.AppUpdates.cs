@@ -23,18 +23,27 @@ public partial class MainWindow
         if (AutomaticUpdatesBox is null) return;
         changingUpdatePreference = true;
         AutomaticUpdatesBox.IsChecked = AppUpdatePolicy.Enabled(settings);
+        UpdatesThroughProxyBox.IsChecked = AppUpdatePolicy.ThroughProxy(settings);
         changingUpdatePreference = false;
         AutomaticUpdatesBox.IsEnabled = canEdit && !quitting && !settingsLoading;
+        UpdatesThroughProxyBox.IsEnabled = AutomaticUpdatesBox.IsEnabled && !checkingAppUpdate;
         InstalledVersionText.Text = Ui.F("Installed version: {0}", AppUpdateTrust.CurrentVersion.ToString(3));
         string status = installingAppUpdate ? "Preparing update…" : appUpdates?.StatusKey ?? "Update files are unavailable.";
+        if (AppUpdatePolicy.ThroughProxy(settings) && (engine?.Running != true || !engine.HasProbeProfile))
+            status = "Connect MegaProxy to check or download updates through the proxy.";
         if (!installingAppUpdate && scheduledAppUpdate is { } pending)
             status = pending.When is "now" or "applying" ? "Installing update…" : pending.When == "launch" ? "Update scheduled for the next application start." : "Update scheduled for the next computer restart.";
         UpdateStatusText.Text = Ui.T(status);
         UpdateErrorText.Text = appUpdates?.ErrorKey is { } error && error != status ? Ui.T(error) : "";
         UpdateErrorText.Visibility = UpdateErrorText.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         bool ready = appUpdates?.Ready == true || scheduledAppUpdate is not null;
-        UpdateVersionText.Text = ready ? Ui.F("Available version: {0}", scheduledAppUpdate?.Version ?? appUpdates!.Package!.Version) : "";
-        UpdateVersionText.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
+        bool available = appUpdates?.Package is not null || scheduledAppUpdate is not null;
+        UpdateVersionText.Text = available ? Ui.F("Available version: {0}", scheduledAppUpdate?.Version ?? appUpdates!.Package!.Version) : "";
+        UpdateVersionText.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        UpdateReleaseLinkText.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        UpdateReleaseLink.NavigateUri = available ? new Uri($"https://github.com/{AppUpdateTrust.Repository}/releases/tag/v{scheduledAppUpdate?.Version ?? appUpdates!.Package!.Version}") : null;
+        DownloadUpdateButton.Visibility = available && !ready ? Visibility.Visible : Visibility.Collapsed;
+        DownloadUpdateButton.IsEnabled = !checkingAppUpdate && !installingAppUpdate && !quitting;
         InstallUpdateButton.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
         InstallUpdateButton.Content = Ui.T(scheduledAppUpdate is null ? "Install update" : "Change update timing");
         InstallUpdateButton.IsEnabled = ready && scheduledAppUpdate?.When is not ("now" or "applying") && canEdit && !AppIdentity.IsDev && !installingAppUpdate && !checkingAppUpdate && !quitting;
@@ -54,14 +63,16 @@ public partial class MainWindow
         {
             var updated = CaptureSettings();
             updated.WindowsOptions[AppUpdatePolicy.Option] = AutomaticUpdatesBox.IsChecked == true;
+            updated.WindowsOptions[AppUpdatePolicy.ProxyOption] = UpdatesThroughProxyBox.IsChecked == true;
             await CommitSettingsAsync(updated);
         }
         catch (Exception error) { ShowError(error); UpdateAppUpdatesView(); }
     }
 
     private async void CheckUpdatesClick(object sender, RoutedEventArgs e) => await RunAppUpdateCheckAsync(manual: true);
+    private async void DownloadUpdateClick(object sender, RoutedEventArgs e) => await RunAppUpdateCheckAsync(manual: true, download: true);
 
-    private async Task RunAppUpdateCheckAsync(bool manual)
+    private async Task RunAppUpdateCheckAsync(bool manual, bool download = false)
     {
         if (appUpdates is null || checkingAppUpdate || installingAppUpdate || quitting || settingsLoading) return;
         if (!manual && !automaticUpdateChecks) return;
@@ -70,7 +81,7 @@ public partial class MainWindow
         UpdateAppUpdatesView();
         try
         {
-            updateOperation = CheckAppUpdatesCoreAsync(manual);
+            updateOperation = CheckAppUpdatesCoreAsync(manual, download);
             await updateOperation;
         }
         catch (OperationCanceledException) when (updatesStopping.IsCancellationRequested) { }
@@ -78,7 +89,7 @@ public partial class MainWindow
         finally { checkingAppUpdate = false; if (!quitting) UpdateAppUpdatesView(); }
     }
 
-    private async Task CheckAppUpdatesCoreAsync(bool manual)
+    private async Task CheckAppUpdatesCoreAsync(bool manual, bool download)
     {
         if (channelConflictPending) return;
         if (automaticUpdateChecks)
@@ -88,14 +99,27 @@ public partial class MainWindow
         }
         await appUpdates!.InitializeAsync(updatesStopping.Token);
         if (!manual && (!canEdit || !AppUpdatePolicy.Enabled(settings))) return;
-        if (manual || appUpdates.CheckDue) await appUpdates.CheckAsync(updatesStopping.Token);
-        if (quitting || channelConflictPending || !appUpdates.Ready) return;
+        if (manual || appUpdates.CheckDue)
+        {
+            if (AppUpdatePolicy.ThroughProxy(settings) && (engine?.Running != true || !engine.HasProbeProfile))
+            {
+                if (manual)
+                {
+                    UpdateStatusText.Text = Ui.T("Connect MegaProxy to check or download updates through the proxy.");
+                    WriteLog("Application update deferred: the selected proxy transport is unavailable.");
+                }
+                return;
+            }
+            using var transport = AppUpdatePolicy.ThroughProxy(settings) ? engine!.CreateProbeClient(true) : null;
+            await appUpdates.CheckAsync(updatesStopping.Token, download, transport);
+        }
+        if (quitting || channelConflictPending || appUpdates.Package is null) return;
         bool visible = IsVisible && Sections.SelectedItem == SettingsTab && settingsPage == "updates";
         if (visible) await appUpdates.MarkNotificationAsync(true, updatesStopping.Token);
         else if ((manual || AppUpdatePolicy.Enabled(settings)) && canEdit && appUpdates.NotificationDue)
         {
             updateNoticeVersion = appUpdates.Package!.Version;
-            tray.ShowBalloonTip(10000, "MegaProxy", Ui.F("Update {0} is downloaded. Click to install.", updateNoticeVersion), Forms.ToolTipIcon.Info);
+            tray.ShowBalloonTip(10000, "MegaProxy", Ui.F("Update {0} is available. Click to open updates.", updateNoticeVersion), Forms.ToolTipIcon.Info);
             await appUpdates.MarkNotificationAsync(false, updatesStopping.Token);
         }
     }

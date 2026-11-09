@@ -1172,6 +1172,13 @@
                                             Margin="0,0,0,12" />
                                         <WrapPanel>
                                             <Button
+                                                x:Name="DownloadUpdateButton"
+                                                Content="{DynamicResource &quot;Download update&quot;}"
+                                                Visibility="Collapsed"
+                                                MinWidth="160"
+                                                Margin="0,0,8,12"
+                                                Click="DownloadUpdateClick" />
+                                            <Button
                                                 x:Name="InstallUpdateButton"
                                                 Content="{DynamicResource &quot;Install update&quot;}"
                                                 Visibility="Collapsed"
@@ -1185,6 +1192,16 @@
                                                 Margin="0,0,0,12"
                                                 Click="CheckUpdatesClick" />
                                         </WrapPanel>
+                                        <TextBlock
+                                            x:Name="UpdateReleaseLinkText"
+                                            Visibility="Collapsed"
+                                            Margin="0,0,0,12">
+                                            <Hyperlink
+                                                x:Name="UpdateReleaseLink"
+                                                RequestNavigate="OpenGitHub">
+                                                <Run Text="{DynamicResource &quot;View changelog on GitHub&quot;}" />
+                                            </Hyperlink>
+                                        </TextBlock>
                                         <ProgressBar
                                             x:Name="UpdateDownloadProgress"
                                             Minimum="0"
@@ -1199,8 +1216,13 @@
                                             Visibility="Collapsed"
                                             Margin="0,0,0,12" />
                                         <CheckBox
+                                            x:Name="UpdatesThroughProxyBox"
+                                            Content="{DynamicResource &quot;Download updates through proxy&quot;}"
+                                            Click="AutomaticUpdatesChanged"
+                                            Margin="0,8,0,8" />
+                                        <CheckBox
                                             x:Name="AutomaticUpdatesBox"
-                                            Content="{DynamicResource &quot;Automatically check and download updates&quot;}"
+                                            Content="{DynamicResource &quot;Automatically check for updates&quot;}"
                                             Click="AutomaticUpdatesChanged"
                                             Margin="0,8,0,8" />
                                         <TextBlock

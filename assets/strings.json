@@ -1,4 +1,12 @@
 {
+    "View changelog on GitHub": "Посмотреть изменения на GitHub",
+    "Download update": "Скачать обновление",
+    "Update available to download.": "Доступно обновление для скачивания.",
+    "Automatically check for updates": "Автоматически проверять обновления",
+    "Download updates through proxy": "Скачивать обновления через прокси",
+    "Update Podkop lists through proxy": "Обновлять списки Podkop через прокси",
+    "Connect MegaProxy to check or download updates through the proxy.": "Подключите MegaProxy для проверки и скачивания обновлений через прокси.",
+    "Update {0} is available. Click to open updates.": "Доступно обновление {0}. Нажмите, чтобы открыть раздел обновлений.",
     "{0} is running. Click to choose which version to keep.": "{0} уже работает. Нажмите, чтобы выбрать, какую версию оставить.",
     "When should the update be installed?": "Когда установить обновление?",
     "Update now": "Обновить сейчас",

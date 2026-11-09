@@ -60,6 +60,9 @@ internal static class ConfigurationRefreshChecks
 
         string directory = Path.GetFullPath(Path.Combine("artifacts/configuration-checks", Guid.NewGuid().ToString("N")));
         var cache = new PodkopCache(directory);
+        string waiting = await cache.GetAsync("youtube", CancellationToken.None,
+            (_, _) => throw new Exception("Proxy-only bootstrap must not access the network."), cacheOnly: true);
+        Check(cache.Unavailable.Contains("youtube") && File.Exists(waiting), "Missing proxy-only lists stay inactive until the connection is available.");
         int skipped = 0;
         var suffixes = PodkopCache.Parse(new[] { ".ua\n*.example.org\ninvalid/path\n" }, count => skipped = count);
         Check(skipped == 1 && suffixes["rules"]![0]!["domain_suffix"]!.AsArray().Select(value => value!.ToString()).SequenceEqual(new[] { "ua", "example.org" }), "Podkop accepts leading-dot/wildcard suffixes and reports malformed lines without dropping valid entries.");
@@ -82,6 +85,8 @@ internal static class ConfigurationRefreshChecks
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new Exception("Fresh cache must avoid network"));
         string before = File.ReadAllText(path);
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-2));
+        await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new Exception("An expired proxy-only cache must remain usable offline."), cacheOnly: true);
+        Check(File.ReadAllText(path) == before, "Proxy-only bootstrap retains even an expired verified cache.");
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => Task.FromResult("https://invalid.example/path"));
         Check(File.ReadAllText(path) == before, "Invalid list updates retain the last verified copy.");
         await cache.GetAsync("discord", CancellationToken.None, (_, _) => throw new HttpRequestException("offline"));

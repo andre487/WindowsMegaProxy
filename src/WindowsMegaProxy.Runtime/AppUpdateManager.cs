@@ -26,6 +26,7 @@ public sealed class AppUpdateManager : IDisposable
     private readonly Version currentVersion;
     private readonly byte[] key;
     private readonly HttpClient client;
+    private HttpClient? transport;
     private readonly bool ownsClient;
     private readonly Func<DateTimeOffset> now;
     private readonly SemaphoreSlim gate = new(1);
@@ -38,7 +39,7 @@ public sealed class AppUpdateManager : IDisposable
     public bool Ready => Package is not null && File.Exists(InstallerPath);
     public string InstallerPath => Path.Combine(directory, "setup.exe");
     public bool CheckDue => AppUpdatePolicy.CheckDue(State.LastCheck, now());
-    public bool NotificationDue => Ready && AppUpdatePolicy.NotificationDue(Package!.Version, State.NotifiedVersion, State.LastNotification, State.AcknowledgedVersion, now());
+    public bool NotificationDue => Package is not null && AppUpdatePolicy.NotificationDue(Package.Version, State.NotifiedVersion, State.LastNotification, State.AcknowledgedVersion, now());
     public event Action? Changed;
     public event Action<string>? Log;
 
@@ -76,10 +77,10 @@ public sealed class AppUpdateManager : IDisposable
                 if (State.Manifest is not null && State.Signature is not null)
                 {
                     var package = AppUpdateTrust.Verify(State.Manifest, State.Signature, key);
-                    if (AppUpdateTrust.IsNewer(package.Version, currentVersion) && File.Exists(InstallerPath))
+                    if (AppUpdateTrust.IsNewer(package.Version, currentVersion))
                     {
-                        await AppUpdateTrust.VerifyInstallerAsync(InstallerPath, package, token).ConfigureAwait(false);
-                        Package = package; StatusKey = "Update ready to install.";
+                        if (File.Exists(InstallerPath)) await AppUpdateTrust.VerifyInstallerAsync(InstallerPath, package, token).ConfigureAwait(false);
+                        Package = package; StatusKey = Ready ? "Update ready to install." : "Update available to download.";
                     }
                 }
             }
@@ -89,17 +90,18 @@ public sealed class AppUpdateManager : IDisposable
                 Log?.Invoke("Discarded invalid application update cache: " + error.GetType().Name + ".");
             }
             ClearFiles(keepInstaller: Ready);
-            if (!Ready) State = State with { Manifest = null, Signature = null };
+            if (Package is null) State = State with { Manifest = null, Signature = null };
             Save(); initialized = true;
         }, token).ConfigureAwait(false);
         Changed?.Invoke();
     }
 
-    public async Task CheckAsync(CancellationToken token)
+    public async Task CheckAsync(CancellationToken token, bool download = false, HttpClient? transport = null)
     {
         await gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
+            this.transport = transport;
             await InitializeCoreAsync(token).ConfigureAwait(false);
             State = State with { LastCheck = now() };
             ErrorKey = null; Progress = 0; StatusKey = "Checking for updates…"; Changed?.Invoke();
@@ -144,13 +146,16 @@ public sealed class AppUpdateManager : IDisposable
                 {
                     Package = null; State = State with { Manifest = null, Signature = null };
                     ClearFiles(false);
-                    StatusKey = "Downloading update…"; Changed?.Invoke();
-                    await DownloadAsync(package, deadline.Token).ConfigureAwait(false);
+                    if (download)
+                    {
+                        StatusKey = "Downloading update…"; Changed?.Invoke();
+                        await DownloadAsync(package, deadline.Token).ConfigureAwait(false);
+                    }
                 }
                 Package = package;
                 State = State with { Manifest = manifest, Signature = signature };
-                StatusKey = "Update ready to install.";
-                Log?.Invoke("Application update " + package.Version + " downloaded and verified.");
+                StatusKey = Ready ? "Update ready to install." : "Update available to download.";
+                Log?.Invoke("Application update " + package.Version + (Ready ? " downloaded and verified." : " is available to download."));
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -171,7 +176,7 @@ public sealed class AppUpdateManager : IDisposable
             }
             finally { File.Delete(InstallerPath + ".part"); Save(); Changed?.Invoke(); }
         }
-        finally { gate.Release(); }
+        finally { this.transport = null; gate.Release(); }
     }
 
     public async Task MarkNotificationAsync(bool acknowledged, CancellationToken token)
@@ -179,7 +184,7 @@ public sealed class AppUpdateManager : IDisposable
         await gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            if (!Ready) return;
+            if (Package is null) return;
             if (acknowledged && State.AcknowledgedVersion == Package!.Version) return;
             State = acknowledged ? State with { AcknowledgedVersion = Package!.Version } :
                 State with { NotifiedVersion = Package!.Version, LastNotification = now() };
@@ -209,7 +214,7 @@ public sealed class AppUpdateManager : IDisposable
                 request.Headers.UserAgent.ParseAdd("WindowsMegaProxy/" + currentVersion.ToString(3));
                 using var headersDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 headersDeadline.CancelAfter(TimeSpan.FromSeconds(30));
-                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headersDeadline.Token).ConfigureAwait(false);
+                response = await (transport ?? client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headersDeadline.Token).ConfigureAwait(false);
                 if ((int)response.StatusCode is < 500 or > 599) break;
                 int status = (int)response.StatusCode;
                 Log?.Invoke($"Application update request to {uri.Host} returned HTTP {status}; attempt {attempt + 1}/4.");

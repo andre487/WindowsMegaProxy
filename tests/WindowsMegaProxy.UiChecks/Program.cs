@@ -180,7 +180,7 @@ internal static partial class Program
             var settingsReadyField = typeof(MainWindow).GetField("settingsReady", BindingFlags.NonPublic | BindingFlags.Instance)!;
             bool settingsWereReady = (bool)settingsReadyField.GetValue(window)!;
             settingsReadyField.SetValue(window, false);
-            Wait(window, (Task)typeof(MainWindow).GetMethod("RunAppUpdateCheckAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [true])!);
+            Wait(window, (Task)typeof(MainWindow).GetMethod("RunAppUpdateCheckAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [true, false])!);
             Assert(updateFeed.Requests == 1 && updateClient.StatusKey == "Update files are unavailable.",
                 "A manual update check runs while unrelated proxy settings analysis is pending and displays its result.");
             settingsReadyField.SetValue(window, settingsWereReady);
@@ -903,6 +903,14 @@ internal static partial class Program
         feed.Unavailable = false;
         CheckNow();
         var install = (Button)window.FindName("InstallUpdateButton");
+        var download = (Button)window.FindName("DownloadUpdateButton");
+        Assert(download.IsVisible && !install.IsVisible && feed.Downloads == 0, "Discovering an update offers download without fetching or installing it.");
+        var releaseLink = (System.Windows.Documents.Hyperlink)window.FindName("UpdateReleaseLink");
+        Assert(releaseLink.NavigateUri.AbsoluteUri == "https://github.com/" + AppUpdateTrust.Repository + "/releases/tag/v" + feed.Version,
+            "The changelog link opens the exact discovered release.");
+        download.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Wait(window, (Task)typeof(MainWindow).GetField("updateOperation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!);
+        Layout(window);
         Assert(install.IsVisible && install.IsEnabled == !AppIdentity.IsDev, "A verified update exposes installation; DEV cannot replace production.");
         Rect bounds = install.TransformToAncestor((Visual)window.Content).TransformBounds(new Rect(install.RenderSize));
         Assert(bounds.Bottom < ((FrameworkElement)window.Content).ActualHeight && bounds.Top >= 0, "Install update is visible in the settings viewport without scrolling.");

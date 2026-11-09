@@ -69,7 +69,7 @@ public sealed class PodkopCache(string directory, Action<string>? log = null)
         return path;
     }
 
-    public async Task<string> GetAsync(string id, CancellationToken token, Func<string, CancellationToken, Task<string>>? download = null)
+    public async Task<string> GetAsync(string id, CancellationToken token, Func<string, CancellationToken, Task<string>>? download = null, bool cacheOnly = false)
     {
         var list = PodkopCatalog.Lists.Single(item => item.Id == id);
         Directory.CreateDirectory(directory);
@@ -84,12 +84,13 @@ public sealed class PodkopCache(string directory, Action<string>? log = null)
                 if (document["version"]?.GetValue<int>() != 3 || document["rules"]?.AsArray().Count is not > 0) throw new InvalidDataException();
                 cached = true;
                 unavailable.Remove(id);
-                if (DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < TimeSpan.FromHours(24)) return path;
+                if (cacheOnly || DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < TimeSpan.FromHours(24)) return path;
             }
             catch (Exception error) when (error is IOException or InvalidDataException or System.Text.Json.JsonException or InvalidOperationException) { }
         }
         try
         {
+            if (cacheOnly) throw new IOException("Podkop refresh is waiting for the proxy connection.");
             var sources = new List<string>();
             foreach (string relative in list.Paths)
             {

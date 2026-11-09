@@ -152,7 +152,7 @@ public sealed partial class Engine : IEngine
             Log?.Invoke($"TUN interface {AppIdentity.DisplayName}: IPv4={addresses.Ipv4}; IPv6={addresses.Ipv6}.");
         }
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
-        foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken).ConfigureAwait(false);
+        foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken, cacheOnly: PodkopThroughProxy(settings, id)).ConfigureAwait(false);
         foreach (var ruleSet in config["route"]!["rule_set"]!.AsArray())
             ruleSet!["path"] = cache.MergeGroup(ruleSet["tag"]!.ToString()[7..].Split('+'));
         podkopWarnings = cache.Unavailable.ToArray();
@@ -318,16 +318,20 @@ public sealed partial class Engine : IEngine
         Log?.Invoke("Network core stopped.");
     }
 
+    private static bool PodkopThroughProxy(Settings settings, string id) => settings.Rules.Any(rule => rule.Enabled && rule.PodkopThroughProxy && PodkopCatalog.Parse(rule.Destination.Trim()).Contains(id));
+
     private async Task UpdatePodkopAsync(Settings settings, CancellationToken token)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
-        while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+        do
         {
             foreach (string id in PodkopCatalog.Used(settings))
                 try
                 {
-                    await cache.GetAsync(id, token).ConfigureAwait(false);
+                    using var transport = PodkopThroughProxy(settings, id) ? CreateProbeClient(true) : null;
+                    await cache.GetAsync(id, token, transport is null ? null : (url, cancellation) =>
+                        SubscriptionRefresh.DownloadAsync(new(url, [], null, null, 60, true), url, cancellation, transport)).ConfigureAwait(false);
                     var warnings = podkopWarnings.Where(value => value != id).ToList();
                     if (cache.Unavailable.Contains(id)) warnings.Add(id);
                     if (!podkopWarnings.SequenceEqual(warnings))
@@ -340,12 +344,13 @@ public sealed partial class Engine : IEngine
                         }
                     }
                 }
-                catch (IOException) { Log?.Invoke("Podkop cache refresh failed; active rules were retained."); }
+                catch (Exception error) when (error is IOException or InvalidOperationException) { Log?.Invoke("Podkop cache refresh failed; active rules were retained."); }
             foreach (var group in PodkopCatalog.Groups(settings).Where(group => group.Length > 1))
                 try { cache.MergeGroup(group); }
                 catch (Exception error) when (error is IOException or InvalidDataException or System.Text.Json.JsonException)
                 { Log?.Invoke("Podkop combined rule set could not be refreshed; the previous set was retained."); }
         }
+        while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false));
     }
 
     private static void SetPodkopWarningMetadata(Settings settings, string[] ids) =>
