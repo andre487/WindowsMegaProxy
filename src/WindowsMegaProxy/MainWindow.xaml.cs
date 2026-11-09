@@ -320,9 +320,10 @@ public partial class MainWindow : Window
         {
             if (service is not null)
             {
+                await RefreshInstallationStateAsync();
                 ApplySettings(new Settings());
                 LoseServiceConnection();
-                MessageText.Text = ServiceUnavailableMessage;
+                MessageText.Text = ServiceConnectionMessage;
                 RecordServiceFailure(error);
                 InstallServiceButton.Visibility = installScript is not null && ClientAccess.Current().CanEdit ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -344,6 +345,7 @@ public partial class MainWindow : Window
         refreshingService = true;
         try
         {
+            await RefreshInstallationStateAsync();
             var reply = await service.CallAsync(new("status"));
             if (quitting) return;
             bool firstBinding = serviceInstance is null;
@@ -372,7 +374,7 @@ public partial class MainWindow : Window
             RecordServiceAccess();
             UpdateServiceStateView();
             InstallServiceButton.Visibility = Visibility.Collapsed;
-            if (rebind || MessageText.Text == ServiceUnavailableMessage || MessageText.Text == Ui.T(ServiceProtocol.ConfigurationRecoveryMessage)) MessageText.Text = "";
+            if (rebind || MessageText.Text == ServiceUnavailableMessage || MessageText.Text == Ui.T("Update in progress") || MessageText.Text == Ui.T(ServiceProtocol.ConfigurationRecoveryMessage)) MessageText.Text = "";
             if (reply.Text is not null) MessageText.Text = Ui.T(reply.Text);
             if (engine is RemoteEngine remote)
             {
@@ -390,7 +392,7 @@ public partial class MainWindow : Window
         {
             RecordServiceFailure(error);
             LoseServiceConnection();
-            MessageText.Text = ServiceUnavailableMessage;
+            MessageText.Text = ServiceConnectionMessage;
             SetBusy(busy);
         }
         finally { refreshingService = false; }
@@ -405,14 +407,14 @@ public partial class MainWindow : Window
         connectionRows.Clear();
         previousTrafficTime = default;
         TrafficText.Text = "↑ —  ↓ —";
-        ConnectionsHint.Text = Ui.T("Service unavailable");
-        StatusText.Text = Ui.T("Connection unknown");
+        ConnectionsHint.Text = Ui.T(ServiceUpdateInProgress ? "Update in progress" : "Service unavailable");
+        StatusText.Text = Ui.T(ServiceUpdateInProgress ? "Update in progress" : "Connection unknown");
         UpdateConnectionDetails();
         tray.Icon = DisconnectedIcon();
         diagnosticSucceeded = false; checkedSettings = null; lastDiagnosticResult = null; lastSpeedResults = null;
         SpeedPanel.Visibility = Visibility.Collapsed; SpeedLockedText.Visibility = Visibility.Visible;
         DiagnosticDetailsPanel.Visibility = Visibility.Collapsed;
-        TestStatusText.Text = Ui.T("Service unavailable");
+        TestStatusText.Text = Ui.T(ServiceUpdateInProgress ? "Update in progress" : "Service unavailable");
         SetBusy(busy);
     }
 
@@ -854,7 +856,8 @@ public partial class MainWindow : Window
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
         foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, BootstrapDnsBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
-        OperatingModeBox.IsEnabled = editable && !busy && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
+        OperatingModeBox.IsEnabled = editable && !busy && scheduledAppUpdate?.FilesQueued != true && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
+        OperatingModeBox.ToolTip = scheduledAppUpdate?.FilesQueued == true ? Ui.T("Restart Windows to finish the update. File replacement has already been scheduled.") : null;
         if (AppIdentity.IsDev) AutostartBox.ToolTip = Ui.T("Development builds are started with run.cmd.");
         ReadOnlyModeText.Text = canEdit ? "" : " · Read-only mode";
         ExportLogButton.IsEnabled = !quitting;

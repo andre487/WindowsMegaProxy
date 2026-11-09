@@ -24,6 +24,8 @@ internal static partial class Program
         if (args.Length == 2 && args[0] == "--published-update-check") { PublishedUpdateChecks.Run(args[1]); return; }
         if (args.Length == 2 && args[0] == "--update-preservation-check") { PublishedUpdateChecks.Settings(args[1]); return; }
         InstallationChecks.Run();
+        RebootFilesChecks.Run();
+        if (args.Contains("--reboot-files-check")) return;
         if (args.Length == 2 && args[0] == "--user-settings-check")
         {
             if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new Exception("Installed settings fixtures require a disposable CI runner.");
@@ -966,6 +968,13 @@ internal static partial class Program
         refreshView.Invoke(window, null);
         Assert(((TextBlock)window.FindName("UpdateStatusText")).Text == Ui.T("Installation status is unknown. You can retry through the elevated installer.") && check.IsEnabled,
             "Unknown installer status is explicit and does not block update checks.");
+        pendingField.SetValue(window, null);
+        refreshView.Invoke(window, null);
+        pendingField.SetValue(window, new PendingAppUpdate("99.0.0", "reboot", FilesQueued: true));
+        refreshView.Invoke(window, null);
+        Assert(!((Button)window.FindName("InstallUpdateButton")).IsEnabled && !((Button)window.FindName("DownloadUpdateButton")).IsEnabled &&
+            ((TextBlock)window.FindName("UpdateStatusText")).Text == Ui.T("Restart Windows to finish the update. File replacement has already been scheduled."),
+            "Queued early-boot replacements cannot be rescheduled or overwritten by another download.");
         pendingField.SetValue(window, null);
         refreshView.Invoke(window, null);
         Capture((Visual)window.Content, Path.Combine(output, "application-updates-unavailable.png"));

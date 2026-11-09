@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 namespace WindowsMegaProxy;
 
-public sealed record PendingAppUpdate(string Version, string When, int? WorkerPid = null, long? WorkerStartedUtcTicks = null)
+public sealed record PendingAppUpdate(string Version, string When, int? WorkerPid = null, long? WorkerStartedUtcTicks = null, bool FilesQueued = false)
 {
     public const string RegistryValue = "PendingUpdate";
     public static string TaskName => AppIdentity.Name + ".Update";
@@ -19,7 +19,7 @@ public sealed record PendingAppUpdate(string Version, string When, int? WorkerPi
     public static PendingAppUpdate? Read()
     {
         try { return ReadCore(); }
-        catch (Exception error) when (error is UnauthorizedAccessException or System.Security.SecurityException)
+        catch (Exception error) when (error is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             LogRecovery("Cannot read update status registration: " + error.Message);
             return new(AppUpdateTrust.CurrentVersion.ToString(3), "unknown");
@@ -59,7 +59,7 @@ public sealed record PendingAppUpdate(string Version, string When, int? WorkerPi
 
     public static PendingAppUpdate? Recover(PendingAppUpdate pending, Version installed, bool? workerRunning) =>
         pending.When is "now" or "applying" ? pending with { When = workerRunning == true ? pending.When : workerRunning == false ? "failed" : "unknown" } :
-        pending.When == "failed" || AppUpdateTrust.IsNewer(pending.Version, installed) ? pending : null;
+        pending.FilesQueued || pending.When == "failed" || AppUpdateTrust.IsNewer(pending.Version, installed) ? pending : null;
 
     public static bool? WorkerRunning(PendingAppUpdate pending) => CheckWorker(pending, pid =>
     {

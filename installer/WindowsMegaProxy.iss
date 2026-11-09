@@ -61,7 +61,8 @@ Name: "{code:ProtectedUserRoot}"; Permissions: admins-full system-full users-rea
 
 [Files]
 Source: "{#PayloadDirectory}\*"; DestDir: "{tmp}\repair"; Excludes: "launcher\*,dependencies\*"; Flags: dontcopy recursesubdirs createallsubdirs
-Source: "{#PayloadDirectory}\*"; DestDir: "{code:RuntimePath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDirectory}\*"; DestDir: "{tmp}\reboot"; Excludes: "launcher\*"; Flags: dontcopy recursesubdirs createallsubdirs
+Source: "{#PayloadDirectory}\*"; DestDir: "{code:RuntimePath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: not IsBootUpdate
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsUserInstall
 
 [Icons]
@@ -77,6 +78,7 @@ Root: HKCU; Subkey: "SOFTWARE\WindowsMegaProxy\UserInstallation"; Flags: uninsde
 Type: filesandordirs; Name: "{code:RuntimePath}\update"
 Type: files; Name: "{code:RuntimePath}\user-installation.sid"; Check: IsUserInstall
 Type: dirifempty; Name: "{code:RuntimePath}"; Check: IsUserInstall
+Type: filesandordirs; Name: "{code:RuntimePath}"; Check: IsSystemRuntime
 
 [Run]
 Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser
@@ -90,6 +92,11 @@ var OwnerSid, PreviousHelper, PreviousMode: String;
 function IsUserInstall: Boolean;
 begin
   Result := not IsAdminInstallMode;
+end;
+
+function IsBootUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:BOOTUPDATE|0}') = '1';
 end;
 
 function CurrentSid: String;
@@ -112,7 +119,13 @@ function InitializeSetup: Boolean;
 var Code, I: Integer; Arguments, ExpectedSid: String;
 begin
   Result := True;
-  if IsAdminInstallMode then Exit;
+  if IsBootUpdate and not IsAdminInstallMode then RaiseException('Early-boot updates require a system installation.');
+  if IsAdminInstallMode then begin
+    Arguments := ExpandConstant('{param:DIR|}');
+    if (Arguments <> '') and (CompareText(ExpandFileName(Arguments), ExpandConstant('{commonpf}\WindowsMegaProxy')) <> 0) then
+      RaiseException('System installations require the fixed Program Files\WindowsMegaProxy directory.');
+    Exit;
+  end;
   ExpectedSid := ExpandConstant('{param:OWNER|}');
   if (ExpectedSid <> '') and (ExpectedSid <> CurrentSid) then
     RaiseException('Current-user installation requires elevation by the same administrator account. Choose installation for all users instead.');
@@ -189,6 +202,11 @@ begin
   else Result := ProtectedUserRoot('');
 end;
 
+function IsSystemRuntime: Boolean;
+begin
+  Result := IsAdminInstallMode and (CompareText(ExpandFileName(RuntimePath('')), ExpandConstant('{commonpf}\WindowsMegaProxy')) = 0);
+end;
+
 function LaunchPath(Param: String): String;
 begin
   if IsAdminInstallMode then Result := RuntimePath('') + '\WindowsMegaProxy.exe'
@@ -261,14 +279,14 @@ begin
       (Pos('\..', PreviousHelper) <> 0) or (CompareText(ExtractFileName(PreviousHelper), 'WindowsMegaProxy.Service.exe') <> 0) then
       RaiseException('The previous installation helper is outside the protected installation directory.');
   end;
-  if IsAdminInstallMode then StopInstalledService;
-  Prepared := True;
   if (ExpandConstant('{param:STAGEDUPDATE|0}') <> '1') and DirExists(Root) then begin
     { Recovery must not depend on the old helper or its runtime being intact. }
     ExtractTemporaryFiles('{tmp}\repair\*');
     if not ExecAndLogOutput(ExpandConstant('{tmp}\repair\WindowsMegaProxy.Service.exe'), '--prepare-repair "' + Root + '"', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
       RaiseException('Could not close the previous installation. Close MegaProxy in all Windows sessions and retry.');
   end;
+  Prepared := True;
+  if IsAdminInstallMode then StopInstalledService;
 end;
 
 procedure DeinitializeSetup;
@@ -294,6 +312,14 @@ begin
       if (Code <> 0) or not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then
         RaiseException('OpenSSH Client installation failed. Retry after checking Windows Update access.');
     end;
+    if IsBootUpdate then begin
+      if SelectedMode <> 'service' then RaiseException('Early-boot updates require service mode.');
+      ExtractTemporaryFiles('{tmp}\reboot\*');
+      if not ExecAndLogOutput(RuntimePath('') + '\update\worker\WindowsMegaProxy.Service.exe',
+        '--stage-reboot-files "' + ExpandConstant('{tmp}\reboot') + '"', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
+        RaiseException('Could not verify and schedule the reboot payload. See the application log.');
+      Exit;
+    end;
     PrepareExistingInstallation;
   except
     Result := GetExceptionMessage;
@@ -303,6 +329,7 @@ end;
 procedure CurStepChanged(Step: TSetupStep);
 var Code: Integer; Command: String;
 begin
+  if IsBootUpdate then Exit;
   if Step = ssPostInstall then begin
     ConfigurationFailed := True;
     if not ExecAndLogOutput(RuntimePath('') + '\WindowsMegaProxy.Service.exe', '--check-dependencies', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then

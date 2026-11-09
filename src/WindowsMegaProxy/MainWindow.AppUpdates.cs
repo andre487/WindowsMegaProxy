@@ -34,6 +34,7 @@ public partial class MainWindow
         if (!installingAppUpdate && !checkingAppUpdate && scheduledAppUpdate is { } pending)
             status = pending.When == "unknown" ? "Installation status is unknown. You can retry through the elevated installer." : pending.When is "now" or "applying" ? "Installing update…" : pending.When == "failed" ? "Update installation was interrupted. Retry the installation." : pending.When == "launch" ? "Update scheduled for the next application start." : "Update scheduled for the next computer restart.";
         UpdateStatusText.Text = Ui.T(status);
+        if (scheduledAppUpdate?.FilesQueued == true) UpdateStatusText.Text = Ui.T(ServiceUpdateInProgress ? "Update in progress" : "Restart Windows to finish the update. File replacement has already been scheduled.");
         UpdateErrorText.Text = appUpdates?.ErrorKey is { } error && error != status ? Ui.T(error) : "";
         UpdateErrorText.Visibility = UpdateErrorText.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         bool ready = appUpdates?.Ready == true || scheduledAppUpdate is not null;
@@ -45,10 +46,10 @@ public partial class MainWindow
         UpdateReleaseLinkText.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         UpdateReleaseLink.NavigateUri = available ? new Uri($"https://github.com/{AppUpdateTrust.Repository}/releases/tag/v{offeredVersion}") : null;
         DownloadUpdateButton.Visibility = (newerDownload || (scheduledAppUpdate?.When == "failed" && appUpdates?.Package is not null)) && appUpdates?.Ready != true ? Visibility.Visible : Visibility.Collapsed;
-        DownloadUpdateButton.IsEnabled = scheduledAppUpdate?.When is not ("now" or "applying") && !checkingAppUpdate && !installingAppUpdate && !quitting;
+        DownloadUpdateButton.IsEnabled = scheduledAppUpdate?.FilesQueued != true && scheduledAppUpdate?.When is not ("now" or "applying") && !checkingAppUpdate && !installingAppUpdate && !quitting;
         InstallUpdateButton.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
         InstallUpdateButton.Content = Ui.T(scheduledAppUpdate is null || (newerDownload && appUpdates?.Ready == true) || scheduledAppUpdate.When is "failed" or "unknown" ? "Install update" : "Change update timing");
-        InstallUpdateButton.IsEnabled = ready && scheduledAppUpdate?.When is not ("now" or "applying") && !AppIdentity.IsDev && !installingAppUpdate && !checkingAppUpdate && !quitting;
+        InstallUpdateButton.IsEnabled = ready && scheduledAppUpdate?.FilesQueued != true && scheduledAppUpdate?.When is not ("now" or "applying") && !AppIdentity.IsDev && !installingAppUpdate && !checkingAppUpdate && !quitting;
         InstallUpdateButton.ToolTip = AppIdentity.IsDev ? Ui.T("Development builds are updated with run.cmd.") : null;
         CheckUpdatesButton.IsEnabled = scheduledAppUpdate?.When is not ("now" or "applying") && !checkingAppUpdate && !installingAppUpdate && !quitting && !settingsLoading;
         bool transferring = checkingAppUpdate && (appUpdates?.StatusKey is "Checking for updates…" or "Downloading update…");

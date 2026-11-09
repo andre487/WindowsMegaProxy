@@ -61,12 +61,26 @@ internal static class UiRecoveryChecks
             Assert(failureLog.Contains("Read-only mode: service IPC unavailable") && failureLog.Contains("HRESULT=0x") && failureLog.Contains("Pipe="),
                 "An unavailable service leaves actionable diagnostics in the visible local client log.");
             Assert(((Button)window.FindName("ExportLogButton")).IsEnabled, "Local client diagnostics remain exportable in read-only mode.");
+            var pendingField = typeof(MainWindow).GetField("scheduledAppUpdate", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            pendingField.SetValue(window, new PendingAppUpdate("99.0.0", "applying"));
+            Wait(window, Invoke(window, "RefreshServiceAsync"));
+            foreach (string name in new[] { "StatusText", "ServiceStateText", "MessageText", "ConnectionsHint", "TestStatusText" })
+                Assert(((TextBlock)window.FindName(name)).Text == "Update in progress", "Installation must not suggest repair: " + name);
+            pendingField.SetValue(window, new PendingAppUpdate("0.0.0", "reboot", FilesQueued: true));
+            typeof(MainWindow).GetMethod("UpdateServiceStateView", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+            Assert(((TextBlock)window.FindName("ServiceStateText")).Text == "Update in progress", "New binaries must wait for boot verification instead of suggesting another restart or repair.");
+            pendingField.SetValue(window, new PendingAppUpdate("99.0.0", "failed"));
+            Wait(window, Invoke(window, "RefreshServiceAsync"));
+            Assert(((TextBlock)window.FindName("StatusText")).Text == "Connection unknown", "Failed updates must not leave an indefinite installation status.");
+            pendingField.SetValue(window, null);
             var first = new RecoveryFixture(store, pipe);
             try
             {
                 Wait(window, Invoke(window, "RefreshServiceAsync"));
                 Assert(migrations == 1 && ((Settings)Field(window, "settings")!).ActiveProfile!.Name == "Recovered profile",
                     "First recovery migrates profiles through the same initialization path as normal startup.");
+                Assert(((TextBlock)window.FindName("MessageText")).Text == "" && ((Button)window.FindName("ConnectButton")).IsEnabled,
+                    "Service recovery clears the installation warning and restores editing without restarting the client.");
                 var remote = new RemoteEngine(client, _ => Task.FromResult(false));
                 Wait(window, remote.StartAsync(config));
                 Wait(window, Invoke(window, "RefreshServiceAsync"));

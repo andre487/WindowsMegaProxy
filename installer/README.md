@@ -43,6 +43,18 @@ restores the previous operating mode. Successful upgrades remove legacy
 personal configuration and the shared Wintun driver survive uninstall. DEV
 uses its separate fixed directory and registrations.
 
+Service-mode updates scheduled for a restart are extracted and verified against
+the signed file manifest before restarting. Windows Session Manager replaces the
+files through `MoveFileEx` before services start; the service stays automatic.
+The new service verifies the payload before serving clients. A protected boot
+task checks completion and uses the verified installer to recover an incomplete
+replacement. Queued replacements require a restart before another update,
+mode change, repair or uninstall. Normal and current-user updates retain the
+installer-based workflow. A client waiting for an active installer displays
+“Update in progress” and reconnects automatically.
+The first upgrade from a client without this mechanism still uses its legacy
+updater; subsequent restart updates use early-boot replacement.
+
 Global settings use machine-scope DPAPI and a directory restricted to SYSTEM
 and administrators so either elevated desktop hosts or the service can use
 them. Legacy service-identity DPAPI settings are migrated through authenticated

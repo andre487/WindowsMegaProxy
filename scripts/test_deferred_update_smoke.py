@@ -9,6 +9,35 @@ import installer_smoke
 
 
 class DeferredUpdateSafetyTests(unittest.TestCase):
+    def test_boot_replacement_simulation_refuses_developer_machines(self):
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
+            with self.assertRaisesRegex(RuntimeError, "disposable"):
+                deferred_update_smoke.apply_boot_file_moves(Path("C:/Program Files/WindowsMegaProxy"))
+
+    def test_boot_replacement_keeps_other_installers_queue_entries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            destination = base / "WindowsMegaProxy"
+            source = destination / "update/reboot/file.dll"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"new")
+            target = destination / "file.dll"
+            target.write_bytes(b"old")
+            foreign = [r"\??\C:\Other\new.dll", r"!\??\C:\Other\file.dll"]
+            operations = foreign + ["*1\\??\\" + str(source), "*2!\\??\\" + str(target)]
+            with patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "github-hosted"}), \
+                    patch.object(deferred_update_smoke, "known_folder", return_value=base), \
+                    patch.object(deferred_update_smoke, "stop_workspace_app"), \
+                    patch.object(deferred_update_smoke.winreg, "OpenKey"), \
+                    patch.object(deferred_update_smoke.winreg, "QueryValueEx", side_effect=[(foreign, 7), (operations, 7)]), \
+                    patch.object(deferred_update_smoke.winreg, "SetValueEx") as write:
+                deferred_update_smoke.apply_boot_file_moves(destination)
+                self.assertEqual(target.read_bytes(), b"new")
+                self.assertFalse(source.exists())
+                self.assertEqual(write.call_args.args[-1], foreign)
+                self.assertEqual(write.call_args.args[1], "PendingFileRenameOperations2")
+                self.assertEqual(write.call_count, 1)
+
     def test_tray_waits_for_loaded_to_hide_the_window(self):
         windows = [(123, 456)]
         with patch.object(deferred_update_smoke, "workspace_windows", side_effect=[[], windows, windows]), \

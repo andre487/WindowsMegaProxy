@@ -26,6 +26,11 @@ public static partial class Installation
         try
         {
             string command = args[0];
+            if (command == "--stage-reboot-files")
+            {
+                if (args.Length != 2) throw new ArgumentException("Invalid reboot staging arguments.");
+                return StageRebootFiles(args[1]);
+            }
             if (command == "--prepare-repair")
             {
                 if (args.Length != 2 || !StartupConfiguration.IsElevated || AppIdentity.IsDev) throw new UnauthorizedAccessException("Repair requires administrator approval and an installation path.");
@@ -33,6 +38,7 @@ public static partial class Installation
                 bool personal = Path.GetFullPath(args[1]).TrimEnd(Path.DirectorySeparatorChar).Equals(UserInstallation.ProtectedRoot(programFiles, UserInstallation.Sid), StringComparison.OrdinalIgnoreCase);
                 string repairRoot = personal ? UserInstallation.ValidateDirectory(args[1], programFiles, UserInstallation.Sid) : InstallRoot(args[1], programFiles);
                 CheckDirectory(repairRoot);
+                RequireNoQueuedRebootFiles(repairRoot);
                 string lockPath = Path.Combine(UpdateDirectory(repairRoot), "install.lock");
                 using var lease = File.Exists(lockPath) ? new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None) : null;
                 CloseClients(repairRoot, currentSession: personal);
@@ -89,6 +95,7 @@ public static partial class Installation
                 throw new UnauthorizedAccessException("Installation requires administrator approval.");
             string root = InstallRoot(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
             CheckDirectory(root);
+            RequireNoQueuedRebootFiles(root);
             CloseClients(root);
             if (command == "--prepare-uninstall") { if (!AppIdentity.IsDev) CancelPendingUpdate(root, false); ConfigureLogin("manual"); ConfigureTray("manual"); return 0; }
             if (command == "--set-mode" && !AppIdentity.IsDev)
@@ -148,7 +155,7 @@ public static partial class Installation
         {
             string message = DiagnosticLog.Redact(error.Message);
             Console.Error.WriteLine(message);
-            if (args[0] is "--install-update" or "--apply-pending-update" or "--run-staged-update")
+            if (args[0] is "--install-update" or "--apply-pending-update" or "--run-staged-update" or "--stage-reboot-files")
             {
                 // A hidden modal dialog would keep installation DLLs locked indefinitely.
                 try { new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100)
