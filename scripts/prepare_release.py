@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from common import ROOT, cli
+from finish_release import release_tag
 from package import version
 from publish_release import gh
 from release_notes import generate_notes
@@ -24,6 +25,11 @@ def main():
     if tuple(map(int, target.split("."))) < tuple(map(int, current.split("."))):
         raise ValueError("Release version cannot go backwards.")
     existing = existing_release_pr(target)
+    tag_commit = release_tag(target)
+    if tag_commit:
+        pull = json.loads(gh("pr", "view", str(existing), "--json", "state,mergeCommit")) if existing else {}
+        if pull.get("state") != "MERGED" or (pull.get("mergeCommit") or {}).get("oid") != tag_commit:
+            raise RuntimeError(f"Release v{target} already has a tag. Choose a new version; the existing tag will not be moved.")
     if existing:
         print(f"Resuming release preparation PR #{existing}.")
         return
