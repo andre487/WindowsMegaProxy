@@ -47,10 +47,10 @@ public sealed partial class Engine
                 }
                 catch (ProxyTransportException) when (enabled)
                 {
-                    if (!await DirectAvailableAsync(cancellationToken).ConfigureAwait(false)) throw new IOException("Network unavailable; failover was not attempted.");
+                    if (!await DirectAvailableAsync(cancellationToken).ConfigureAwait(false)) throw new CoreTransportException("Network unavailable; failover was not attempted.");
                     attempted.Add(selected.ActiveProfileId!);
                     var next = FailoverPolicy.Candidates(requested, selected.ActiveProfileId, attempted).FirstOrDefault();
-                    if (next is null) throw new IOException("No reachable failover profile is available.");
+                    if (next is null) throw new CoreTransportException("No reachable failover profile is available.");
                     selected.ActiveProfileId = next.Id;
                     Log?.Invoke("Proxy transport unavailable; trying the next failover profile.");
                 }
@@ -74,7 +74,9 @@ public sealed partial class Engine
     {
         watchingFailures = false;
         failoverStopping?.Cancel();
-        try { await failoverTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
+        try { await failoverTask.ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { Log?.Invoke("Failover worker failed: " + error.GetType().Name + "; " + error.Message); }
         failoverStopping?.Dispose(); failoverStopping = null; failoverTask = Task.CompletedTask;
         await lifecycle.WaitAsync().ConfigureAwait(false);
         try { changingProfile = true; await StopSelectedAsync().ConfigureAwait(false); }

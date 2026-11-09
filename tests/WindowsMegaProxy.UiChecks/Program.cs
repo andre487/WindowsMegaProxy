@@ -73,6 +73,8 @@ internal static partial class Program
         }
         if (CoreProcessChecks.RunFixture(args)) return;
         if (RecoveryChecks.RunFixture(args)) return;
+        if (args.Contains("--service-fatal-fixture")) { ServiceLifetime.ExitAfterFailure(() => throw new IOException("Injected event log failure.")); return; }
+        if (args.Contains("--service-stability-check")) { ServiceStabilityChecks.RunAsync().GetAwaiter().GetResult(); return; }
         if (args.Contains("--ui-recovery-check"))
         {
             var recoveryApp = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -102,6 +104,7 @@ internal static partial class Program
         PerformanceChecks.RunAsync().GetAwaiter().GetResult();
         ServiceChecks.RunAsync().GetAwaiter().GetResult();
         RecoveryChecks.RunAsync().GetAwaiter().GetResult();
+        ServiceStabilityChecks.RunAsync().GetAwaiter().GetResult();
         UiRecoveryChecks.RunIsolatedAsync().GetAwaiter().GetResult();
         UpdateInstallChecks.RunIsolatedAsync().GetAwaiter().GetResult();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };

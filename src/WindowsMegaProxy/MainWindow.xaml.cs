@@ -346,7 +346,8 @@ public partial class MainWindow : Window
             RecordServiceAccess();
             UpdateServiceStateView();
             InstallServiceButton.Visibility = Visibility.Collapsed;
-            if (rebind || MessageText.Text == ServiceUnavailableMessage) MessageText.Text = "";
+            if (rebind || MessageText.Text == ServiceUnavailableMessage || MessageText.Text == Ui.T(ServiceProtocol.ConfigurationRecoveryMessage)) MessageText.Text = "";
+            if (reply.Text is not null) MessageText.Text = Ui.T(reply.Text);
             if (engine is RemoteEngine remote)
             {
                 remote.Apply(reply);
@@ -354,9 +355,10 @@ public partial class MainWindow : Window
             }
             bool connected = engine?.Running == true;
             UpdateProfileSummary();
-            if (StatusText.Text != Ui.T(connected ? "Connected" : "Disconnected")) SetConnected(connected);
+            string connectionLabel = Ui.T(engine is RemoteEngine { Recovering: true } ? "Recovering connection…" : connected ? "Connected" : "Disconnected");
+            if (StatusText.Text != connectionLabel) { SetConnected(connected); StatusText.Text = connectionLabel; }
             SetBusy(busy);
-            if (firstBinding && canEdit && !serviceTesting && settings.AutoConnect && engine?.Running != true) await ToggleAsync();
+            if (firstBinding && canEdit && !serviceTesting && settings.AutoConnect && engine?.Running != true && engine is not RemoteEngine { Recovering: true }) await ToggleAsync();
         }
         catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException or Win32Exception)
         {
@@ -775,7 +777,7 @@ public partial class MainWindow : Window
 
         try
         {
-            if (engine?.Running == true)
+            if (engine?.Running == true || engine is RemoteEngine { Recovering: true })
             {
                 StatusText.Text = Ui.T("Disconnecting…");
                 await connection.DisconnectAsync();
@@ -807,8 +809,9 @@ public partial class MainWindow : Window
     {
         UpdateServiceStateView();
         bool connecting = connection.State == ConnectionState.Connecting;
-        ConnectButton.IsEnabled = canEdit && !quitting && (connecting || !value && (engine?.Running == true || (!testing && CanConnect())));
-        ConnectButton.Content = trayConnect.Header = Ui.T(connecting ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
+        bool recovering = engine is RemoteEngine { Recovering: true };
+        ConnectButton.IsEnabled = canEdit && !quitting && (connecting || !value && (recovering || engine?.Running == true || (!testing && CanConnect())));
+        ConnectButton.Content = trayConnect.Header = Ui.T(connecting || recovering ? "Cancel connection" : engine?.Running == true ? "Disconnect" : "Connect");
         trayConnect.IsEnabled = ConnectButton.IsEnabled;
         bool editable = canEdit && !quitting && !settingsLoading && !installingAppUpdate;
         RulesEditable = editable && !changingRules;

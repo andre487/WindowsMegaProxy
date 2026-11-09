@@ -220,7 +220,7 @@ public partial class ProfileWindow : Window
                 original.Proxy["trustedHostKey"]?.GetValue<string>() ?? "", System.Threading.CancellationToken.None);
             ErrorText.Text = "";
         }
-        catch (Exception error) { ErrorText.Text = error is OperationCanceledException ? Ui.T("Could not read the SSH server key.") : error.Message; }
+        catch (Exception error) { ErrorText.Text = error is OperationCanceledException or TimeoutException ? Ui.T("Could not read the SSH server key.") : error.Message; }
         finally { ReadSshHostKeyButton.IsEnabled = true; }
     }
 

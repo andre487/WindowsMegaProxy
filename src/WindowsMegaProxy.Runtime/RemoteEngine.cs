@@ -14,6 +14,7 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
     private bool borrowed;
     public bool Persistent => true;
     public bool Running => status.Running;
+    public bool Recovering => status.Recovering;
     public long Generation => status.Generation;
     public string? InstanceId { get; private set; }
     public Settings? AppliedSettings => status.AppliedSettings;
@@ -35,7 +36,7 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
 
     public void Invalidate()
     {
-        status = status with { Running = false, AppliedSettings = null };
+        status = status with { Running = false, Recovering = false, AppliedSettings = null };
         probe = null;
     }
 
@@ -58,7 +59,7 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
 
     public async Task StopAsync()
     {
-        if (borrowed || !Running || InstanceId is null) return;
+        if (borrowed || !Running && !Recovering || InstanceId is null) return;
         try { Apply(await client.CallAsync(new("stop", Lease: lease, InstanceId: InstanceId, Generation: Generation)).ConfigureAwait(false)); }
         catch (ServiceStateChangedException) { Invalidate(); }
         finally { lease = null; }

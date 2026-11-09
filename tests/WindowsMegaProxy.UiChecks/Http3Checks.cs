@@ -19,6 +19,7 @@ internal static class Http3Checks
 
     public static async Task RunAsync(bool network = false)
     {
+        CheckPortReservation();
         string directory = Path.GetFullPath("artifacts/http3-checks");
         Directory.CreateDirectory(directory);
         File.Delete(Path.Combine(directory, "failure.txt"));
@@ -32,8 +33,7 @@ internal static class Http3Checks
         string alpha = Path.GetFullPath(".tools/sing-box-h3/sing-box.exe");
         Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", Path.GetFullPath(".tools/sing-box/sing-box.exe"));
         Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE", alpha);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(network ? 240 : 180));
-        var token = timeout.Token;
+        using var stopping = new CancellationTokenSource();
         using var key = RSA.Create(2048);
         var certificateRequest = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
@@ -43,16 +43,18 @@ internal static class Http3Checks
         using var origin = new TcpListener(IPAddress.Loopback, 0);
         origin.Start();
         var probeUri = new Uri($"http://127.0.0.1:{((IPEndPoint)origin.LocalEndpoint).Port}/");
-        var originTask = ServeOriginAsync(origin, token);
+        var originTask = ServeOriginAsync(origin, stopping.Token);
         try
         {
             foreach (int serverVersion in new[] { 3, 2, 1 })
             {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(network ? 240 : 180));
+                var token = timeout.Token;
                 bool h3 = serverVersion == 3;
-                using var reserve = new TcpListener(IPAddress.Loopback, 0);
-                reserve.Start();
+                var reserved = ReserveProxyPort();
+                using var reserve = reserved.Tcp;
+                using var udp = reserved.Udp;
                 int port = ((IPEndPoint)reserve.LocalEndpoint).Port;
-                reserve.Stop();
                 string configPath = Path.Combine(directory, h3 ? "h3-server.json" : "tcp-server.json");
                 var serverConfig = new JsonObject
                 {
@@ -76,10 +78,11 @@ internal static class Http3Checks
                 File.WriteAllText(configPath, serverConfig.ToJsonString(Configuration.JsonOptions));
                 var start = new ProcessStartInfo(alpha) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
                 foreach (string argument in new[] { "run", "-c", configPath }) start.ArgumentList.Add(argument);
+                reserve.Stop();
+                if (h3) udp.Dispose();
                 using var server = Process.Start(start)!;
                 var errors = server.StandardError.ReadToEndAsync();
                 var output = server.StandardOutput.ReadToEndAsync();
-                using var blackhole = h3 ? null : new UdpClient(new IPEndPoint(IPAddress.Loopback, port));
                 try
                 {
                     for (int attempt = 0; ; attempt++)
@@ -221,14 +224,47 @@ internal static class Http3Checks
                     File.WriteAllText(Path.Combine(directory, h3 ? "h3-server.log" : "tcp-server.log"), await errors + await output);
                 }
             }
-            await CheckSocksWithoutUdpAsync(directory, token);
+            using var socksTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await CheckSocksWithoutUdpAsync(directory, socksTimeout.Token);
             File.WriteAllText(Path.Combine(directory, "result.txt"), "Real HTTP/3 CONNECT and CONNECT-UDP, MASQUE, HTTPS Jump over TCP/H3 with separate credentials and mandatory first hop, H2 and H1 fallback, hidden H3 checks on TCP/SOCKS5 without UDP, certificate/authentication rejection and cleanup passed. No TUN." + (network ? " External target HTTP/3 through the proxy confirmed." : " No external target traffic."));
         }
         finally
         {
-            timeout.Cancel(); origin.Stop(); await originTask;
+            stopping.Cancel(); origin.Stop(); await originTask;
             File.Delete(keyPath); File.Delete(certificatePath);
         }
+    }
+
+    private static (TcpListener Tcp, UdpClient Udp) ReserveProxyPort()
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            var tcp = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+            var udp = new UdpClient(AddressFamily.InterNetwork) { ExclusiveAddressUse = true };
+            try
+            {
+                tcp.Start();
+                // Windows UDP exclusions differ from TCP; the fixture needs both on the same port.
+                udp.Client.Bind(tcp.LocalEndpoint);
+                return (tcp, udp);
+            }
+            catch (SocketException error) when (attempt < 31 && error.SocketErrorCode is SocketError.AccessDenied or SocketError.AddressAlreadyInUse)
+            { tcp.Stop(); udp.Dispose(); }
+            catch { tcp.Stop(); udp.Dispose(); throw; }
+        }
+    }
+
+    private static void CheckPortReservation()
+    {
+        var reserved = ReserveProxyPort();
+        using var tcp = reserved.Tcp;
+        using var udp = reserved.Udp;
+        Assert(tcp.LocalEndpoint.Equals(udp.Client.LocalEndPoint), "Proxy fixtures reserve the same port for TCP and UDP.");
+        using var contender = new UdpClient(AddressFamily.InterNetwork) { ExclusiveAddressUse = true };
+        bool rejected = false;
+        try { contender.Client.Bind(tcp.LocalEndpoint); }
+        catch (SocketException error) when (error.SocketErrorCode is SocketError.AccessDenied or SocketError.AddressAlreadyInUse) { rejected = true; }
+        Assert(rejected, "The fallback UDP blackhole remains exclusively reserved until fixture cleanup.");
     }
 
     private static async Task CheckSocksWithoutUdpAsync(string directory, CancellationToken token)

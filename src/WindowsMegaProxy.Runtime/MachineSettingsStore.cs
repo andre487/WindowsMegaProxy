@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Security.Cryptography;
@@ -50,13 +51,17 @@ public sealed class MachineSettingsStore
         if ((File.GetAttributes(FilePath) & FileAttributes.ReparsePoint) != 0 || new FileInfo(FilePath).Length > 16 * 1024 * 1024)
             throw new IOException("Invalid global settings file.");
         CheckOwner(new FileInfo(FilePath).GetAccessControl().GetOwner(typeof(SecurityIdentifier)));
-        var envelope = JsonNode.Parse(File.ReadAllText(FilePath))!;
+        var envelope = JsonNode.Parse(File.ReadAllText(FilePath)) as JsonObject
+            ?? throw new IOException("Invalid global settings envelope.");
         if (envelope["version"]?.GetValue<int>() != 1) throw new IOException("Unsupported global settings version.");
         bool shared = envelope["scope"]?.GetValue<string>() == "machine";
-        var clear = ProtectedData.Unprotect(Convert.FromBase64String(envelope["protectedSettings"]!.GetValue<string>()), Entropy,
+        var clear = ProtectedData.Unprotect(Convert.FromBase64String(envelope["protectedSettings"]?.GetValue<string>()
+            ?? throw new IOException("Missing protected global settings.")), Entropy,
             shared ? DataProtectionScope.LocalMachine : DataProtectionScope.CurrentUser);
         var settings = JsonSerializer.Deserialize<Settings>(clear)
             ?? throw new IOException("Empty global settings.");
+        if (settings.Profiles?.Any(profile => profile is null || profile.Data is null) == true)
+            throw new IOException("Empty global profile.");
         PortableConfiguration.ValidateSettings(settings);
         if (machine && !shared) Save(settings);
         return settings;
@@ -72,6 +77,15 @@ public sealed class MachineSettingsStore
             ["protectedSettings"] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(data), Entropy,
                 machine ? DataProtectionScope.LocalMachine : DataProtectionScope.CurrentUser)) };
         SettingsStore.WriteAtomic(FilePath, envelope.ToJsonString(Configuration.JsonOptions));
+    }
+
+    public void PreserveUnreadableSettings()
+    {
+        if (!Initialized) return;
+        if ((File.GetAttributes(FilePath) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Cannot back up a settings reparse point.");
+        CheckOwner(new FileInfo(FilePath).GetAccessControl().GetOwner(typeof(SecurityIdentifier)));
+        File.Copy(FilePath, Path.Combine(DirectoryPath, "settings-unreadable-" + Guid.NewGuid().ToString("N") + ".json"));
     }
 
     private void CheckOwner(IdentityReference? owner)
