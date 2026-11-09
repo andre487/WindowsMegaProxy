@@ -166,7 +166,8 @@ public sealed class AppUpdateManager : IDisposable
                     Package = null; State = State with { Manifest = null, Signature = null }; ClearFiles(false);
                 }
                 StatusKey = Ready ? "Update ready to install." : ErrorKey;
-                Log?.Invoke("Application update check failed: " + error.GetType().Name + ".");
+                Log?.Invoke($"Application update check failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}" +
+                    (error is HttpRequestException { StatusCode: { } status } ? $"; HTTP {(int)status}." : "."));
             }
             finally { File.Delete(InstallerPath + ".part"); Save(); Changed?.Invoke(); }
         }
@@ -201,11 +202,21 @@ public sealed class AppUpdateManager : IDisposable
             if (uri.Scheme != "https" || uri.UserInfo.Length != 0 || uri.Port != 443 || uri.Host is not
                 ("api.github.com" or "github.com" or "release-assets.githubusercontent.com" or "objects.githubusercontent.com" or "github-releases.githubusercontent.com"))
                 throw new InvalidDataException("Untrusted update download URL.");
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            request.Headers.UserAgent.ParseAdd("WindowsMegaProxy/" + currentVersion.ToString(3));
-            using var headersDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-            headersDeadline.CancelAfter(TimeSpan.FromSeconds(30));
-            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headersDeadline.Token).ConfigureAwait(false);
+            HttpResponseMessage response;
+            for (int attempt = 0; ; attempt++)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                request.Headers.UserAgent.ParseAdd("WindowsMegaProxy/" + currentVersion.ToString(3));
+                using var headersDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                headersDeadline.CancelAfter(TimeSpan.FromSeconds(30));
+                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headersDeadline.Token).ConfigureAwait(false);
+                if ((int)response.StatusCode is < 500 or > 599) break;
+                int status = (int)response.StatusCode;
+                Log?.Invoke($"Application update request to {uri.Host} returned HTTP {status}; attempt {attempt + 1}/4.");
+                if (attempt == 3) break;
+                response.Dispose();
+                await Task.Delay(TimeSpan.FromSeconds(1 << attempt), token).ConfigureAwait(false);
+            }
             if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
             {
                 var location = response.Headers.Location;

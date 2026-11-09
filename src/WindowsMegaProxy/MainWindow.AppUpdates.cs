@@ -39,8 +39,11 @@ public partial class MainWindow
         InstallUpdateButton.Content = Ui.T(scheduledAppUpdate is null ? "Install update" : "Change update timing");
         InstallUpdateButton.IsEnabled = ready && scheduledAppUpdate?.When is not ("now" or "applying") && canEdit && !AppIdentity.IsDev && !installingAppUpdate && !checkingAppUpdate && !quitting;
         InstallUpdateButton.ToolTip = AppIdentity.IsDev ? Ui.T("Development builds are updated with run.cmd.") : !canEdit ? Ui.T("Administrator rights are required to install updates.") : null;
-        CheckUpdatesButton.IsEnabled = scheduledAppUpdate is null && !checkingAppUpdate && !installingAppUpdate && !quitting;
-        UpdateDownloadProgress.Visibility = appUpdates?.StatusKey == "Downloading update…" ? Visibility.Visible : Visibility.Collapsed;
+        CheckUpdatesButton.IsEnabled = scheduledAppUpdate is null && !checkingAppUpdate && !installingAppUpdate && !quitting && !settingsLoading;
+        bool transferring = checkingAppUpdate && (appUpdates?.StatusKey is "Checking for updates…" or "Downloading update…");
+        CheckUpdatesButton.Content = Ui.T(transferring ? "Checking for updates…" : "Check now");
+        UpdateDownloadProgress.IsIndeterminate = transferring && appUpdates?.StatusKey != "Downloading update…";
+        UpdateDownloadProgress.Visibility = transferring ? Visibility.Visible : Visibility.Collapsed;
         UpdateDownloadProgress.Value = appUpdates?.Progress ?? 0;
     }
 
@@ -60,9 +63,10 @@ public partial class MainWindow
 
     private async Task RunAppUpdateCheckAsync(bool manual)
     {
-        if (appUpdates is null || checkingAppUpdate || installingAppUpdate || quitting || !settingsReady || settingsLoading) return;
+        if (appUpdates is null || checkingAppUpdate || installingAppUpdate || quitting || settingsLoading) return;
         if (!manual && !automaticUpdateChecks) return;
         checkingAppUpdate = true;
+        if (manual) WriteLog("Manual application update check requested.");
         UpdateAppUpdatesView();
         try
         {

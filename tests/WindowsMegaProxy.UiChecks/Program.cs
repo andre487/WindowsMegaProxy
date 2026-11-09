@@ -177,6 +177,13 @@ internal static partial class Program
             var settingsField = typeof(MainWindow).GetField("settings", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var applySettings = typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var originalSettings = PortableConfiguration.Copy((Settings)settingsField.GetValue(window)!);
+            var settingsReadyField = typeof(MainWindow).GetField("settingsReady", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            bool settingsWereReady = (bool)settingsReadyField.GetValue(window)!;
+            settingsReadyField.SetValue(window, false);
+            Wait(window, (Task)typeof(MainWindow).GetMethod("RunAppUpdateCheckAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [true])!);
+            Assert(updateFeed.Requests == 1 && updateClient.StatusKey == "Update files are unavailable.",
+                "A manual update check runs while unrelated proxy settings analysis is pending and displays its result.");
+            settingsReadyField.SetValue(window, settingsWereReady);
             var pendingSettings = PortableConfiguration.Copy(originalSettings);
             var pendingSsh = ProxyProfile.Create("SSH KZ"); pendingSsh.Proxy["type"] = "SSH";
             pendingSsh.Proxy["host"] = "ssh.example.com"; pendingSsh.Proxy["port"] = 22;

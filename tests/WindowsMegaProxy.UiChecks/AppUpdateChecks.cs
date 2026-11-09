@@ -26,6 +26,7 @@ internal static class AppUpdateChecks
         public bool UntrustedRedirect { get; set; }
         public int Downloads { get; private set; }
         public int Requests { get; private set; }
+        public int InstallerFailures { get; set; }
         public DateTimeOffset Now { get; set; } = new(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
         public CancellationTokenSource? CancelDownload { get; set; }
         public Feed() => Ed25519.GeneratePublicKey(seed, 0, Key, 0);
@@ -71,6 +72,11 @@ internal static class AppUpdateChecks
                 return Task.FromResult(Reply(signature));
             }
             Downloads++;
+            if (InstallerFailures > 0)
+            {
+                InstallerFailures--;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.GatewayTimeout));
+            }
             if (UntrustedRedirect)
             {
                 var redirect = new HttpResponseMessage(HttpStatusCode.Redirect);
@@ -117,7 +123,7 @@ internal static class AppUpdateChecks
             File.WriteAllText(Path.Combine(cache, "orphaned-old-version.exe"), "orphan");
             feed.Unavailable = true;
             await manager.CheckAsync(default);
-            Check(manager.StatusKey == "Update files are unavailable." && !manager.Ready && !manager.CheckDue, "No GitHub release is an explicit unavailable-files result and does not cause a retry loop.");
+            Check(manager.StatusKey == "Update files are unavailable." && !manager.Ready && !manager.CheckDue && feed.Requests == 1, "No GitHub release is an explicit unavailable-files result and does not cause a retry loop.");
             Check(!Directory.EnumerateFiles(cache, "*.exe").Any(), "Orphaned updates are removed.");
             feed.Unavailable = false;
             await manager.CheckAsync(default);
@@ -163,6 +169,24 @@ internal static class AppUpdateChecks
             try { await manager.CheckAsync(stopping.Token); throw new Exception("Update cancellation was ignored."); }
             catch (OperationCanceledException) { }
             Check(!Directory.EnumerateFiles(Path.Combine(root, "cancelled"), "*.exe*").Any() && manager.CheckDue, "Cancelled downloads are deleted and retried after the next launch.");
+        }
+        using (var retrying = new Feed { InstallerFailures = 1 })
+        using (var manager = retrying.Manager(Path.Combine(root, "retry")))
+        {
+            var entries = new System.Collections.Generic.List<string>();
+            manager.Log += entries.Add;
+            await manager.CheckAsync(default);
+            Check(manager.Ready && retrying.Downloads == 2 && entries.Any(line => line.Contains("github.com returned HTTP 504")),
+                "A transient installer gateway timeout is logged and retried without bypassing signature or hash verification.");
+        }
+        using (var retrying = new Feed { InstallerFailures = 10 })
+        using (var manager = retrying.Manager(Path.Combine(root, "retry-exhausted")))
+        {
+            var entries = new System.Collections.Generic.List<string>();
+            manager.Log += entries.Add;
+            await manager.CheckAsync(default);
+            Check(!manager.Ready && retrying.Downloads == 4 && entries.Last().Contains("HTTP 504"),
+                "Repeated server failures stop after four attempts and preserve the HTTP status in the final diagnostic.");
         }
         var profile = ProxyProfile.Create("Update preference fixture"); profile.Proxy["host"] = "proxy.invalid";
         var saved = new Settings { Profiles = [profile], ActiveProfileId = profile.Id }; saved.WindowsOptions[AppUpdatePolicy.Option] = false;
