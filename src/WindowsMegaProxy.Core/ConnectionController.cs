@@ -21,6 +21,7 @@ public interface IEngine : IDisposable
     event Action<string>? Log;
     Task StartAsync(Settings settings, bool testOnly = false, CancellationToken cancellationToken = default);
     Task StopAsync();
+    Task<bool> IsHealthyAsync(CancellationToken token) => Task.FromResult(Running);
     Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll);
     HttpClient CreateProbeClient(bool throughProfile);
     Task<string> CheckHttp3Async(CancellationToken token);

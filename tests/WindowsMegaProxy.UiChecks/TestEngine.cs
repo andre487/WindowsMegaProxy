@@ -20,6 +20,9 @@ internal sealed class TestEngine : IEngine
     public int Polls { get; private set; }
     public int PollThread { get; private set; }
     public Func<CancellationToken, Task>? Start { get; set; }
+    public bool Healthy { get; set; } = true;
+    public Func<Task>? Stop { get; set; }
+    public Task<bool> IsHealthyAsync(CancellationToken token) => Task.FromResult(Running && Healthy);
     public event Action? Exited;
     public event Action<string>? Log;
     public async Task StartAsync(Settings settings, bool testOnly = false, CancellationToken cancellationToken = default)
@@ -32,7 +35,7 @@ internal sealed class TestEngine : IEngine
         Running = true;
         Log?.Invoke("Test engine started.");
     }
-    public Task StopAsync() { Stops++; Running = false; return Task.CompletedTask; }
+    public Task StopAsync() { Stops++; Running = false; return Stop?.Invoke() ?? Task.CompletedTask; }
     public void Exit() { Running = false; Exited?.Invoke(); }
     public void Dispose() => Disposed = true;
     public Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)

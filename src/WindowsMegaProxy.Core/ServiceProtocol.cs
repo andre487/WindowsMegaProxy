@@ -10,7 +10,7 @@ public sealed record SshHostKeyUpdate(string ProfileId, string ProfileName, stri
 public sealed record ProbeAccess(int Port, string Secret);
 public sealed record ServiceLogChunk(byte[] Data, bool Done = false, string? Error = null);
 public sealed record ServiceStatus(bool Running, Settings? AppliedSettings, string? AppliedSignature, bool Http3Selected,
-    bool UsedHttp3Fallback, string SelectedOutbound, bool HasProbeProfile, long Generation = 0);
+    bool UsedHttp3Fallback, string SelectedOutbound, bool HasProbeProfile, long Generation = 0, bool Recovering = false);
 public sealed record ServiceRequest(string Operation, Settings? Settings = null, bool TestOnly = false, bool ShowAll = false,
     string? Lease = null, SshHostKeyUpdate? HostKey = null, long? Revision = null, string? InstanceId = null, long? Generation = null);
 public sealed record ServiceReply(bool CanEdit, Settings? Settings = null, ServiceStatus? Status = null,
@@ -20,6 +20,7 @@ public sealed record ServiceReply(bool CanEdit, Settings? Settings = null, Servi
 
 public static class ServiceProtocol
 {
+    public const string ConfigurationRecoveryMessage = "Global settings could not be loaded. Import or save repaired settings; the original file will be preserved.";
     public const string Name = AppIdentity.Name;
     public const string PipeName = Name + ".Control.v3";
     public const int MaximumFrameBytes = 16 * 1024 * 1024;

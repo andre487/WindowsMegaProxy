@@ -29,17 +29,26 @@ public sealed class ServiceBroker : IAsyncDisposable
     private ServiceStatus status = new(false, null, null, false, false, "direct", false);
     private SshHostKeyUpdate? pendingKey;
     private volatile bool engineChanged;
+    private string? settingsError;
+    private Settings? desiredSettings;
+    private DateTimeOffset nextRecovery, nextHealthCheck;
+    private int recoveryFailures, healthFailures;
 
     public ServiceBroker(MachineSettingsStore store, Func<bool, Task> setAutostart, Func<IEngine>? createEngine = null)
     {
         this.store = store;
         this.setAutostart = setAutostart;
-        settings = store.Load();
+        try { settings = store.Load(); }
+        catch (Exception error) when (error is IOException or System.Text.Json.JsonException or CryptographicException or FormatException or InvalidOperationException or ArgumentException)
+        {
+            settings = new Settings { Language = "en" };
+            settingsError = "Global settings could not be loaded; connection is disabled until an administrator saves repaired settings. " + error.GetType().Name + "; " + error.Message;
+        }
         log = new BackgroundLog(new DiagnosticLog(Path.Combine(store.DirectoryPath, "logs"), settings.LogSizeMb));
+        if (settingsError is not null) log.Write(settingsError);
+        if (settingsError is null && settings.AutoConnect) desiredSettings = settings.Copy();
         this.createEngine = createEngine ?? (() => new Engine(Path.Combine(store.DirectoryPath, "runtime"), allowEnvironmentOverrides: false));
     }
-
-    public bool AutoConnect => settings.AutoConnect;
 
     public async Task<ServiceReply> HandleAsync(ClientAccess peer, ServiceRequest request, CancellationToken token)
     {
@@ -72,7 +81,12 @@ public sealed class ServiceBroker : IAsyncDisposable
                     PortableConfiguration.ValidateSettings(next);
                     bool changed = settings.LaunchAtSignIn != next.LaunchAtSignIn;
                     if (changed) await setAutostart(next.LaunchAtSignIn == true).ConfigureAwait(false);
-                    try { store.Save(next); }
+                    try
+                    {
+                        if (settingsError is not null) store.PreserveUnreadableSettings();
+                        store.Save(next);
+                        settingsError = null;
+                    }
                     catch { if (changed) await setAutostart(settings.LaunchAtSignIn == true).ConfigureAwait(false); throw; }
                     settings = next;
                     Interlocked.Increment(ref revision);
@@ -96,55 +110,7 @@ public sealed class ServiceBroker : IAsyncDisposable
                 {
                     await ExpireLeaseAsync().ConfigureAwait(false);
                     if (request.Operation == "start")
-                    {
-                        if (engine?.Running == true)
-                        {
-                            if (lease is not null) throw new IOException("A connection test is in progress.");
-                            return Reply(peer);
-                        }
-                        engine?.Dispose();
-                        engine = createEngine();
-                        var current = engine;
-                        current.Exited += () => { if (ReferenceEquals(engine, current)) status = status with { Running = false }; };
-                        engine.Log += message => log.Write(message);
-                        if (engine is Engine native)
-                        {
-                            native.RuntimeChanged += () => engineChanged = true;
-                            native.SaveSshHostKey = update => SaveKeyAsync(update, token);
-                            native.ConfirmSshHostKeyChange = update =>
-                            {
-                                pendingKey = update;
-                                throw new ServiceHostKeyException(update);
-                            };
-                        }
-                        try
-                        {
-                            if (request.TestOnly)
-                            {
-                                var owner = ownerLifetime = peer.Watch?.Invoke();
-                                leaseOwnerAlive = owner is null ? peer.IsAlive : () => owner.IsAlive;
-                                if (leaseOwnerAlive?.Invoke() == false) throw new IOException("The diagnostic client exited.");
-                            }
-                            await engine.StartAsync(PortableConfiguration.Copy(settings), request.TestOnly, token).ConfigureAwait(false);
-                        }
-                        catch (Exception error)
-                        {
-                            string detail = error is System.ComponentModel.Win32Exception windowsError ? $"Windows error {windowsError.NativeErrorCode}." : error.Message;
-                            log.Write($"Service connection start failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {detail}");
-                            await StopAsync().ConfigureAwait(false);
-                            throw;
-                        }
-                        if (request.TestOnly)
-                        {
-                            lease = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-                            leaseOwner = peer.Sid;
-                            leaseDeadline = DateTimeOffset.UtcNow.AddMinutes(6);
-                        }
-                        UpdateStatus();
-                        probe = (engine as Engine)?.ProbeAccess;
-                        log.Write(request.TestOnly ? "Service connection test started." : "Service TUN connected.");
-                        return Reply(peer) with { Lease = lease };
-                    }
+                        return await StartConnectionAsync(peer, request, settings.Copy(), token).ConfigureAwait(false);
                     if (request.Generation != status.Generation)
                         throw new ServiceStateChangedException("The connection changed. Refresh and try again.");
                     if (request.Lease != lease || lease is not null && peer.Sid != leaseOwner)
@@ -152,7 +118,7 @@ public sealed class ServiceBroker : IAsyncDisposable
                     if (lease is not null) leaseDeadline = DateTimeOffset.UtcNow.AddMinutes(6);
                     switch (request.Operation)
                     {
-                        case "stop": await StopAsync().ConfigureAwait(false); return Reply(peer);
+                        case "stop": desiredSettings = null; await StopAsync().ConfigureAwait(false); return Reply(peer);
                         case "connections":
                             return Reply(peer) with { Connections = engine?.Running == true ? await engine.GetConnectionsAsync(request.ShowAll).ConfigureAwait(false) : new([], 0, 0, 0) };
                         default:
@@ -166,9 +132,74 @@ public sealed class ServiceBroker : IAsyncDisposable
         }
     }
 
+    private async Task<ServiceReply> StartConnectionAsync(ClientAccess peer, ServiceRequest request, Settings requested, CancellationToken token, bool recovering = false)
+    {
+        if (settingsError is not null) throw new IOException(settingsError);
+        if (engine?.Running == true)
+        {
+            if (lease is not null) throw new IOException("A connection test is in progress.");
+            return Reply(peer);
+        }
+        if (!request.TestOnly) { desiredSettings = requested.Copy(); if (!recovering) recoveryFailures = 0; }
+        if (engine is not null) await StopAsync().ConfigureAwait(false);
+        engine = createEngine();
+        var current = engine;
+        current.Exited += () =>
+        {
+            if (!ReferenceEquals(engine, current)) return;
+            status = status with { Running = false };
+            log.Write("Network core exited; persistent connections will be recovered automatically.");
+        };
+        engine.Log += message => log.Write(message);
+        if (engine is Engine native)
+        {
+            native.RuntimeChanged += () => engineChanged = true;
+            native.SaveSshHostKey = update => SaveKeyAsync(update, CancellationToken.None);
+            native.ConfirmSshHostKeyChange = update =>
+            {
+                pendingKey = update;
+                throw new ServiceHostKeyException(update);
+            };
+        }
+        try
+        {
+            if (request.TestOnly)
+            {
+                var owner = ownerLifetime = peer.Watch?.Invoke();
+                leaseOwnerAlive = owner is null ? peer.IsAlive : () => owner.IsAlive;
+                if (leaseOwnerAlive?.Invoke() == false) throw new IOException("The diagnostic client exited.");
+            }
+            await engine.StartAsync(requested.Copy(), request.TestOnly, token).ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            string detail = error is System.ComponentModel.Win32Exception windowsError ? $"Windows error {windowsError.NativeErrorCode}." : error.Message;
+            log.Write($"Service connection start failed: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}; {detail}");
+            if (!request.TestOnly) ScheduleRecovery(error, token);
+            await StopAsync().ConfigureAwait(false);
+            throw;
+        }
+        if (request.TestOnly)
+        {
+            lease = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            leaseOwner = peer.Sid;
+            leaseDeadline = DateTimeOffset.UtcNow.AddMinutes(6);
+        }
+        UpdateStatus();
+        if (!request.TestOnly)
+        {
+            desiredSettings = engine.AppliedSettings?.Copy() ?? requested.Copy();
+            healthFailures = 0;
+            if (!recovering) nextRecovery = DateTimeOffset.UtcNow.AddSeconds(5);
+        }
+        probe = (engine as Engine)?.ProbeAccess;
+        log.Write(request.TestOnly ? "Service connection test started." : "Service TUN connected.");
+        return Reply(peer) with { Lease = lease };
+    }
+
     private ServiceReply Reply(ClientAccess peer, bool includeSettings = false)
     {
-        var current = status;
+        var current = status with { Recovering = !status.Running && desiredSettings is not null && lease is null };
         // Test proxy credentials belong only to the administrator who owns its lease.
         bool visible = lease is null || leaseOwner == peer.Sid;
         return new(peer.CanEdit,
@@ -176,7 +207,8 @@ public sealed class ServiceBroker : IAsyncDisposable
             Status: visible ? peer.CanEdit ? current : ServiceView.PublicStatus(current) : new(false, null, null, false, false, "direct", false),
             Probe: peer.CanEdit && visible && current.Running ? probe : null,
             Initialized: store.Initialized, AutoStart: settings.LaunchAtSignIn == true, Revision: Interlocked.Read(ref revision),
-            InstanceId: InstanceId, Testing: lease is not null);
+            InstanceId: InstanceId, Testing: lease is not null,
+            Text: settingsError is null ? null : ServiceProtocol.ConfigurationRecoveryMessage);
     }
 
     private async Task SaveKeyAsync(SshHostKeyUpdate update, CancellationToken token)
@@ -241,7 +273,7 @@ public sealed class ServiceBroker : IAsyncDisposable
             await configuration.WaitAsync(token).ConfigureAwait(false);
             try
             {
-                if (!manual && !ConfigurationSubscription.Due(settings, DateTimeOffset.UtcNow)) return;
+                if (settingsError is not null || !manual && !ConfigurationSubscription.Due(settings, DateTimeOffset.UtcNow)) return;
                 snapshot = settings.Copy(); expected = revision;
             }
             finally { configuration.Release(); }
@@ -273,23 +305,89 @@ public sealed class ServiceBroker : IAsyncDisposable
         {
             while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
             {
-                if (refresh.IsCompleted) refresh = Task.Run(() => RefreshSubscriptionAsync(false, token), token);
+                if (refresh.IsCompleted)
+                {
+                    try { await refresh.ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                    catch (Exception error) { log.Write("Subscription worker failed: " + error.GetType().Name + "; " + error.Message); }
+                    refresh = Task.Run(() => RefreshSubscriptionAsync(false, token), token);
+                }
                 if (!await network.WaitAsync(0, token).ConfigureAwait(false)) continue;
                 try
                 {
                     await ExpireLeaseAsync().ConfigureAwait(false);
                     if (engineChanged) { engineChanged = false; UpdateStatus(); probe = (engine as Engine)?.ProbeAccess; }
+                    await RecoverAsync(token).ConfigureAwait(false);
                 }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.Net.Http.HttpRequestException or TimeoutException)
+                { log.Write("Service maintenance failed; the next cycle will retry: " + error.GetType().Name + "; " + error.Message); }
                 finally { network.Release(); }
             }
         }
         finally { try { await refresh.ConfigureAwait(false); } catch (OperationCanceledException) when (token.IsCancellationRequested) { } }
     }
 
+    private void ScheduleRecovery(Exception error, CancellationToken token)
+    {
+        bool transient = error is TimeoutException or System.Net.Sockets.SocketException or CoreTransportException ||
+            error is System.Net.Http.HttpRequestException http && http.HttpRequestError is
+                System.Net.Http.HttpRequestError.ConnectionError or System.Net.Http.HttpRequestError.NameResolutionError;
+        if (token.IsCancellationRequested || !transient)
+        {
+            desiredSettings = null;
+            log.Write("Automatic connection recovery paused; user action is required.");
+            return;
+        }
+        DelayRecovery();
+    }
+
+    private void DelayRecovery(bool failed = true)
+    {
+        int seconds = 5 << recoveryFailures;
+        recoveryFailures = Math.Min(recoveryFailures + 1, 4);
+        seconds = Math.Min(seconds, 60);
+        nextRecovery = DateTimeOffset.UtcNow.AddSeconds(seconds);
+        log.Write(failed ? $"Connection recovery scheduled in {seconds} seconds." : "Service connection recovered.");
+    }
+
+    private async Task RecoverAsync(CancellationToken token)
+    {
+        if (desiredSettings is null || lease is not null) return;
+        if (engine?.Running == true)
+        {
+            if (DateTimeOffset.UtcNow < nextHealthCheck) return;
+            nextHealthCheck = DateTimeOffset.UtcNow.AddSeconds(5);
+            if (await engine.IsHealthyAsync(token).ConfigureAwait(false))
+            {
+                healthFailures = 0;
+                if (DateTimeOffset.UtcNow >= nextRecovery.AddMinutes(1)) recoveryFailures = 0;
+                return;
+            }
+            if (++healthFailures < 3) return;
+            log.Write("Network core control API failed three consecutive health checks; restarting the core.");
+            await StopAsync().ConfigureAwait(false);
+        }
+        if (DateTimeOffset.UtcNow < nextRecovery) return;
+        var requested = desiredSettings.Copy();
+        await StopAsync().ConfigureAwait(false);
+        try
+        {
+            await StartConnectionAsync(new("S-1-5-18", true), new("start", InstanceId: InstanceId), requested, token, recovering: true).ConfigureAwait(false);
+            DelayRecovery(failed: false);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error) { log.Write("Automatic connection recovery failed: " + error.GetType().Name + "; " + error.Message); }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        await StopAsync().ConfigureAwait(false);
-        await log.DisposeAsync().ConfigureAwait(false);
-        configuration.Dispose(); network.Dispose(); subscription.Dispose();
+        desiredSettings = null;
+        try { await StopAsync().ConfigureAwait(false); }
+        finally
+        {
+            try { await log.DisposeAsync().ConfigureAwait(false); }
+            finally { configuration.Dispose(); network.Dispose(); subscription.Dispose(); }
+        }
     }
 }

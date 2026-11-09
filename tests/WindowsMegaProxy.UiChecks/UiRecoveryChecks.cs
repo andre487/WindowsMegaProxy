@@ -89,6 +89,17 @@ internal static class UiRecoveryChecks
                     "Rebinding loads replacement settings even when its counters overlap the old instance.");
                 Assert(((Button)window.FindName("ConnectButton")).IsEnabled && tray.Text == AppIdentity.DisplayName + " — disconnected",
                     "A successful handshake restores editable controls and a truthful tray status.");
+                second.Engine.Start = _ => throw new TimeoutException("Network is not ready.");
+                var retrying = new RemoteEngine(client, _ => Task.FromResult(false));
+                try { Wait(window, retrying.StartAsync(newer)); } catch (IOException) { }
+                Wait(window, Invoke(window, "RefreshServiceAsync"));
+                Assert(((TextBlock)window.FindName("StatusText")).Text == "Recovering connection…" &&
+                    ((Button)window.FindName("ConnectButton")).Content.ToString() == "Cancel connection",
+                    "Pending service retries are visible and can be cancelled.");
+                Wait(window, Invoke(window, "ToggleAsync"));
+                Wait(window, Invoke(window, "RefreshServiceAsync"));
+                var state = client.CallAsync(new("status")); Wait(window, state);
+                Assert(state.Result.Status is { Running: false, Recovering: false }, "Cancelling from the UI clears the service's recovery intent.");
             }
             finally { Wait(window, second.DisposeAsync().AsTask()); }
         }

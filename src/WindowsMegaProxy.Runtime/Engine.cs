@@ -90,7 +90,10 @@ public sealed partial class Engine : IEngine
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(15));
             Log?.Invoke("Checking HTTP/3 proxy availability without TUN.");
-            var result = await RunCoreToolAsync(CoreExecutable(alpha: true), config, http3ProbeUri.ToString(), deadline.Token);
+            (int ExitCode, string Error) result;
+            try { result = await RunCoreToolAsync(CoreExecutable(alpha: true), config, http3ProbeUri.ToString(), deadline.Token); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            { throw new TimeoutException("The HTTP/3 availability check timed out."); }
             if (result.ExitCode != 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -226,6 +229,18 @@ public sealed partial class Engine : IEngine
         return ConnectionSnapshot.Parse(root, AppliedSettings!, showAll);
     }
 
+    public async Task<bool> IsHealthyAsync(CancellationToken token)
+    {
+        if (!Running) return false;
+        try
+        {
+            using var response = await client.GetAsync("version", token).ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException) { return false; }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return false; }
+    }
+
     public ProbeAccess ProbeAccess => new(probePort, probeSecret);
 
     public HttpClient CreateProbeClient(bool throughProfile)
@@ -302,21 +317,31 @@ public sealed partial class Engine : IEngine
     private async Task StopSelectedAsync()
     {
         listStopping?.Cancel();
-        try { await listUpdates.ConfigureAwait(false); } catch (OperationCanceledException) { }
+        try { await listUpdates.ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { Log?.Invoke("Podkop worker failed: " + error.GetType().Name + "; " + error.Message); }
         listStopping?.Dispose(); listStopping = null; listUpdates = Task.CompletedTask;
-        if (Running)
+        try
         {
-            CoreConsole.Stop();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try { await process!.WaitForExitAsync(timeout.Token); }
-            catch (OperationCanceledException) { if (Running) { process!.Kill(true); await process.WaitForExitAsync(); } }
+            if (Running)
+            {
+                CoreConsole.Stop();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try { await process!.WaitForExitAsync(timeout.Token); }
+                catch (OperationCanceledException) { job?.Dispose(); job = null; }
+            }
         }
-        job?.Dispose(); job = null;
-        await drain;
-        process?.Dispose();
-        process = null;
-        consoleLease?.Dispose(); consoleLease = null;
-        if (configPath.Length > 0) File.Delete(configPath);
+        finally
+        {
+            job?.Dispose(); job = null;
+            try { await drain.WaitAsync(TimeSpan.FromSeconds(5)); }
+            finally
+            {
+                process?.Dispose(); process = null;
+                consoleLease?.Dispose(); consoleLease = null;
+                if (configPath.Length > 0) File.Delete(configPath);
+            }
+        }
         Log?.Invoke("Network core stopped.");
     }
 
@@ -346,10 +371,10 @@ public sealed partial class Engine : IEngine
                         }
                     }
                 }
-                catch (Exception error) when (error is IOException or InvalidOperationException) { Log?.Invoke("Podkop cache refresh failed; active rules were retained."); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) { Log?.Invoke("Podkop cache refresh failed; active rules were retained: " + error.Message); }
             foreach (var group in PodkopCatalog.Groups(settings).Where(group => group.Length > 1))
                 try { cache.MergeGroup(group); }
-                catch (Exception error) when (error is IOException or InvalidDataException or System.Text.Json.JsonException)
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
                 { Log?.Invoke("Podkop combined rule set could not be refreshed; the previous set was retained."); }
         }
         while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false));

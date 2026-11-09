@@ -1,10 +1,8 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.ServiceProcess;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Win32;
 using WindowsMegaProxy;
 
 internal sealed class Program : ServiceBase
@@ -35,8 +33,9 @@ internal sealed class Program : ServiceBase
     private void StopCore()
     {
         stopping.Cancel();
-        try { run.GetAwaiter().GetResult(); }
+        try { run.WaitAsync(TimeSpan.FromSeconds(18)).GetAwaiter().GetResult(); }
         catch (OperationCanceledException) { }
+        catch (Exception error) { Fatal(error); }
         finally { runtime?.Dispose(); runtime = null; }
     }
     protected override void OnShutdown() => StopCore();
@@ -49,27 +48,29 @@ internal sealed class Program : ServiceBase
             await using var broker = new ServiceBroker(store, SetAutostartAsync);
             var server = new ServicePipeServer(broker);
             var maintenance = broker.MaintainAsync(stopping.Token);
-            Task startup = Task.CompletedTask;
-            if (broker.AutoConnect)
-                startup = Task.Run(async () =>
-                {
-                    try { await broker.HandleAsync(new("S-1-5-18", true), new("start", InstanceId: broker.InstanceId), stopping.Token); }
-                    catch (Exception error) { EventLog.WriteEntry(ServiceName, DiagnosticLog.Redact(error.Message), EventLogEntryType.Error); }
-                });
-            try { await server.RunAsync(stopping.Token); }
+            var serving = server.RunAsync(stopping.Token);
+            try
+            {
+                await ServiceLifetime.WatchAsync(serving, maintenance, stopping.Token);
+            }
+            catch (Exception error) when (!stopping.IsCancellationRequested) { Fatal(error); }
             finally
             {
                 stopping.Cancel();
-                try { await maintenance; } catch (OperationCanceledException) { }
-                await startup;
+                try { await Task.WhenAll(serving, maintenance).WaitAsync(TimeSpan.FromSeconds(15)); }
+                catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
             }
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
         catch (Exception error)
         {
-            EventLog.WriteEntry(ServiceName, DiagnosticLog.Redact(error.ToString()), EventLogEntryType.Error);
-            Environment.Exit(1);
+            Fatal(error);
         }
+    }
+
+    private void Fatal(Exception error)
+    {
+        ServiceLifetime.ExitAfterFailure(() => EventLog.WriteEntry(ServiceName, DiagnosticLog.Redact(error.ToString()), EventLogEntryType.Error));
     }
 
     private static Task SetAutostartAsync(bool enabled)

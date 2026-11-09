@@ -80,11 +80,14 @@ public static class SshConfiguration
             await Task.WhenAll(output, errors, scan.WaitForExitAsync(timeout.Token));
             var keys = (await output).Split('\n').Where(line => !line.StartsWith('#')).Select(line => line.Split((char[]?)null, 4, StringSplitOptions.RemoveEmptyEntries))
                 .Where(parts => parts.Length >= 3).Select(parts => parts[1] + " " + parts[2]).ToArray();
+            if (keys.Length == 0) throw new TimeoutException("The SSH server did not return a host key.");
             var key = keys.FirstOrDefault(value => Fingerprint(value) == trustedFingerprint)
                 ?? (trustedFingerprint.Length == 0 || allowChangedKey ? keys.FirstOrDefault() : null);
             if (key is null) throw new IOException(Ui.T(trustedFingerprint.Length == 0 ? "Could not read the SSH server key." : "The SSH server key does not match the trusted fingerprint."));
             return key;
         }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("The SSH server key request timed out."); }
         finally { if (!scan.HasExited) { scan.Kill(true); await scan.WaitForExitAsync(); } }
     }
 
