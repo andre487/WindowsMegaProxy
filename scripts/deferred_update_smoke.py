@@ -25,10 +25,22 @@ from service_control import running_images, service_state
 
 def wait_until(check, message, seconds=120):
     for _ in range(seconds * 4):
-        if check():
-            return
+        result = check()
+        if result:
+            return result
         time.sleep(0.25)
     raise AssertionError(message)
+
+
+def wait_for_tray_client():
+    user32.IsWindowVisible.argtypes = [ct.c_void_p]
+
+    def hidden_window():
+        windows = workspace_windows("MegaProxy")
+        return windows if len(windows) == 1 and not user32.IsWindowVisible(windows[0][0]) else None
+
+    # HWND creation precedes WPF Loaded, which hides a --tray window.
+    return wait_until(hidden_window, "The boot update did not restore exactly one hidden tray client in the logged-on session.", 30)
 
 
 def check(setup, logs, destination, data):
@@ -119,10 +131,7 @@ def check(setup, logs, destination, data):
         wait_until(lambda: sp.check_output(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", query], text=True).strip() == str(expected_result),
                    "The SYSTEM update worker reported an unexpected result.", 30)
         assert service_start() == 2
-        user32.IsWindowVisible.argtypes = [ct.c_void_p]
-        wait_until(lambda: bool(workspace_windows("MegaProxy")), "The boot update did not restore the tray client in the logged-on session.", 30)
-        windows = workspace_windows("MegaProxy")
-        assert len(windows) == 1 and not user32.IsWindowVisible(windows[0][0]), "Boot updates must restore a hidden tray client."
+        windows = wait_for_tray_client()
         session = ct.c_uint32()
         assert ct.windll.kernel32.ProcessIdToSessionId(windows[0][1], ct.byref(session)) and session.value > 0, "The tray client must never run in session zero."
         stop_workspace_app(dev=False, workspace_only=False)
@@ -163,6 +172,68 @@ def check(setup, logs, destination, data):
         assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == "0.0.0", "A damaged staged installer must never run."
         verify_settings()
         command("--configure-mode", "manual")
+        prepare("manual", "replacement")
+        command("--install-update", "launch")
+        original_hash = digest(destination / "update/setup.exe", "sha256")
+        newer = json.loads((feed / "update-manifest.json").read_bytes())
+        parts = list(map(int, version().split(".")))
+        parts[2] += 1
+        newer_version = ".".join(map(str, parts))
+        newer["version"] = newer_version
+        item = newer["components"]["installer"]
+        item.update(version=newer_version, file=f"WindowsMegaProxy-{newer_version}-win-x64-setup.exe")
+        item["url"] = f"https://github.com/andre487/WindowsMegaProxy/releases/download/v{newer_version}/{item['file']}"
+        newer_feed = fixture / "newer-feed"
+        newer_feed.mkdir(exist_ok=True)
+        signed_manifest(newer, newer_feed, key)
+        cache.mkdir(parents=True, exist_ok=True)
+        (cache / "state.json").write_text(json.dumps({
+            "Manifest": base64.b64encode((newer_feed / "update-manifest.json").read_bytes()).decode(),
+            "Signature": base64.b64encode((newer_feed / "update-manifest.sig").read_bytes()).decode()}), encoding="utf-8")
+        (cache / "setup.exe").write_bytes(b"invalid replacement")
+        invalid = sp.run([str(helper), "--install-update", "launch"], timeout=180)
+        assert invalid.returncode != 0 and pending()["Version"] == version()
+        assert digest(destination / "update/setup.exe", "sha256") == original_hash, "A rejected replacement must retain the previously staged installer."
+        shutil.copy2(setup, cache / "setup.exe")
+        command("--install-update", "launch")
+        assert pending()["Version"] == newer_version and not (cache / "setup.exe").exists()
+        assert not (destination / "update/setup.exe.previous").exists(), "A committed replacement must release the superseded payload."
+        prepare("manual", 4)
+        failing_source = fixture / "FailingInstaller.cs"
+        failing_setup = fixture / "failing-setup.exe"
+        failing_source.write_text("class Program { static int Main() { return 1; } }", encoding="utf-8")
+        compiler = Path(os.environ["SystemRoot"]) / "Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+        sp.run([str(compiler), "/nologo", "/target:winexe", f"/out:{failing_setup}", str(failing_source)], check=True, timeout=60)
+        failed_manifest = json.loads((feed / "update-manifest.json").read_bytes())
+        failed_manifest["components"]["installer"].update(size=failing_setup.stat().st_size, sha256=digest(failing_setup, "sha256"))
+        failed_feed = fixture / "failed-feed"
+        failed_feed.mkdir(exist_ok=True)
+        signed_manifest(failed_manifest, failed_feed, key)
+        shutil.copy2(failing_setup, cache / "setup.exe")
+        (cache / "state.json").write_text(json.dumps({
+            "Manifest": base64.b64encode((failed_feed / "update-manifest.json").read_bytes()).decode(),
+            "Signature": base64.b64encode((failed_feed / "update-manifest.sig").read_bytes()).decode()}), encoding="utf-8")
+        command("--install-update", "launch")
+        worker = destination / "update/worker/WindowsMegaProxy.Service.exe"
+        failed = sp.run([str(worker), "--run-staged-update"], timeout=120)
+        assert failed.returncode == 1 and pending()["When"] == "failed"
+        assert worker.exists() and (destination / "update/setup.exe").exists(), "Failed installation must retain its verified recovery package."
+        wait_until(lambda: bool(workspace_windows("MegaProxy")), "A failed installation must reopen a usable recovery UI.", 30)
+        stop_workspace_app(dev=False, workspace_only=False)
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy", 0, winreg.KEY_SET_VALUE) as registration:
+            winreg.SetValueEx(registration, "PendingUpdate", 0, winreg.REG_SZ, json.dumps({"Version": version(), "When": "applying"}))
+        with sp.Popen([str(destination / "WindowsMegaProxy.exe")]) as application:
+            wait_until(lambda: bool(workspace_windows("MegaProxy")), "A stale applying record must not block the client.", 30)
+            assert application.poll() is None
+            stop_workspace_app(dev=False, workspace_only=False)
+            application.wait(timeout=30)
+        wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "Recovery helpers did not exit.", 30)
+        helper.unlink()
+        (destination / "WindowsMegaProxy.Runtime.dll").unlink()
+        sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
+                f"/LOG={logs / 'repair-missing-helper.log'}"], check=True, timeout=600)
+        assert pending() is None and helper.exists(), "The new installer must repair missing old helper/runtime files."
+        verify_settings()
         sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
                 f"/LOG={logs / 'deferred-personal-install.log'}"], check=True, timeout=600)
         wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "The personal cleanup helper has not released its runtime.", 30)

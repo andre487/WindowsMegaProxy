@@ -9,6 +9,10 @@ import common
 
 if __name__ == "__main__":
     common.ROOT = Path.cwd()
+    if sys.argv[1:2] == ["--verify-upgrade"]:
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        runpy.run_path(str(Path(__file__).with_name("update_smoke.py")), run_name="__main__")
+        sys.exit(0)
     importlib.import_module("authenticode")
     # Application build and dependency versions belong to the tag being rebuilt.
     sys.path.insert(0, str(common.ROOT / "scripts"))

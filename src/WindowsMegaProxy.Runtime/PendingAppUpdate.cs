@@ -17,6 +17,27 @@ public sealed record PendingAppUpdate(string Version, string When)
 
     public static PendingAppUpdate? Read()
     {
+        try { return ReadCore(); }
+        catch (Exception error) when (error is JsonException or FormatException or InvalidDataException)
+        {
+            LogRecovery("Invalid pending update registration; manual recovery is available: " + error.Message);
+            return null;
+        }
+    }
+
+    public static void LogRecovery(string message)
+    {
+        try
+        {
+            string directory = StartupConfiguration.Mode == "service" ? SettingsStore.DirectoryPath : StartupConfiguration.LocalDirectory;
+            new DiagnosticLog(Path.Combine(directory, "logs"), initialLimit: 100).Write(message);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { Trace.TraceError(DiagnosticLog.Redact(message + "; logging failed: " + error.Message)); }
+    }
+
+    private static PendingAppUpdate? ReadCore()
+    {
         if (AppIdentity.IsDev) return null;
         bool personal = UserInstallation.IsUser;
         using var key = (personal ? Registry.CurrentUser : Registry.LocalMachine)
@@ -24,19 +45,26 @@ public sealed record PendingAppUpdate(string Version, string When)
         if (key?.GetValue(RegistryValue) is not string value) return null;
         if (value.Length > 4096) throw new InvalidDataException("Invalid pending update record.");
         var pending = JsonSerializer.Deserialize<PendingAppUpdate>(value) ?? throw new InvalidDataException("Invalid pending update record.");
+        if (string.IsNullOrEmpty(pending.Version)) throw new InvalidDataException("Missing pending update version.");
         _ = AppUpdateTrust.ParseVersion(pending.Version);
-        if (pending.When is not ("now" or "launch" or "reboot" or "applying")) throw new InvalidDataException("Invalid pending update timing.");
-        return pending.When == "applying" || AppUpdateTrust.IsNewer(pending.Version, AppUpdateTrust.CurrentVersion) ? pending : null;
+        if (pending.When is not ("now" or "launch" or "reboot" or "applying" or "failed")) throw new InvalidDataException("Invalid pending update timing.");
+        return Recover(pending, AppUpdateTrust.CurrentVersion, pending.When is "now" or "applying" && WorkerRunning());
     }
+
+    public static PendingAppUpdate? Recover(PendingAppUpdate pending, Version installed, bool workerRunning) =>
+        pending.When is "now" or "applying" ? pending with { When = workerRunning ? pending.When : "failed" } :
+        pending.When == "failed" || AppUpdateTrust.IsNewer(pending.Version, installed) ? pending : null;
 
     public static bool WorkerRunning()
     {
         try
         {
-            using var lease = new FileStream(Path.Combine(AppContext.BaseDirectory, "update", "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            using var lease = new FileStream(Path.Combine(AppContext.BaseDirectory, "update", "install.lock"), FileMode.Open, FileAccess.Read, FileShare.None);
             return false;
         }
         catch (IOException error) when ((error.HResult & 0xFFFF) is 32 or 33) { return true; }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
     }
 
     public static async Task RequestAsync(string action, bool applyPending = false)

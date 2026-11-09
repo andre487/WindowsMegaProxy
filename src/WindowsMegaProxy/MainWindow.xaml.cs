@@ -1377,7 +1377,11 @@ public partial class MainWindow : Window
                 Task.WhenAll(fileOperations.ToArray()));
         }
         catch (OperationCanceledException) when (updatesStopping.IsCancellationRequested) { }
-        catch (Exception error) { MessageBox.Show(this, error.Message, Ui.T("Disconnecting")); }
+        catch (Exception error)
+        {
+            if (installingAppUpdate) WriteLog("Application update handoff continues after shutdown failure: " + error.Message);
+            else MessageBox.Show(this, error.Message, Ui.T("Disconnecting"));
+        }
         finally
         {
             await logWriter.DisposeAsync();

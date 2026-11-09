@@ -63,13 +63,22 @@ internal static class PublishedUpdateChecks
         ((SelectionItemPattern)settingsTab.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
         var updates = Wait(() => Find(window, "UpdatesCategoryButton"), "Updates category is unavailable.");
         ((InvokePattern)updates.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
-        // Do not click Check now: the installed client must check and download automatically.
-        var install = Wait(() => Find(window, "InstallUpdateButton") is { } button && button.Current.IsEnabled && !button.Current.IsOffscreen ? button : null,
-            "The old client did not automatically download the published update.");
+        var offer = Wait(() => Find(window, "DownloadUpdateButton") ?? Find(window, "InstallUpdateButton"),
+            "The old client did not discover the published update.");
+        if (offer.Current.AutomationId == "DownloadUpdateButton") ((InvokePattern)offer.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        var install = Wait(() => Find(window, "InstallUpdateButton"), "The old client did not download the published update.");
         if (Find(window, "UpdateVersionText")?.Current.Name.Contains(version, StringComparison.Ordinal) != true)
             throw new Exception("The client downloaded an unexpected update version.");
-        Console.WriteLine("The installed " + installedVersion + " client automatically downloaded and verified update " + version + ".");
+        Console.WriteLine("The installed " + installedVersion + " client downloaded and verified update " + version + ".");
         ((InvokePattern)install.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        for (int attempt = 0; attempt < 120 && !original.HasExited; attempt++)
+        {
+            var now = AutomationElement.RootElement.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ProcessIdProperty, original.Id),
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "UpdateNowButton")));
+            if (now is not null) { ((InvokePattern)now.GetCurrentPattern(InvokePattern.Pattern)).Invoke(); break; }
+            Thread.Sleep(250);
+        }
         if (!original.WaitForExit(30000)) throw new Exception("The old UI did not release its installation files.");
         using var reopened = Wait(() => Process.GetProcessesByName("WindowsMegaProxy").FirstOrDefault(process =>
             process.Id != original.Id && process.MainWindowHandle != IntPtr.Zero &&

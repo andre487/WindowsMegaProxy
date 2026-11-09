@@ -123,6 +123,19 @@ internal static class AppUpdateChecks
                 "Checking finds a signed update and offers notification without downloading the installer.");
             await staged.CheckAsync(default, download: true);
             Check(staged.Ready && stagedFeed.Downloads == 1, "Only the explicit download step fetches the installer.");
+            string protectedTarget = Path.Combine(root, "protected-setup.exe");
+            File.Copy(staged.InstallerPath, protectedTarget + ".previous");
+            File.WriteAllText(protectedTarget, "replacement interrupted before committing its manifest");
+            var recover = typeof(Installation).GetMethod("VerifiedStagedInstallerAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            string recovered = await (Task<string>)recover.Invoke(null, [protectedTarget, staged.Package!])!;
+            Check(recovered == protectedTarget + ".previous", "A staged replacement interrupted before manifest commit recovers the previous signed installer.");
+            File.WriteAllText(protectedTarget + ".previous", "tampered backup");
+            try
+            {
+                await (Task<string>)recover.Invoke(null, [protectedTarget, staged.Package!])!;
+                throw new Exception("Recovery accepted an unsigned replacement.");
+            }
+            catch (CryptographicException) { }
         }
         using var feed = new Feed();
         using (var directFeed = new Feed { Unavailable = true })
@@ -136,6 +149,52 @@ internal static class AppUpdateChecks
             Check(proxied.Ready && directFeed.Requests == 0 && proxyFeed.Downloads == 1, "Metadata, signatures and installer all use the proxy transport without direct fallback.");
         }
         string cache = Path.Combine(root, "cache");
+        using (var recoveryFeed = new Feed())
+        using (var recovery = recoveryFeed.Manager(Path.Combine(root, "recovery")))
+        {
+            await recovery.CheckAsync(default, download: true);
+            byte[] original = File.ReadAllBytes(recovery.InstallerPath);
+            recoveryFeed.Version = "0.0.3";
+            recoveryFeed.MissingInstaller = true;
+            await recovery.CheckAsync(default);
+            Check(recovery.Ready && recovery.Package!.Version == "0.0.2" && File.ReadAllBytes(recovery.InstallerPath).SequenceEqual(original),
+                "An incomplete newer release preserves the verified recovery installer.");
+            Check(!recovery.CheckDue, "Failures must not retry on every UI tick.");
+            recoveryFeed.Now = recoveryFeed.Now.AddMinutes(5);
+            Check(recovery.CheckDue, "An unsuccessful daily check retries after five minutes instead of waiting a day.");
+            using (var resumed = recoveryFeed.Manager(Path.Combine(root, "recovery")))
+            {
+                await resumed.InitializeAsync(default);
+                Check(resumed.Ready && resumed.CheckDue, "The verified package and failure retry schedule survive restart.");
+            }
+            recoveryFeed.MissingInstaller = false;
+            await recovery.CheckAsync(default);
+            Check(!recovery.Ready && recovery.Package!.Version == "0.0.3" && File.ReadAllBytes(recovery.InstallerPath).SequenceEqual(original),
+                "Discovering a new version preserves the previous payload until a replacement is verified.");
+            recoveryFeed.CorruptPayload = true;
+            await recovery.CheckAsync(default, download: true);
+            Check(recovery.Ready && recovery.Package!.Version == "0.0.2" && File.ReadAllBytes(recovery.InstallerPath).SequenceEqual(original),
+                "A failed replacement restores the installable recovery offer.");
+            recoveryFeed.CorruptPayload = false;
+            await recovery.CheckAsync(default, download: true);
+            Check(recovery.Ready && recovery.Package!.Version == "0.0.3" && recovery.State.FailedChecks == 0,
+                "A verified replacement resets failure backoff and becomes the only installer.");
+        }
+        using (var lockedFeed = new Feed())
+        using (var lockedManager = lockedFeed.Manager(Path.Combine(root, "locked")))
+        {
+            Directory.CreateDirectory(Path.Combine(root, "locked"));
+            using (var locked = new FileStream(Path.Combine(root, "locked", "orphan.part"), FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await lockedManager.CheckAsync(default);
+                Check(lockedManager.ErrorKey is not null && lockedFeed.Requests == 0 && !lockedManager.CheckDue,
+                    "Cache initialization failures produce a visible error and bounded retry, without a request.");
+            }
+            await lockedManager.CheckAsync(default, download: true);
+            Check(lockedManager.Ready && lockedManager.ErrorKey is null, "An unlocked cache recovers on a manual retry.");
+        }
+        Check(!AppUpdatePolicy.CheckDue(now, now.AddMinutes(59), 8) && AppUpdatePolicy.CheckDue(now, now.AddHours(1), 8),
+            "Repeated failures use capped hourly backoff.");
         using (var manager = feed.Manager(cache))
         {
             Directory.CreateDirectory(cache);

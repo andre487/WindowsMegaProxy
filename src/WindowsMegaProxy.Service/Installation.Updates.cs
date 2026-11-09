@@ -50,6 +50,8 @@ public static partial class Installation
                         if (Directory.Exists(worker)) { CheckDirectory(worker); Directory.Delete(worker, true); }
                         string setup = Path.Combine(staging, "setup.exe");
                         if (File.Exists(setup)) File.Delete(setup);
+                        File.Delete(setup + ".previous");
+                        File.Delete(setup + ".part");
                     }
                 }
                 // The 0.0.4 update helper exits only after setup; wait for it to release the old EXE.

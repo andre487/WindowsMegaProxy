@@ -1,5 +1,5 @@
 name: Published update check
-run-name: Verify automatic update from 0.0.8 to ${{ inputs.version }}
+run-name: Verify update from the previous published release to ${{ inputs.version }}
 
 on:
   workflow_dispatch:
@@ -24,10 +24,12 @@ jobs:
       UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}\.tools\python
       UV_CACHE_DIR: ${{ github.workspace }}\.tools\uv-cache
       UPDATE_VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 

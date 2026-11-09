@@ -26,6 +26,19 @@ public static partial class Installation
         try
         {
             string command = args[0];
+            if (command == "--prepare-repair")
+            {
+                if (args.Length != 2 || !StartupConfiguration.IsElevated || AppIdentity.IsDev) throw new UnauthorizedAccessException("Repair requires administrator approval and an installation path.");
+                string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                bool personal = Path.GetFullPath(args[1]).TrimEnd(Path.DirectorySeparatorChar).Equals(UserInstallation.ProtectedRoot(programFiles, UserInstallation.Sid), StringComparison.OrdinalIgnoreCase);
+                string repairRoot = personal ? UserInstallation.ValidateDirectory(args[1], programFiles, UserInstallation.Sid) : InstallRoot(args[1], programFiles);
+                CheckDirectory(repairRoot);
+                string lockPath = Path.Combine(UpdateDirectory(repairRoot), "install.lock");
+                using var lease = File.Exists(lockPath) ? new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None) : null;
+                CloseClients(repairRoot, currentSession: personal);
+                CancelPendingUpdate(repairRoot, personal);
+                return 0;
+            }
             if (command is "--apply-pending-update" or "--run-staged-update")
             {
                 if (args.Length != 1) throw new ArgumentException("Invalid pending update arguments.");

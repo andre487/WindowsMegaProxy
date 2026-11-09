@@ -83,7 +83,6 @@ jobs:
         run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/publish_release.py restore
 
       - name: Download build dependencies
-        if: steps.restore.outputs.reused != 'true'
         shell: cmd
         run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/release_package.py --setup
 
@@ -95,6 +94,21 @@ jobs:
           WINDOWS_SIGNING_PFX: ${{ secrets.WINDOWS_SIGNING_PFX }}
           WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
         run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/release_package.py
+
+      - name: Verify upgrade from the latest complete published release
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/release_package.py --verify-upgrade %RELEASE_TAG:~1% --candidate artifacts/release
+
+      - name: Preserve upgrade diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-update-diagnostics
+          path: artifacts/update-checks/**
+          if-no-files-found: ignore
+          retention-days: 7
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

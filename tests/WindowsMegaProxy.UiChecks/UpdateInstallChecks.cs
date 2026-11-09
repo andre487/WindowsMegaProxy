@@ -73,7 +73,14 @@ internal static class UpdateInstallChecks
                     return;
                 }
                 if (Field("settingsLoading") || !Field("settingsReady") || starts != 0) return;
+                typeof(MainWindow).GetField("canEdit", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, false);
+                if (action == "now") typeof(MainWindow).GetField("analysisTask", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .SetValue(window, Task.FromException(new IOException("Synthetic failure while the service is unavailable.")));
+                typeof(MainWindow).GetField("scheduledAppUpdate", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, new PendingAppUpdate("0.0.1", "failed"));
+                typeof(MainWindow).GetMethod("UpdateAppUpdatesView", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
                 var install = (Button)window.FindName("InstallUpdateButton");
+                if (!install.IsEnabled || !((Button)window.FindName("CheckUpdatesButton")).IsEnabled)
+                    throw new Exception("Service read-only mode and a failed pending update must permit checking and elevated recovery installation.");
                 install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if (starts != 1 || !Field("installingAppUpdate") || install.IsEnabled) throw new Exception("Installation must disable repeat launches.");
                 install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

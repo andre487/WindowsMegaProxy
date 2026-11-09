@@ -29,26 +29,28 @@ public partial class MainWindow
         UpdatesThroughProxyBox.IsEnabled = AutomaticUpdatesBox.IsEnabled && !checkingAppUpdate;
         InstalledVersionText.Text = Ui.F("Installed version: {0}", AppUpdateTrust.CurrentVersion.ToString(3));
         string status = installingAppUpdate ? "Preparing update…" : appUpdates?.StatusKey ?? "Update files are unavailable.";
-        if (AppUpdatePolicy.ThroughProxy(settings) && (engine?.Running != true || !engine.HasProbeProfile))
+        if (!installingAppUpdate && !checkingAppUpdate && appUpdates?.Ready != true && scheduledAppUpdate is null && AppUpdatePolicy.ThroughProxy(settings) && (engine?.Running != true || !engine.HasProbeProfile))
             status = "Connect MegaProxy to check or download updates through the proxy.";
-        if (!installingAppUpdate && scheduledAppUpdate is { } pending)
-            status = pending.When is "now" or "applying" ? "Installing update…" : pending.When == "launch" ? "Update scheduled for the next application start." : "Update scheduled for the next computer restart.";
+        if (!installingAppUpdate && !checkingAppUpdate && scheduledAppUpdate is { } pending)
+            status = pending.When is "now" or "applying" ? "Installing update…" : pending.When == "failed" ? "Update installation was interrupted. Retry the installation." : pending.When == "launch" ? "Update scheduled for the next application start." : "Update scheduled for the next computer restart.";
         UpdateStatusText.Text = Ui.T(status);
         UpdateErrorText.Text = appUpdates?.ErrorKey is { } error && error != status ? Ui.T(error) : "";
         UpdateErrorText.Visibility = UpdateErrorText.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         bool ready = appUpdates?.Ready == true || scheduledAppUpdate is not null;
         bool available = appUpdates?.Package is not null || scheduledAppUpdate is not null;
-        UpdateVersionText.Text = available ? Ui.F("Available version: {0}", scheduledAppUpdate?.Version ?? appUpdates!.Package!.Version) : "";
+        bool newerDownload = appUpdates?.Package is { } offered && (scheduledAppUpdate is null || AppUpdateTrust.ParseVersion(offered.Version) > AppUpdateTrust.ParseVersion(scheduledAppUpdate.Version));
+        string? offeredVersion = newerDownload ? appUpdates!.Package!.Version : scheduledAppUpdate?.Version ?? appUpdates?.Package?.Version;
+        UpdateVersionText.Text = available ? Ui.F("Available version: {0}", offeredVersion!) : "";
         UpdateVersionText.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         UpdateReleaseLinkText.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
-        UpdateReleaseLink.NavigateUri = available ? new Uri($"https://github.com/{AppUpdateTrust.Repository}/releases/tag/v{scheduledAppUpdate?.Version ?? appUpdates!.Package!.Version}") : null;
-        DownloadUpdateButton.Visibility = available && !ready ? Visibility.Visible : Visibility.Collapsed;
-        DownloadUpdateButton.IsEnabled = !checkingAppUpdate && !installingAppUpdate && !quitting;
+        UpdateReleaseLink.NavigateUri = available ? new Uri($"https://github.com/{AppUpdateTrust.Repository}/releases/tag/v{offeredVersion}") : null;
+        DownloadUpdateButton.Visibility = (newerDownload || (scheduledAppUpdate?.When == "failed" && appUpdates?.Package is not null)) && appUpdates?.Ready != true ? Visibility.Visible : Visibility.Collapsed;
+        DownloadUpdateButton.IsEnabled = scheduledAppUpdate?.When is not ("now" or "applying") && !checkingAppUpdate && !installingAppUpdate && !quitting;
         InstallUpdateButton.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
-        InstallUpdateButton.Content = Ui.T(scheduledAppUpdate is null ? "Install update" : "Change update timing");
-        InstallUpdateButton.IsEnabled = ready && scheduledAppUpdate?.When is not ("now" or "applying") && canEdit && !AppIdentity.IsDev && !installingAppUpdate && !checkingAppUpdate && !quitting;
-        InstallUpdateButton.ToolTip = AppIdentity.IsDev ? Ui.T("Development builds are updated with run.cmd.") : !canEdit ? Ui.T("Administrator rights are required to install updates.") : null;
-        CheckUpdatesButton.IsEnabled = scheduledAppUpdate is null && !checkingAppUpdate && !installingAppUpdate && !quitting && !settingsLoading;
+        InstallUpdateButton.Content = Ui.T(scheduledAppUpdate is null || (newerDownload && appUpdates?.Ready == true) || scheduledAppUpdate.When == "failed" ? "Install update" : "Change update timing");
+        InstallUpdateButton.IsEnabled = ready && scheduledAppUpdate?.When is not ("now" or "applying") && !AppIdentity.IsDev && !installingAppUpdate && !checkingAppUpdate && !quitting;
+        InstallUpdateButton.ToolTip = AppIdentity.IsDev ? Ui.T("Development builds are updated with run.cmd.") : null;
+        CheckUpdatesButton.IsEnabled = scheduledAppUpdate?.When is not ("now" or "applying") && !checkingAppUpdate && !installingAppUpdate && !quitting && !settingsLoading;
         bool transferring = checkingAppUpdate && (appUpdates?.StatusKey is "Checking for updates…" or "Downloading update…");
         CheckUpdatesButton.Content = Ui.T(transferring ? "Checking for updates…" : "Check now");
         UpdateDownloadProgress.IsIndeterminate = transferring && appUpdates?.StatusKey != "Downloading update…";
@@ -85,7 +87,7 @@ public partial class MainWindow
             await updateOperation;
         }
         catch (OperationCanceledException) when (updatesStopping.IsCancellationRequested) { }
-        catch (Exception error) { if (!quitting) WriteLog("Application update operation failed: " + error.GetType().Name + "."); }
+        catch (Exception error) { if (!quitting) appUpdates.ReportFailure(error); }
         finally { checkingAppUpdate = false; if (!quitting) UpdateAppUpdatesView(); }
     }
 
@@ -95,10 +97,11 @@ public partial class MainWindow
         if (automaticUpdateChecks)
         {
             scheduledAppUpdate = await Task.Run(PendingAppUpdate.Read, updatesStopping.Token);
-            if (scheduledAppUpdate is not null) { UpdateAppUpdatesView(); return; }
+            if (scheduledAppUpdate?.When is "now" or "applying") { UpdateAppUpdatesView(); return; }
         }
+        if (!manual && !appUpdates!.CheckDue) return;
         await appUpdates!.InitializeAsync(updatesStopping.Token);
-        if (!manual && (!canEdit || !AppUpdatePolicy.Enabled(settings))) return;
+        if (!manual && (!settingsReady || !AppUpdatePolicy.Enabled(settings))) return;
         if (manual || appUpdates.CheckDue)
         {
             if (AppUpdatePolicy.ThroughProxy(settings) && (engine?.Running != true || !engine.HasProbeProfile))
@@ -116,7 +119,7 @@ public partial class MainWindow
         if (quitting || channelConflictPending || appUpdates.Package is null) return;
         bool visible = IsVisible && Sections.SelectedItem == SettingsTab && settingsPage == "updates";
         if (visible) await appUpdates.MarkNotificationAsync(true, updatesStopping.Token);
-        else if ((manual || AppUpdatePolicy.Enabled(settings)) && canEdit && appUpdates.NotificationDue)
+        else if ((manual || AppUpdatePolicy.Enabled(settings)) && appUpdates.NotificationDue)
         {
             updateNoticeVersion = appUpdates.Package!.Version;
             tray.ShowBalloonTip(10000, "MegaProxy", Ui.F("Update {0} is available. Click to open updates.", updateNoticeVersion), Forms.ToolTipIcon.Info);
@@ -143,14 +146,17 @@ public partial class MainWindow
 
     private async void InstallUpdateClick(object sender, RoutedEventArgs e)
     {
-        if ((appUpdates?.Ready != true && scheduledAppUpdate is null) || !canEdit || AppIdentity.IsDev || quitting || installingAppUpdate) return;
+        if ((appUpdates?.Ready != true && scheduledAppUpdate is null) || AppIdentity.IsDev || quitting || installingAppUpdate) return;
         installingAppUpdate = true; SetBusy(busy);
         try
         {
             string? action = chooseAppUpdate();
             if (action is null) return;
-            await FlushSettingsFormAsync();
-            await FlushSettingsAsync();
+            if (canEdit)
+            {
+                await FlushSettingsFormAsync();
+                await FlushSettingsAsync();
+            }
             await installAppUpdate(action);
             // Setup must replace our loaded DLLs; never offer a second launch after handoff.
             if (!quitting && action is "now" or "restart") await QuitAsync();
