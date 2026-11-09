@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <MegaProxyDiagnosticsRoot Condition="'$(MegaProxyDiagnosticsRoot)' == ''">$(MSBuildProjectDirectory)/../..</MegaProxyDiagnosticsRoot>
+    </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../WindowsMegaProxy.Core/WindowsMegaProxy.Core.csproj" />
         <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
@@ -6,12 +9,12 @@
         <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
         <EmbeddedResource Include="../../assets/update-public-key.txt" LogicalName="WindowsMegaProxy.UpdatePublicKey" />
         <Content
-            Include="../../artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe"
+            Include="$(MegaProxyDiagnosticsRoot)/artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe"
             Link="WindowsMegaProxy.Diagnostics.exe"
             CopyToOutputDirectory="PreserveNewest"
             CopyToPublishDirectory="PreserveNewest" />
         <Content
-            Include="../../artifacts/diagnostics/Diagnostics-NOTICES.txt"
+            Include="$(MegaProxyDiagnosticsRoot)/artifacts/diagnostics/Diagnostics-NOTICES.txt"
             Link="Notices/Diagnostics-NOTICES.txt"
             CopyToOutputDirectory="PreserveNewest"
             CopyToPublishDirectory="PreserveNewest" />
@@ -19,9 +22,9 @@
     <Target
         Name="BuildHttp3Diagnostics"
         BeforeTargets="PrepareForBuild"
-        Inputs="../../native/diagnostics/main.go;../../native/diagnostics/go.mod;../../native/diagnostics/go.sum;../../native/diagnostics/LICENSE;../../scripts/build_diagnostics.py"
-        Outputs="../../artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe;../../artifacts/diagnostics/Diagnostics-NOTICES.txt"
+        Inputs="$(MegaProxyDiagnosticsRoot)/native/diagnostics/main.go;$(MegaProxyDiagnosticsRoot)/native/diagnostics/go.mod;$(MegaProxyDiagnosticsRoot)/native/diagnostics/go.sum;$(MegaProxyDiagnosticsRoot)/native/diagnostics/LICENSE;$(MegaProxyDiagnosticsRoot)/scripts/build_diagnostics.py"
+        Outputs="$(MegaProxyDiagnosticsRoot)/artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe;$(MegaProxyDiagnosticsRoot)/artifacts/diagnostics/Diagnostics-NOTICES.txt"
         Condition="'$(DesignTimeBuild)' != 'true'">
-        <Exec Command="&quot;$(MSBuildProjectDirectory)\..\..\scripts\tools.cmd&quot; &quot;$(MSBuildProjectDirectory)\..\..\scripts\build_diagnostics.py&quot;" />
+        <Exec Command="&quot;$(MegaProxyDiagnosticsRoot)/scripts/tools.cmd&quot; &quot;$(MegaProxyDiagnosticsRoot)/scripts/build_diagnostics.py&quot;" />
     </Target>
 </Project>

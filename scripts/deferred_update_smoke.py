@@ -68,7 +68,9 @@ def check(setup, logs, destination, data, *, fresh=False):
     for project, folder in (("WindowsMegaProxy", "app"), ("WindowsMegaProxy.Service", "service")):
         output = fixture / folder
         dotnet("publish", str(source / f"src/{project}/{project}.csproj"), "-c", "Release", "-r", "win-x64",
-               *publish_options(), "-p:Version=0.0.0", "-p:IncludeSourceRevisionInInformationalVersion=false", "-o", str(output))
+               *publish_options(), f"-p:MegaProxyDiagnosticsRoot={ROOT}", "-p:Version=0.0.0", "-p:IncludeSourceRevisionInInformationalVersion=false", "-o", str(output))
+        assert digest(output / "WindowsMegaProxy.Diagnostics.exe", "sha256") == digest(ROOT / "artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe", "sha256")
+        assert (output / "Notices/Diagnostics-NOTICES.txt").is_file(), "The update fixture must include diagnostic license notices."
         merge(output, payload)
     feed = fixture / "feed"
     feed.mkdir(exist_ok=True)
