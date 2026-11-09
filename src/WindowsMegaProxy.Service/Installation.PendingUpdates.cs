@@ -42,6 +42,11 @@ public static partial class Installation
 
     private static void WriteUpdateRecord(bool personal, PendingAppUpdate? pending)
     {
+        if (pending?.When is "now" or "applying")
+        {
+            using var process = Process.GetCurrentProcess();
+            pending = pending with { WorkerPid = process.Id, WorkerStartedUtcTicks = process.StartTime.ToUniversalTime().Ticks };
+        }
         using var key = (personal ? Registry.CurrentUser : Registry.LocalMachine)
             .CreateSubKey(personal ? UserInstallation.RegistryPath : StartupConfiguration.RegistryPath);
         if (pending is null) key.DeleteValue(PendingAppUpdate.RegistryValue, false);
@@ -305,6 +310,7 @@ public static partial class Installation
                 mode = personal ? UserInstallation.ValidateMode(prepared.Mode) : prepared.Mode;
                 var package = VerifyPrepared(prepared);
                 updateVersion = package.Version;
+                WriteUpdateRecord(personal, new(package.Version, "applying"));
                 Version installed;
                 try { installed = AssemblyName.GetAssemblyName(Path.Combine(root, "WindowsMegaProxy.Runtime.dll")).Version!; }
                 catch (Exception error) when (error is IOException or BadImageFormatException)
@@ -314,7 +320,6 @@ public static partial class Installation
                     string target = Path.Combine(UpdateDirectory(root), "setup.exe");
                     target = await VerifiedStagedInstallerAsync(target, package);
                     installerVerified = true;
-                    WriteUpdateRecord(personal, new(package.Version, "applying"));
                     CloseClients(root, currentSession: personal);
                     var current = new MachineSettingsStore(personal ? UserInstallation.DataDirectory : null, machine: !personal).Load();
                     var start = new ProcessStartInfo(target) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root };

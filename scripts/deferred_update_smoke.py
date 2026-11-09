@@ -244,11 +244,22 @@ def check(setup, logs, destination, data):
             "Manifest": base64.b64encode((feed / "update-manifest.json").read_bytes()).decode(),
             "Signature": base64.b64encode((feed / "update-manifest.sig").read_bytes()).decode()}), encoding="utf-8")
         sp.run([str(personal_root / "WindowsMegaProxy.Service.exe"), "--install-update", "launch"], check=True, timeout=180)
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as registration:
+            personal_pending = json.loads(winreg.QueryValueEx(registration, "PendingUpdate")[0])
+        assert personal_pending["When"] == "launch" and personal_pending["Version"] == version(), "Personal update status must be readable from HKCU."
+        assert pending() is None, "Personal scheduling must not write system update status."
         sp.run([str(personal_home / "WindowsMegaProxy.Launcher.exe")], check=True, timeout=30)
         wait_until(lambda: product_version(personal_root / "WindowsMegaProxy.exe").split("+", 1)[0] == version() and bool(workspace_windows("MegaProxy")) and
                    not (personal_root / "update/worker").exists(), "The personal scheduled launcher did not apply its next-start update.", 180)
         dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", "--user-settings-check", "verify")
         assert service_state("WindowsMegaProxy") is None and pending() is None
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as registration:
+            try:
+                winreg.QueryValueEx(registration, "PendingUpdate")
+            except FileNotFoundError:
+                pass
+            else:
+                raise AssertionError("Successful personal installation must clear its HKCU update status.")
         assert "sing-box.exe" not in running_images()
         print("Deferred next-start installation, SYSTEM boot installation, scheduling isolation and damaged-package service recovery passed; no reboot or TUN.")
     finally:

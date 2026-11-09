@@ -8,15 +8,18 @@ internal static class InstallationChecks
 {
     public static void Run()
     {
-        var checkLock = typeof(PendingAppUpdate).GetMethod("CheckWorkerLock", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
-        string? diagnostic = null;
-        bool Check(Func<Stream> open) => (bool)checkLock.Invoke(null, [open, (Action<string>)(message => diagnostic = message)])!;
-        if (Check(() => throw new UnauthorizedAccessException("Protected staging directory.")) || diagnostic is null)
-            throw new Exception("An inaccessible update lock must allow client recovery and log the reason.");
-        if (!Check(() => throw new IOException("Sharing violation", unchecked((int)0x80070020))))
-            throw new Exception("A held installer lock must still prevent a competing client startup.");
-        if (Check(() => new MemoryStream()) || Check(() => throw new FileNotFoundException()) || Check(() => throw new DirectoryNotFoundException()))
-            throw new Exception("An available or missing lock must not suppress client startup.");
+        using var process = Process.GetCurrentProcess();
+        var active = new PendingAppUpdate("0.0.2", "applying", process.Id, process.StartTime.ToUniversalTime().Ticks);
+        if (PendingAppUpdate.WorkerRunning(active) != true || PendingAppUpdate.WorkerRunning(active with { WorkerStartedUtcTicks = 1 }) != false)
+            throw new Exception("Updater identity must match both PID and creation time.");
+        if (PendingAppUpdate.WorkerRunning(new("0.0.2", "applying")) is not null ||
+            PendingAppUpdate.Recover(active, new Version(0, 0, 1), null)?.When != "unknown")
+            throw new Exception("Legacy or inaccessible updater identity must remain unknown, not failed or running.");
+        var check = typeof(PendingAppUpdate).GetMethod("CheckWorker", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        if (check.Invoke(null, [active, (Func<int, long?>)(_ => throw new UnauthorizedAccessException())]) is not null)
+            throw new Exception("Process access denial must not block client startup or claim installation failed.");
+        if (!Equals(check.Invoke(null, [active, (Func<int, long?>)(_ => throw new ArgumentException())]), false))
+            throw new Exception("An exited updater must be recognized as stopped.");
         foreach (string state in new[] { "now", "applying" })
         {
             var pending = new PendingAppUpdate("0.0.2", state);

@@ -1,4 +1,5 @@
 {
+    "Installation status is unknown. You can retry through the elevated installer.": "Статус установки неизвестен. Можно повторить установку через установщик с повышенными правами.",
     "Recovering connection…": "Восстановление соединения…",
     "Global settings could not be loaded. Import or save repaired settings; the original file will be preserved.": "Не удалось загрузить общие настройки. Импортируйте или сохраните исправленную конфигурацию; исходный файл будет сохранён отдельно.",
     "About HTTP versions": "О версиях HTTP",

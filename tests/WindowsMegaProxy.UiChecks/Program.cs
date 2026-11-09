@@ -905,6 +905,14 @@ internal static partial class Program
         }
         CheckNow();
         Assert(((TextBlock)window.FindName("UpdateStatusText")).Text == Ui.T("Update files are unavailable."), "A missing release shows the unavailable-files error.");
+        var pendingField = typeof(MainWindow).GetField("scheduledAppUpdate", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var refreshView = typeof(MainWindow).GetMethod("UpdateAppUpdatesView", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        pendingField.SetValue(window, new PendingAppUpdate("0.0.2", "unknown"));
+        refreshView.Invoke(window, null);
+        Assert(((TextBlock)window.FindName("UpdateStatusText")).Text == Ui.T("Installation status is unknown. You can retry through the elevated installer.") && check.IsEnabled,
+            "Unknown installer status is explicit and does not block update checks.");
+        pendingField.SetValue(window, null);
+        refreshView.Invoke(window, null);
         Capture((Visual)window.Content, Path.Combine(output, "application-updates-unavailable.png"));
         var automatic = (CheckBox)window.FindName("AutomaticUpdatesBox");
         automatic.IsChecked = false; automatic.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent)); Layout(window);
