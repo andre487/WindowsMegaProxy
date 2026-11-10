@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using WindowsMegaProxy;
 
@@ -238,11 +239,11 @@ var connectionsJson = JsonNode.Parse("""
  {"metadata":{"processPath":"C:\\Apps\\exception.exe","destinationIP":"2001:db8::1","destinationPort":"443","network":"tcp"},"chains":["direct"],"rule":"process_path_regex => route(direct)","upload":1024,"download":2048}
 ]}
 """)!;
-var hiddenDefaults = ConnectionSnapshot.Parse(connectionsJson, new Settings(), false);
+var hiddenDefaults = ConnectionSnapshot.Parse(JsonSerializer.SerializeToElement(connectionsJson), new Settings(), false);
 Assert(hiddenDefaults.Rows.Count == 1 && hiddenDefaults.Rows[0].Process.EndsWith("exception.exe"), "Hide fallback connections, retaining explicit rules using the same outbound.");
 Assert(hiddenDefaults.Rows[0].Route == Ui.T("System") && hiddenDefaults.Rows[0].Destination == "[2001:db8::1]:443", "Human readable routes and IPv6.");
 Assert(hiddenDefaults.Upload == 4096 && hiddenDefaults.Download == 8192 && hiddenDefaults.Total == 2, "Traffic includes short-lived and hidden connections.");
-Assert(ConnectionSnapshot.Parse(connectionsJson, new Settings(), true).Rows.Count == 2, "Show all connections on request.");
+Assert(ConnectionSnapshot.Parse(JsonSerializer.SerializeToElement(connectionsJson), new Settings(), true).Rows.Count == 2, "Show all connections on request.");
 Assert(ConnectionSnapshot.RouteName("profile:" + profile.Id, settings) == profile.Name, "Profile tags resolve to names.");
 var sizeSettings = PortableConfiguration.Copy(settings); sizeSettings.LogSizeMb = 25;
 Assert(PortableConfiguration.Import(PortableConfiguration.Export(sizeSettings).ToJsonString(), new Settings()).LogSizeMb == 25, "Log size round trip in Windows options.");
@@ -332,16 +333,31 @@ Assert(!Http3Fallback.IsUnavailable(["HTTP/3 unavailable: x509: certificate expi
 Assert(!Http3Fallback.IsUnavailable(["HTTP/3 unavailable: authentication required (407)"]), "Authentication errors never downgrade.");
 Assert(!Http3Fallback.IsUnavailable(["HTTP/3 CONNECT: unexpected status: 403"]), "Access denials never downgrade.");
 Assert(!Http3Fallback.IsUnavailable(["unknown failure"]), "Unknown failures never downgrade.");
-var grouped = ConnectionSnapshot.Parse(JsonNode.Parse("""
+var grouped = ConnectionSnapshot.Parse(JsonSerializer.SerializeToElement(JsonNode.Parse("""
 {"connections":[
  {"chains":["direct"],"rule":"final"},
  {"chains":["proxy"],"rule":"domain => route(proxy)","upload":1024},
  {"chains":[],"rule":"domain => reject"},
  {"chains":["direct"],"rule":"domain reject.example => route(direct)"}
 ]}
-""")!, settings, true);
+""")!), settings, true);
 Assert(grouped.Rows.Select(row => row.RouteGroup).SequenceEqual(new[] { 2, 0, 1, 2 }), "Classify proxy, blocked and system connections by route metadata, not translated labels.");
 Assert(grouped.Rows[1].UploadedBytes == 1024, "Keep numeric transfer values for correct sorting.");
+var manyConnections = JsonSerializer.SerializeToElement(new
+{
+    uploadTotal = 1234567890123L, downloadTotal = 9876543210123L,
+    connections = Enumerable.Range(0, 3000).Select(i => new
+    {
+        id = i.ToString(), rule = i < 1500 ? "final" : "domain => route(proxy)", chains = new[] { "proxy" },
+        metadata = new { destinationIP = "2001:db8::1", destinationPort = 443, processPath = "sample.exe", network = "tcp" },
+        upload = 1024L, download = 2048L
+    })
+});
+var capped = ConnectionSnapshot.Parse(manyConnections, settings, false);
+Assert(capped.Total == 3000 && capped.Rows.Count == 1000 && capped.Rows[0].Id == "1500", "Filtering precedes the display cap while total includes every connection.");
+Assert(capped.Upload == 1234567890123L && capped.Download == 9876543210123L && capped.Rows[0].Destination == "[2001:db8::1]:443", "Large counters and IPv6 survive snapshot decoding.");
+Assert(ConnectionSnapshot.Parse(JsonSerializer.SerializeToElement(new { connections = (object?)null }), settings, true).Rows.Count == 0, "An empty core snapshot is supported.");
+Assert(ConnectionSnapshot.PollInterval(999) == TimeSpan.FromSeconds(2) && ConnectionSnapshot.PollInterval(1000) == TimeSpan.FromSeconds(5), "Large tables use a slower polling cadence.");
 string sshHostKey = "ssh-ed25519 " + Convert.ToBase64String(Convert.FromHexString("0000000B7373682D6564323535313900000020" + new string('0', 64)));
 var sshProfile = ProxyProfile.Create("SSH"); sshProfile.Proxy["type"] = "SSH"; sshProfile.Proxy["host"] = "ssh.example.com"; sshProfile.Proxy["port"] = 22;
 sshProfile.Proxy["username"] = "user"; sshProfile.Proxy["password"] = "secret";

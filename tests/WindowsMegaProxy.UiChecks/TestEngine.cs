@@ -22,6 +22,8 @@ internal sealed class TestEngine : IEngine
     public Func<CancellationToken, Task>? Start { get; set; }
     public bool Healthy { get; set; } = true;
     public Func<Task>? Stop { get; set; }
+    public Func<CancellationToken, Task<string>>? Http3 { get; set; }
+    public Func<CancellationToken, Task<ConnectionSnapshot>>? Connections { get; set; }
     public Task<bool> IsHealthyAsync(CancellationToken token) => Task.FromResult(Running && Healthy);
     public event Action? Exited;
     public event Action<string>? Log;
@@ -38,11 +40,11 @@ internal sealed class TestEngine : IEngine
     public Task StopAsync() { Stops++; Running = false; return Stop?.Invoke() ?? Task.CompletedTask; }
     public void Exit() { Running = false; Exited?.Invoke(); }
     public void Dispose() => Disposed = true;
-    public Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)
+    public Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll, CancellationToken token = default)
     {
         Polls++; PollThread = Environment.CurrentManagedThreadId;
-        return Task.FromResult(new ConnectionSnapshot([], 0, 0, 0));
+        return Connections?.Invoke(token) ?? Task.FromResult(new ConnectionSnapshot([], 0, 0, 0));
     }
     public HttpClient CreateProbeClient(bool throughProfile) => throw new InvalidOperationException("UI fixtures must not send network traffic.");
-    public Task<string> CheckHttp3Async(CancellationToken token) => Task.FromResult("");
+    public Task<string> CheckHttp3Async(CancellationToken token) => Http3?.Invoke(token) ?? Task.FromResult("");
 }

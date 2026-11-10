@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 
 namespace WindowsMegaProxy;
 
@@ -38,10 +38,14 @@ public sealed class ConnectionRow(string process, string destination, string net
 }
 public sealed record ConnectionSnapshot(IReadOnlyList<ConnectionRow> Rows, int Total, long Upload, long Download)
 {
-    public static ConnectionSnapshot Parse(JsonNode root, Settings settings, bool showAll)
+    public static TimeSpan PollInterval(int total) => TimeSpan.FromSeconds(total >= 1000 ? 5 : 2);
+
+    public static ConnectionSnapshot Parse(JsonElement root, Settings settings, bool showAll)
     {
-        var connections = root["connections"]?.AsArray() ?? new JsonArray();
-        var rows = new List<ConnectionRow>();
+        if (root.ValueKind != JsonValueKind.Object) throw new JsonException("Invalid core connection snapshot.");
+        var connections = Field(root, "connections");
+        int total = connections.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? 0 : connections.GetArrayLength();
+        var rows = new List<ConnectionRow>(Math.Min(total, 1000));
         string activeName = settings.ActiveProfile?.Name ?? Ui.T("Proxy");
         var profiles = settings.Profiles.ToDictionary(profile => profile.Id, profile => profile.Name);
         string Name(string tag) => tag switch
@@ -50,28 +54,36 @@ public sealed record ConnectionSnapshot(IReadOnlyList<ConnectionRow> Rows, int T
             _ when tag.StartsWith("profile:", StringComparison.Ordinal) => profiles.GetValueOrDefault(tag[8..]) ?? Ui.T("Profile"),
             _ => tag
         };
-        foreach (var item in connections)
+        if (total > 0) foreach (var item in connections.EnumerateArray())
         {
             // The API explicitly marks fallback routes as final; equal outbounds can still match different rules.
-            if (!showAll && item?["rule"]?.ToString() == "final") continue;
-            var metadata = item?["metadata"];
-            var host = metadata?["host"]?.ToString();
-            if (string.IsNullOrEmpty(host)) host = metadata?["destinationIP"]?.ToString();
+            string rule = Text(item, "rule") ?? "";
+            if (!showAll && rule == "final") continue;
+            var metadata = Field(item, "metadata");
+            var host = Text(metadata, "host");
+            if (string.IsNullOrEmpty(host)) host = Text(metadata, "destinationIP");
             if (host?.Contains(':') == true) host = "[" + host + "]";
-            var tags = (item?["chains"]?.AsArray() ?? new JsonArray()).Select(tag => tag?.ToString() ?? "").ToArray();
-            string rule = item?["rule"]?.ToString() ?? "";
+            var chains = Field(item, "chains");
+            var tags = chains.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? [] : chains.EnumerateArray().Select(tag => tag.ToString()).ToArray();
             bool blocked = tags.Any(tag => tag is "block" or "reject") || rule == "reject" || rule.Contains("=> reject", StringComparison.OrdinalIgnoreCase);
             int group = blocked ? 1 : tags.Any(tag => tag == "proxy" || tag.StartsWith("profile:", StringComparison.Ordinal)) ? 0 : 2;
             string route = blocked ? Ui.T("Blocked") : string.Join(" → ", tags.Select(Name));
-            rows.Add(new ConnectionRow(metadata?["processPath"]?.ToString() ?? "—", $"{host}:{metadata?["destinationPort"]}",
-                metadata?["network"]?.ToString()?.ToUpperInvariant() ?? "—", route,
-                Bytes(item?["upload"]?.GetValue<long>() ?? 0), Bytes(item?["download"]?.GetValue<long>() ?? 0), group,
-                item?["upload"]?.GetValue<long>() ?? 0, item?["download"]?.GetValue<long>() ?? 0,
-                item?["id"]?.ToString() ?? $"{metadata?["sourceIP"]}:{metadata?["sourcePort"]}/{host}:{metadata?["destinationPort"]}/{metadata?["network"]}/{metadata?["processPath"]}"));
+            long upload = Number(item, "upload"), download = Number(item, "download");
+            rows.Add(new ConnectionRow(Text(metadata, "processPath") ?? "—", $"{host}:{Text(metadata, "destinationPort")}",
+                Text(metadata, "network")?.ToUpperInvariant() ?? "—", route,
+                Bytes(upload), Bytes(download), group, upload, download,
+                Text(item, "id") ?? $"{Text(metadata, "sourceIP")}:{Text(metadata, "sourcePort")}/{host}:{Text(metadata, "destinationPort")}/{Text(metadata, "network")}/{Text(metadata, "processPath")}"));
             if (rows.Count == 1000) break;
         }
-        return new(rows, connections.Count, root["uploadTotal"]?.GetValue<long>() ?? 0, root["downloadTotal"]?.GetValue<long>() ?? 0);
+        return new(rows, total, Number(root, "uploadTotal"), Number(root, "downloadTotal"));
     }
+
+    private static JsonElement Field(JsonElement parent, string name) =>
+        parent.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? default : parent.TryGetProperty(name, out var value) ? value : default;
+    private static string? Text(JsonElement parent, string name) => Field(parent, name) is var value &&
+        value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.ToString() : null;
+    private static long Number(JsonElement parent, string name) => Field(parent, name) is var value &&
+        value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.GetInt64() : 0;
 
     public static string RouteName(string tag, Settings settings) => tag switch
     {

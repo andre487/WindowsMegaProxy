@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -225,12 +226,17 @@ public sealed partial class Engine : IEngine
         catch { await StopSelectedAsync(); throw; }
     }
 
-    public async Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)
+    public async Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll, CancellationToken token = default)
     {
-        using var response = await client.GetAsync("connections").ConfigureAwait(false);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(2));
+        token = deadline.Token;
+        var settings = AppliedSettings ?? throw new IOException("The proxy is disconnected.");
+        using var response = await client.GetAsync("connections", HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        var root = JsonNode.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false)) ?? throw new IOException("Empty core response.");
-        return ConnectionSnapshot.Parse(root, AppliedSettings!, showAll);
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: token).ConfigureAwait(false);
+        return ConnectionSnapshot.Parse(document.RootElement, settings, showAll);
     }
 
     public async Task<bool> IsHealthyAsync(CancellationToken token)
