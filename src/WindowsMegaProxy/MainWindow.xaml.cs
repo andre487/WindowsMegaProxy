@@ -142,7 +142,7 @@ public partial class MainWindow : Window
         settings = new Settings();
         UiTheme.Apply(settings.Language, settings.Theme, this);
         InitializeComponent();
-        Title = AppTitle.Text = AppIdentity.DisplayName;
+        Title = AppIdentity.DisplayName;
         Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri($"pack://application:,,,/{AppIdentity.Name};component/Assets/{AppIdentity.IconPrefix}app.ico"));
         BuildInformationText.Text = BuildInformation.Display;
         connectionView = new ListCollectionView(connectionRows) { IsLiveSorting = true, IsLiveGrouping = true };
@@ -173,10 +173,14 @@ public partial class MainWindow : Window
         trayMenu.Items.Add(trayExit);
         trayMenu.Opened += (_, _) =>
         {
-            if (PresentationSource.FromVisual(trayMenu) is HwndSource source) SetForegroundWindow(source.Handle);
+            if (PresentationSource.FromVisual(trayMenu) is HwndSource source)
+            {
+                PositionTrayMenu(source.Handle);
+                SetForegroundWindow(source.Handle);
+            }
             trayMenu.Focus();
         };
-        tray = new Forms.NotifyIcon { Icon = DisconnectedIcon(), Text = BrandLabel("MegaProxy — disconnected"), Visible = true };
+        tray = new Forms.NotifyIcon { Icon = DisconnectedIcon(), Text = BrandLabel("MegaProxy") + " — " + Ui.T("Checking connection…"), Visible = true };
         tray.MouseUp += (_, args) => { if (args.Button == Forms.MouseButtons.Right) trayMenu.IsOpen = true; };
         tray.DoubleClick += (_, _) => ShowWindow();
         tray.BalloonTipClicked += UpdateNotificationClicked;
@@ -207,14 +211,16 @@ public partial class MainWindow : Window
         LogSizeBox.SelectionChanged += (_, _) => Dispatcher.BeginInvoke(() => SaveLogSize());
         LanguageBox.SelectionChanged += PreferencesChanged;
         ThemeBox.SelectionChanged += PreferencesChanged;
+        AlwaysMinimizeToTrayBox.Click += SettingsChanged;
         TlsFingerprintBox.SelectionChanged += PreferencesChanged;
         BootstrapDnsBox.SelectionChanged += PreferencesChanged;
         rules.CollectionChanged += SettingsChanged;
         Sections.SelectionChanged += SectionsChanged;
         connection.Changed += () =>
         {
-            if (Dispatcher.CheckAccess()) SetBusy(busy);
-            else Dispatcher.BeginInvoke(() => SetBusy(busy));
+            void Refresh() { if (!quitting) { UpdateConnectionDetails(); SetBusy(busy); } }
+            if (Dispatcher.CheckAccess()) Refresh();
+            else Dispatcher.BeginInvoke(Refresh);
         };
         settingsLoading = true;
         Sections.IsEnabled = false;
@@ -487,6 +493,7 @@ public partial class MainWindow : Window
         updated.ShowAllConnections = ShowAllConnectionsBox.IsChecked == true;
         updated.Language = (string)((ComboBoxItem)LanguageBox.SelectedItem).Tag;
         updated.Theme = (string)((ComboBoxItem)ThemeBox.SelectedItem).Tag;
+        updated.AlwaysMinimizeToTray = AlwaysMinimizeToTrayBox.IsChecked == true;
         updated.TlsFingerprint = (string)((ComboBoxItem)TlsFingerprintBox.SelectedItem).Tag;
         updated.BootstrapDnsProvider = (string)((ComboBoxItem)BootstrapDnsBox.SelectedItem).Tag;
         if (!int.TryParse(MtuBox.Text, out int mtu) || mtu is < 1280 or > 65535)
@@ -588,6 +595,7 @@ public partial class MainWindow : Window
             if (appearanceChanged) UiTheme.Apply(updated.Language, updated.Theme, this);
             SelectTag(LanguageBox, updated.Language);
             SelectTag(ThemeBox, updated.Theme);
+            AlwaysMinimizeToTrayBox.IsChecked = updated.AlwaysMinimizeToTray;
             DefaultFingerprintItem.Content = Ui.F("Default ({0})", TlsFingerprintBox.Items.Cast<ComboBoxItem>()
                 .First(item => (string)item.Tag == Configuration.DefaultTlsFingerprint).Content.ToString()!.Trim());
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
@@ -738,7 +746,7 @@ public partial class MainWindow : Window
         {
             if (rules.Any(rule => rule.ProfileId == profile.Id)) throw new InvalidOperationException(Ui.T("The profile is used by rules. Change those rules first."));
             if (ContainsProfileReference(settings.SharedOptions, profile.Id)) throw new InvalidOperationException(Ui.T("The profile is used by another client's settings. Remove those assignments in that client first."));
-            if (MessageBox.Show(this, Ui.F("Delete profile “{0}”?", profile.Name), Ui.T("Profiles"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            if (!MessageDialog.Confirm(this, Ui.F("Delete profile “{0}”?", profile.Name), Ui.T("Profiles"))) return;
             var updated = CaptureSettings();
             updated.Profiles.RemoveAll(item => item.Id == profile.Id);
             if (updated.ActiveProfile is null) updated.ActiveProfileId = updated.Profiles.FirstOrDefault()?.Id;
@@ -828,10 +836,10 @@ public partial class MainWindow : Window
                 if (!await ResolveChannelAsync()) return;
                 if (settings.ActiveProfile is { Type: "HTTPS" or "HTTPS_JUMP" or "MASQUE" } selected &&
                     (selected.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() == true || selected.Type == "HTTPS_JUMP" && selected.Proxy["jump"]?["allowInvalidProxyCertificate"]?.GetValue<bool>() == true) &&
-                    MessageBox.Show(this, Ui.T("Proxy certificate verification is disabled in this profile. Connect with this exception?"), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+                    !MessageDialog.Confirm(this, Ui.T("Proxy certificate verification is disabled in this profile. Connect with this exception?"), Ui.T("Proxy certificate"))) return;
                 await SaveSettingsAsync();
                 if (settings.ActiveProfile is { Type: "SSH" } ssh && ssh.Proxy["acceptAnyHostKey"]?.GetValue<bool>() == true &&
-                    MessageBox.Show(this, Ui.T("SSH server identity verification is disabled in this profile. Connect with this exception?"), "SSH", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+                    !MessageDialog.Confirm(this, Ui.T("SSH server identity verification is disabled in this profile. Connect with this exception?"), "SSH")) return;
                 StatusText.Text = Ui.T("Connecting…");
                 await connection.ConnectAsync(settings);
                 SetConnected(true); timer.Start();
@@ -857,7 +865,7 @@ public partial class MainWindow : Window
         RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, BootstrapDnsBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, AlwaysMinimizeToTrayBox, TlsFingerprintBox, BootstrapDnsBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && scheduledAppUpdate?.FilesQueued != true && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         OperatingModeBox.ToolTip = scheduledAppUpdate?.FilesQueued == true ? Ui.T("Restart Windows to finish the update. File replacement has already been scheduled.") : null;
@@ -866,6 +874,8 @@ public partial class MainWindow : Window
         ExportLogButton.IsEnabled = !quitting;
         SettingsDetailHost.IsEnabled = editable && !busy && !settingsNavigationBusy;
         UpdateAppUpdatesView();
+        ImportConfigurationButton.IsEnabled = editable && !busy;
+        ExportConfigurationButton.IsEnabled = editable;
         ProfilePicker.IsEnabled = editable;
         TestConnectionButton.IsEnabled = canEdit && !value && !testing && (engine?.Running == true || CanConnect());
         SpeedOptionsPanel.IsEnabled = !testing;
@@ -1078,11 +1088,11 @@ public partial class MainWindow : Window
         SpeedLockedText.Visibility = Visibility.Visible;
         DiagnosticCountryPanel.Visibility = Visibility.Collapsed;
         DiagnosticDetailsPanel.Visibility = Visibility.Collapsed;
-        TestResultText.Visibility = Visibility.Visible;
+        TestResultText.Visibility = Visibility.Collapsed;
         SpeedResultsGrid.ItemsSource = null;
         SpeedResultsGrid.Visibility = Visibility.Collapsed;
-        TestStatusText.Text = Ui.T("Testing…");
-        TestResultText.Text = engine?.Running == true ? Ui.T("Testing the applied connection.") : Ui.T("Testing the current profile without starting TUN.");
+        TestResultText.Text = "";
+        TestStatusText.Text = engine?.Running == true ? Ui.T("Testing the applied connection.") : Ui.T("Testing the current profile without starting TUN.");
         LogAutoScroll.Replace(TestLogText, "");
         TestProgress.Visibility = Visibility.Visible;
         CancellationToken testToken = default;
@@ -1130,6 +1140,7 @@ public partial class MainWindow : Window
             {
                 TestStatusText.Text = Ui.T("Test stopped");
                 TestResultText.Text = Ui.T("The connection or test was stopped.");
+                TestResultText.Visibility = Visibility.Visible;
                 AppendDiagnosticEntry("Test stopped.");
             }
         }
@@ -1139,6 +1150,7 @@ public partial class MainWindow : Window
             {
                 TestStatusText.Text = Ui.T("Test failed");
                 TestResultText.Text = error.Message;
+                TestResultText.Visibility = Visibility.Visible;
                 AppendDiagnosticEntry("Diagnostic failed: " + error.GetType().Name);
                 ShowError(error);
             }
@@ -1399,7 +1411,11 @@ public partial class MainWindow : Window
         WriteLog("Error: " + error.GetType().Name);
         if (!IsVisible) { updateNoticeVersion = null; tray.ShowBalloonTip(5000, "MegaProxy", Ui.T("Operation failed. Open the application window."), Forms.ToolTipIcon.Error); }
     }
-    private void ShowWindow() { Show(); WindowState = WindowState.Normal; Activate(); _ = OpenPendingChannelConflictAsync(); }
+    private void ShowWindow() { WindowState = WindowState.Normal; Show(); Activate(); _ = OpenPendingChannelConflictAsync(); }
+    private void WindowStateChanged(object? sender, EventArgs e)
+    {
+        if (!quitting && settings.AlwaysMinimizeToTray && WindowState == WindowState.Minimized) Hide();
+    }
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -1413,9 +1429,19 @@ public partial class MainWindow : Window
     {
         if (!quitting) tray.Icon = engine?.Running == true ? connectedIcon : DisconnectedIcon();
     });
-    private void WindowClosing(object? sender, CancelEventArgs e) { if (!quitting) { e.Cancel = true; Hide(); } }
+    private void WindowClosing(object? sender, CancelEventArgs e)
+    {
+        if (quitting) return;
+        e.Cancel = true;
+        new MessageDialog(this, Ui.T("MegaProxy will continue running in the background. To exit, use the tray icon menu or the Exit button in Settings."),
+            Ui.T("Background operation"), confirmation: false).ShowDialog();
+        Hide();
+    }
     private void HideClick(object sender, RoutedEventArgs e) => Hide();
-    private async void QuitClick(object sender, RoutedEventArgs e) => await QuitAsync();
+    private async void QuitClick(object sender, RoutedEventArgs e) => await ConfirmQuitAsync(() =>
+        MessageDialog.Confirm(this, Ui.T("Exit MegaProxy?"), Ui.T("Exit")));
+
+    private Task ConfirmQuitAsync(Func<bool> confirm) => !quitting && confirm() ? QuitAsync() : Task.CompletedTask;
 
     private async Task QuitAsync()
     {
@@ -1434,7 +1460,7 @@ public partial class MainWindow : Window
         catch (Exception error)
         {
             if (installingAppUpdate) WriteLog("Application update handoff continues after shutdown failure: " + error.Message);
-            else MessageBox.Show(this, error.Message, Ui.T("Disconnecting"));
+            else MessageDialog.ShowError(this, error.Message, Ui.T("Disconnecting"));
         }
         finally
         {

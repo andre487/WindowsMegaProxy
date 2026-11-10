@@ -93,7 +93,7 @@ internal static partial class Program
                         ((TextBox)window.FindName("LogText")).Text = "2026-11-07 12:00:00  Application started.\n2026-11-07 12:00:01  Configuration loaded: 4 profiles, 5 rules.\n2026-11-07 12:00:02  Active profile: Berlin.\n2026-11-07 12:00:02  TUN connected.\n2026-11-07 12:00:05  HTTPS check completed successfully.";
                     }
                     Layout(window);
-                    Assert(((TextBlock)window.FindName("AppTitle")).Text == "MegaProxy", "Documentation must not show DEV branding.");
+                    Assert(window.Title == "MegaProxy", "Documentation must not show DEV branding.");
                     Capture((Visual)window.Content, Path.Combine(output, names[index] + "-" + theme + ".png"));
                 }
             }

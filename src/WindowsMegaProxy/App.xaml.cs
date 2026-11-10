@@ -15,6 +15,11 @@ public partial class App : Application
         var startup = Stopwatch.StartNew();
         base.OnStartup(e);
         SetCurrentProcessExplicitAppUserModelID(AppIdentity.Name);
+        try { NotificationIdentity.Register(); }
+        catch (Exception error) when (error is UnauthorizedAccessException or System.IO.IOException or System.Security.SecurityException)
+        {
+            Trace.TraceWarning("Could not register the notification display name: {0}", error);
+        }
         if (e.Args.Length == 2 && e.Args[0] == "--resolve-channel-conflict")
         {
             try
@@ -52,7 +57,7 @@ public partial class App : Application
         try { standalone = StartupConfiguration.Mode != "service"; }
         catch (Exception error)
         {
-            MessageBox.Show(Ui.T("Could not open the application: ") + error.Message, "MegaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageDialog.ShowError(null, Ui.T("Could not open the application: ") + error.Message, "MegaProxy");
             Shutdown(1);
             return;
         }
@@ -66,7 +71,7 @@ public partial class App : Application
                 foreach (string argument in e.Args) start.ArgumentList.Add(argument);
                 Process.Start(start)?.Dispose();
             }
-            catch (Exception error) { MessageBox.Show(Ui.T("Could not open the application: ") + error.Message, "MegaProxy"); }
+            catch (Exception error) { MessageDialog.ShowError(null, Ui.T("Could not open the application: ") + error.Message, "MegaProxy"); }
             Shutdown();
             return;
         }
@@ -103,7 +108,7 @@ public partial class App : Application
         }
         catch (Exception error)
         {
-            MessageBox.Show(Ui.T("Could not open the application: ") + error.Message, "MegaProxy", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageDialog.ShowError(null, Ui.T("Could not open the application: ") + error.Message, "MegaProxy");
             Shutdown(1);
         }
     }

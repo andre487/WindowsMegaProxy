@@ -179,14 +179,14 @@ public partial class ProfileWindow : Window
                     }
                     bool invalidJump = type == "HTTPS_JUMP" && JumpInvalidCertificateBox.IsChecked == true;
                     if (invalidJump && !(original.Proxy["jump"]?["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false) &&
-                        MessageBox.Show(this, Ui.T("Disable jump certificate verification? This weakens connection security."), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+                        !MessageDialog.Confirm(this, Ui.T("Disable jump certificate verification? This weakens connection security."), Ui.T("Proxy certificate"))) return;
                     options["allowInvalidProxyCertificate"] = invalidJump;
                     if (candidate.Proxy["jump"] is null) candidate.Proxy["jump"] = options;
                     if (type == "SSH_JUMP") SshConfiguration.Build(Configuration.JumpProfile(candidate), "validation");
                 }
                 bool insecure = type is "HTTPS" or "HTTPS_JUMP" or "MASQUE" && InvalidCertificateBox.IsChecked == true;
                 if (insecure && !(original.Proxy["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false) &&
-                    MessageBox.Show(this, Ui.T("Disable proxy certificate verification? This weakens connection security."), Ui.T("Proxy certificate"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+                    !MessageDialog.Confirm(this, Ui.T("Disable proxy certificate verification? This weakens connection security."), Ui.T("Proxy certificate"))) return;
                 candidate.Proxy["allowInvalidProxyCertificate"] = insecure;
             }
             string provider = (string)((ComboBoxItem)DnsProviderBox.SelectedItem).Tag;

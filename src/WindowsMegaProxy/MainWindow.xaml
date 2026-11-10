@@ -16,6 +16,7 @@
     FontWeight="Normal"
     UseLayoutRounding="True"
     Closing="WindowClosing"
+    StateChanged="WindowStateChanged"
     Loaded="WindowLoaded"
     SizeChanged="WindowSizeChanged">
     <Window.Resources>
@@ -51,6 +52,8 @@
             <Setter Property="FontWeight" Value="Normal" />
         </Style>
         <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
+            <EventSetter Event="SizeChanged" Handler="TableSizeChanged" />
+            <EventSetter Event="Loaded" Handler="TableLoaded" />
             <Setter Property="FontWeight" Value="Normal" />
             <Setter Property="RowHeaderWidth" Value="0" />
             <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
@@ -62,6 +65,12 @@
         </Style>
         <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
             <Setter Property="FontWeight" Value="Normal" />
+        </Style>
+        <Style x:Key="TrafficRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+            <Setter Property="Background" Value="#04808080" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
         </Style>
         <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -78,8 +87,24 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <DataTemplate x:Key="ProfileTypeBadgeTemplate">
+            <Border
+                UseLayoutRounding="False"
+                BorderBrush="{DynamicResource ControlStrongStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                VerticalAlignment="Center"
+                Padding="6,1">
+                <TextBlock
+                    Text="{Binding TypeLabel}"
+                    Style="{x:Null}"
+                    FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type ContentControl}}}"
+                    VerticalAlignment="Center"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </Border>
+        </DataTemplate>
         <DataTemplate x:Key="ProfilePickerTemplate">
-            <Grid MaxWidth="360">
+            <Grid MaxWidth="360" Loaded="AlignProfilePickerBaseline" SizeChanged="AlignProfilePickerBaseline">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -103,15 +128,18 @@
                     AutomationProperties.Name="{Binding CountryName}" />
                 <TextBlock
                     Grid.Column="2"
+                    Style="{x:Null}"
                     Text="{Binding Name}"
                     ToolTip="{Binding Name}"
                     TextTrimming="CharacterEllipsis"
                     VerticalAlignment="Center" />
-                <TextBlock
+                <ContentControl
                     Grid.Column="3"
-                    Text="{Binding Type}"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    FontSize="11"
+                    Content="{Binding}"
+                    ContentTemplate="{StaticResource ProfileTypeBadgeTemplate}"
                     Margin="8,0,0,0"
+                    VerticalContentAlignment="Center"
                     VerticalAlignment="Center" />
             </Grid>
         </DataTemplate>
@@ -177,40 +205,6 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid x:Name="TitleLayout" Margin="0,0,0,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock
-                x:Name="AppTitle"
-                Text="MegaProxy"
-                Style="{DynamicResource TitleTextBlockStyle}"
-                VerticalAlignment="Center" />
-            <Menu Grid.Column="1" Background="Transparent" VerticalAlignment="Center">
-                <MenuItem
-                    AutomationProperties.Name="{DynamicResource &quot;Application actions&quot;}"
-                    ToolTip="{DynamicResource &quot;Application actions&quot;}"
-                    Padding="12,8">
-                    <MenuItem.Header>
-                        <TextBlock
-                            Text="&#xE712;"
-                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                            FontSize="16" />
-                    </MenuItem.Header>
-                    <MenuItem
-                        Header="{DynamicResource &quot;_Import configuration…&quot;}"
-                        Click="ImportClick" />
-                    <MenuItem
-                        Header="{DynamicResource &quot;_Export configuration…&quot;}"
-                        Click="ExportClick" />
-                    <Separator />
-                    <MenuItem Header="{DynamicResource &quot;Minimize to _tray&quot;}" Click="HideClick" />
-                    <Separator />
-                    <MenuItem Header="{DynamicResource &quot;E_xit&quot;}" Click="QuitClick" />
-                </MenuItem>
-            </Menu>
-        </Grid>
         <Border
             x:Name="ConnectionCard"
             Grid.Row="1"
@@ -226,11 +220,6 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Margin="0,0,24,0">
-                    <TextBlock
-                        x:Name="ConnectionLabel"
-                        Text="{DynamicResource &quot;Connection&quot;}"
-                        Style="{DynamicResource CaptionTextBlockStyle}"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     <TextBlock TextWrapping="Wrap">
                         <InlineUIContainer BaselineAlignment="Baseline">
                             <TextBlock
@@ -243,16 +232,18 @@
                         <InlineUIContainer BaselineAlignment="Baseline">
                             <TextBlock
                                 x:Name="TransportText"
+                                FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Margin="8,4,0,4"
+                                Margin="6,4,0,4"
                                 Visibility="Collapsed"
                                 AutomationProperties.LiveSetting="Polite" />
                         </InlineUIContainer>
                         <InlineUIContainer BaselineAlignment="Baseline">
                             <TextBlock
                                 x:Name="ServiceStateText"
+                                FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Margin="16,4,0,4"
+                                Margin="6,4,0,4"
                                 Visibility="Collapsed"
                                 AutomationProperties.LiveSetting="Polite" />
                         </InlineUIContainer>
@@ -260,12 +251,14 @@
                     <TextBlock
                         x:Name="RoutingWarningText"
                         TextWrapping="Wrap"
+                        FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Visibility="Collapsed"
                         Margin="0,4,0,4"
                         AutomationProperties.LiveSetting="Polite" />
                     <ComboBox
                         x:Name="ProfilePicker"
+                        VerticalContentAlignment="Center"
                         ItemTemplate="{StaticResource ProfilePickerTemplate}"
                         SelectionChanged="ProfileSelectionChanged"
                         MinWidth="240"
@@ -276,6 +269,7 @@
                     <TextBlock
                         x:Name="ProfileSummary"
                         Text="{DynamicResource &quot;No proxy configured&quot;}"
+                        FontSize="12"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         TextTrimming="CharacterEllipsis" />
                 </StackPanel>
@@ -348,6 +342,7 @@
                             x:Name="ConnectionsHint"
                             Text="{DynamicResource &quot;Connect to view traffic. Only rule exceptions are shown by default.&quot;}"
                             TextWrapping="Wrap"
+                            FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Margin="0" />
                     </StackPanel>
@@ -399,8 +394,7 @@
                             </GroupStyle>
                         </DataGrid.GroupStyle>
                         <DataGrid.RowStyle>
-                            <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
-                                <Setter Property="Background" Value="#04808080" />
+                            <Style TargetType="DataGridRow" BasedOn="{StaticResource TrafficRowStyle}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding RouteGroup}" Value="0">
                                         <Setter Property="Background" Value="#0C0078D4" />
@@ -431,7 +425,8 @@
                                 Header="{Binding [Destination], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Network}"
-                                Width="95"
+                                Width="*"
+                                MinWidth="110"
                                 Header="{Binding [Protocol], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Route}"
@@ -441,12 +436,14 @@
                             <DataGridTextColumn
                                 Binding="{Binding Upload}"
                                 SortMemberPath="UploadedBytes"
-                                Width="105"
+                                Width="*"
+                                MinWidth="120"
                                 Header="{Binding [Uploaded], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Download}"
                                 SortMemberPath="DownloadedBytes"
-                                Width="105"
+                                Width="*"
+                                MinWidth="120"
                                 Header="{Binding [Downloaded], Source={x:Static core:Ui.Strings}}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -459,12 +456,14 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock
-                        Text="{DynamicResource &quot;Connection profiles&quot;}"
-                        Style="{DynamicResource SubtitleTextBlockStyle}"
-                        Margin="0,0,0,16" />
                     <ListBox
                         x:Name="ProfilesList"
+                        AllowDrop="True"
+                        PreviewMouseLeftButtonDown="ProfileDragDown"
+                        PreviewMouseMove="ProfileDragMove"
+                        DragOver="ProfileDragOver"
+                        DragLeave="ProfileDragLeave"
+                        Drop="ProfileDrop"
                         SelectionChanged="ListSelectionChanged"
                         Grid.Row="1"
                         AutomationProperties.Name="{DynamicResource &quot;Connection profiles&quot;}"
@@ -488,6 +487,13 @@
                                         BorderThickness="0.5" />
                                     <StackPanel Grid.Column="1" Margin="12,0,0,0">
                                         <DockPanel>
+                                            <ContentControl
+                                                DockPanel.Dock="Right"
+                                                Content="{Binding}"
+                                                ContentTemplate="{StaticResource ProfileTypeBadgeTemplate}"
+                                                VerticalContentAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Margin="8,0,0,0" />
                                             <Image
                                                 Source="{Binding FlagUri}"
                                                 Style="{StaticResource CountryFlagStyle}"
@@ -496,17 +502,20 @@
                                             <TextBlock
                                                 Text="{Binding Name}"
                                                 TextTrimming="CharacterEllipsis"
+                                                VerticalAlignment="Center"
                                                 ToolTip="{Binding Name}" />
                                         </DockPanel>
                                         <TextBlock
-                                            Text="{Binding Description}"
+                                            Text="{Binding Endpoint}"
                                             TextTrimming="CharacterEllipsis"
                                             ToolTip="{Binding Description}"
                                             Margin="0,4,0,0"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                         <TextBlock
                                             Text="{Binding Availability}"
                                             TextWrapping="Wrap"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                 </Grid>
@@ -533,14 +542,11 @@
                             x:Name="DeleteProfileButton"
                             Click="DeleteProfileClick"
                             Margin="0,0,8,8" />
-                        <Button
-                            Content="{DynamicResource &quot;Import…&quot;}"
-                            Click="ImportClick"
-                            Margin="0,0,8,8" />
-                        <Button
-                            Content="{DynamicResource &quot;Export…&quot;}"
-                            Click="ExportClick"
-                            Margin="0,0,0,8" />
+                        <TextBlock VerticalAlignment="Center" Margin="8,0,0,8">
+                            <Hyperlink x:Name="ProfileTransferLink" Click="OpenTransferSettingsClick">
+                                <Run Text="{DynamicResource &quot;Import and export configuration&quot;}" />
+                            </Hyperlink>
+                        </TextBlock>
                     </WrapPanel>
                 </Grid>
             </TabItem>
@@ -575,6 +581,8 @@
                     <TextBlock
                         Grid.Row="1"
                         Text="{DynamicResource &quot;Rules run from top to bottom; the first match selects the route. LAN bypass follows the list. Reconnect to apply changes.&quot;}"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         TextWrapping="Wrap"
                         Margin="0,0,0,12" />
                     <DataGrid
@@ -588,7 +596,13 @@
                         SelectionUnit="FullRow"
                         AutomationProperties.Name="{DynamicResource &quot;Routing rules in priority order&quot;}"
                         CanUserSortColumns="False"
-                        Grid.Row="2">
+                        Grid.Row="2"
+                        RowStyle="{StaticResource TrafficRowStyle}">
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                <Setter Property="Margin" Value="0,0,0,4" />
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
                         <DataGrid.Columns>
                             <DataGridTemplateColumn
                                 Width="Auto"
@@ -727,6 +741,55 @@
                                 Visibility="Collapsed"
                                 Click="InstallServiceClick" />
                             <StackPanel x:Name="SettingsCategories">
+                                <WrapPanel Margin="0,0,0,16">
+                                    <Button
+                                        Content="{DynamicResource &quot;Minimize to tray&quot;}"
+                                        Click="HideClick"
+                                        Margin="0,0,8,0" />
+                                    <Button
+                                        Content="{DynamicResource &quot;Exit&quot;}"
+                                        Click="QuitClick" />
+                                </WrapPanel>
+                                <Button
+                                    x:Name="TransferCategoryButton"
+                                    Tag="transfer"
+                                    Click="SettingsCategoryClick"
+                                    Style="{StaticResource SettingsCategoryStyle}"
+                                    AutomationProperties.Name="{DynamicResource &quot;Import and export configuration&quot;}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="24" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Text="&#xE895;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="20"
+                                            VerticalAlignment="Center" />
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            Margin="8,0,16,0"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Import and export configuration&quot;}"
+                                                FontWeight="SemiBold"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Import profiles and settings or export a configuration&quot;}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                FontSize="12"
+                                                Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Text="&#xE76C;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Button>
                                 <Button
                                     x:Name="AppearanceCategoryButton"
                                     Tag="appearance"
@@ -750,9 +813,10 @@
                                             VerticalAlignment="Center">
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Appearance&quot;}"
+                                                FontWeight="SemiBold"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
-                                                Text="{DynamicResource &quot;Language and theme&quot;}"
+                                                Text="{DynamicResource &quot;Language, theme and traffic units&quot;}"
                                                 TextWrapping="Wrap"
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 FontSize="12"
@@ -789,6 +853,7 @@
                                             VerticalAlignment="Center">
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Application startup&quot;}"
+                                                FontWeight="SemiBold"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Operating mode and automatic connection&quot;}"
@@ -828,6 +893,7 @@
                                             VerticalAlignment="Center">
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Connection settings&quot;}"
+                                                FontWeight="SemiBold"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
                                                 Text="{DynamicResource &quot;TLS fingerprints and bootstrap DNS&quot;}"
@@ -867,6 +933,7 @@
                                             VerticalAlignment="Center">
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Configuration subscription&quot;}"
+                                                FontWeight="SemiBold"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Configuration sources and automatic updates&quot;}"
@@ -906,6 +973,7 @@
                                             VerticalAlignment="Center">
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Failover&quot;}"
+                                                FontWeight="SemiBold"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Backup profiles and connection recovery&quot;}"
@@ -945,6 +1013,7 @@
                                             VerticalAlignment="Center">
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Log&quot;}"
+                                                FontWeight="SemiBold"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Local log storage and rotation&quot;}"
@@ -984,6 +1053,7 @@
                                             VerticalAlignment="Center">
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Updates&quot;}"
+                                                FontWeight="SemiBold"
                                                 TextWrapping="Wrap" />
                                             <TextBlock
                                                 Text="{DynamicResource &quot;Application updates from GitHub&quot;}"
@@ -1005,6 +1075,30 @@
                                 x:Name="SettingsForms"
                                 Visibility="Collapsed">
                                 <Border
+                                    x:Name="TransferSettings"
+                                    Style="{StaticResource DiagnosticCardStyle}"
+                                    Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Import profiles and settings or export a configuration&quot;}"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            TextWrapping="Wrap"
+                                            Margin="0,0,0,16" />
+                                        <WrapPanel>
+                                            <Button
+                                                x:Name="ImportConfigurationButton"
+                                                Content="{DynamicResource &quot;Import…&quot;}"
+                                                Click="ImportClick"
+                                                Margin="0,0,8,0" />
+                                            <Button
+                                                x:Name="ExportConfigurationButton"
+                                                Content="{DynamicResource &quot;Export…&quot;}"
+                                                Click="ExportClick" />
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border
                                     x:Name="AppearanceSettings"
                                     Style="{StaticResource DiagnosticCardStyle}"
                                     Visibility="Collapsed">
@@ -1014,6 +1108,8 @@
                                             <ColumnDefinition Width="220" />
                                         </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
@@ -1060,6 +1156,29 @@
                                                 Content="{DynamicResource &quot;Dark&quot;}"
                                                 Tag="dark" />
                                         </ComboBox>
+                                        <Label
+                                            Content="{DynamicResource &quot;Traffic units&quot;}"
+                                            Target="{Binding ElementName=TrafficUnitsBox}"
+                                            Padding="0"
+                                            Grid.Row="2"
+                                            Margin="0,16,16,0" />
+                                        <ComboBox
+                                            x:Name="TrafficUnitsBox"
+                                            Grid.Row="2"
+                                            Grid.Column="1"
+                                            Margin="0,16,0,0"
+                                            Width="220"
+                                            HorizontalAlignment="Left"
+                                            SelectionChanged="PreferencesChanged">
+                                            <ComboBoxItem Content="IEC (KiB, MiB, GiB)" Tag="IEC" />
+                                            <ComboBoxItem Content="SI (KB, MB, GB)" Tag="SI" />
+                                        </ComboBox>
+                                        <CheckBox
+                                            x:Name="AlwaysMinimizeToTrayBox"
+                                            Grid.Row="3"
+                                            Grid.ColumnSpan="2"
+                                            Content="{DynamicResource &quot;Always minimize to tray&quot;}"
+                                            Margin="0,20,0,0" />
                                     </Grid>
                                 </Border>
                                 <Border
@@ -1114,6 +1233,7 @@
                                         <TextBlock
                                             Text="{DynamicResource &quot;Browser fingerprints apply to HTTPS over TCP. HTTP/3 uses the native QUIC fingerprint; browser QUIC presets are unavailable in this core.&quot;}"
                                             TextWrapping="Wrap"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,0,0,20" />
                                         <CheckBox
@@ -1126,6 +1246,7 @@
                                         <TextBlock
                                             Text="{DynamicResource &quot;Applies on the next connection. IPv4 TCP only, for EXE or folder rules routed through the active profile. Ambiguous domain rules are skipped. Downloads and sessions may be interrupted.&quot;}"
                                             TextWrapping="Wrap"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,0,0,20" />
                                         <Label
@@ -1146,6 +1267,7 @@
                                         <TextBlock
                                             Text="{DynamicResource &quot;Resolves proxy server names directly, before connecting. Automatic uses Cloudflare for proxy-default mode and Windows DNS otherwise. Does not replace application DNS.&quot;}"
                                             TextWrapping="Wrap"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                         <Label
                                             Content="{DynamicResource &quot;SSH authentication&quot;}"
@@ -1165,17 +1287,10 @@
                                         <TextBox x:Name="MtuBox" Width="120" HorizontalAlignment="Left" LostFocus="PreferencesChanged" />
                                         <TextBlock
                                             Text="{DynamicResource &quot;1280–65535 bytes. Applies after reconnection.&quot;}"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,4,0,16" />
-                                        <Label
-                                            Content="{DynamicResource &quot;Traffic units&quot;}"
-                                            Target="{Binding ElementName=TrafficUnitsBox}"
-                                            Padding="0"
-                                            Margin="0,0,0,4" />
-                                        <ComboBox x:Name="TrafficUnitsBox" Width="220" HorizontalAlignment="Left" SelectionChanged="PreferencesChanged">
-                                            <ComboBoxItem Content="IEC (KiB, MiB, GiB)" Tag="IEC" />
-                                            <ComboBoxItem Content="SI (KB, MB, GB)" Tag="SI" />
-                                        </ComboBox>
+
                                     </StackPanel>
                                 </Border>
                                 <Border
@@ -1209,6 +1324,7 @@
                                         <TextBlock
                                             Text="{DynamicResource &quot;Changing the operating mode restarts MegaProxy and may require administrator approval.&quot;}"
                                             TextWrapping="Wrap"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,0,0,16" />
                                         <CheckBox
@@ -1260,6 +1376,7 @@
                                     <StackPanel>
                                         <TextBlock
                                             x:Name="InstalledVersionText"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,0,0,12" />
                                         <TextBlock
@@ -1269,6 +1386,7 @@
                                             Margin="0,0,0,8" />
                                         <TextBlock
                                             x:Name="UpdateVersionText"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Visibility="Collapsed"
                                             Margin="0,0,0,12" />
@@ -1329,6 +1447,7 @@
                                             Margin="0,8,0,8" />
                                         <TextBlock
                                             Text="{DynamicResource &quot;Checks once a day. Ignored notifications repeat after a week or when a new release is available.&quot;}"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
@@ -1360,6 +1479,7 @@
                                             TextTrimming="CharacterEllipsis"
                                             ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
                                             Text="{DynamicResource &quot;Ready to test&quot;}"
+                                            FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,4,0,0"
                                             AutomationProperties.LiveSetting="Polite" />
@@ -1378,10 +1498,11 @@
                                     Visibility="Collapsed"
                                     Height="4"
                                     Margin="0,0,0,12" />
-                                <TextBox
+                                <TextBlock
                                     x:Name="TestResultText"
-                                    Style="{StaticResource DiagnosticValueStyle}"
+                                    TextWrapping="Wrap"
                                     Text="{DynamicResource &quot;Testing starts automatically when this tab opens.&quot;}"
+                                    FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 <Grid x:Name="DiagnosticDetailsPanel" Visibility="Collapsed">
                                     <Grid.ColumnDefinitions>
@@ -1396,6 +1517,7 @@
                                     </Grid.RowDefinitions>
                                     <TextBlock
                                         Text="{DynamicResource &quot;Public IP&quot;}"
+                                        FontSize="12"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         VerticalAlignment="Center"
                                         Margin="0,0,16,8" />
@@ -1408,6 +1530,7 @@
                                     <TextBlock
                                         Grid.Row="1"
                                         Text="{DynamicResource &quot;Country&quot;}"
+                                        FontSize="12"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         VerticalAlignment="Center"
                                         Margin="0,0,16,8" />
@@ -1428,6 +1551,7 @@
                                         Grid.Row="2"
                                         Text="{DynamicResource &quot;Check time&quot;}"
                                         ToolTip="{DynamicResource &quot;HTTPS request duration, including connection establishment when needed, TLS and reading the response body. This is not network RTT.&quot;}"
+                                        FontSize="12"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Margin="0,0,16,8" />
                                     <TextBlock
@@ -1439,6 +1563,7 @@
                                         x:Name="DiagnosticHttp3Label"
                                         Grid.Row="3"
                                         Text="HTTP/3"
+                                        FontSize="12"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Margin="0,0,16,0" />
                                     <TextBlock
@@ -1459,6 +1584,7 @@
                                     x:Name="SpeedLockedText"
                                     Text="{DynamicResource &quot;Complete a successful connection test first.&quot;}"
                                     TextWrapping="Wrap"
+                                    FontSize="12"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 <StackPanel x:Name="SpeedPanel" Visibility="Collapsed">
                                     <TextBlock
@@ -1649,6 +1775,7 @@
                             Margin="0,0,16,0" />
                         <TextBlock
                             Text="{DynamicResource &quot;Local rotating log&quot;}"
+                            FontSize="12"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             VerticalAlignment="Center" />
                     </StackPanel>
@@ -1669,7 +1796,7 @@
                 </Grid>
             </TabItem>
         </TabControl>
-        <Grid Grid.Row="3" Margin="0,12,0,0">
+        <Grid Grid.Row="3" Margin="0,4,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -1679,10 +1806,20 @@
                 TextWrapping="Wrap"
                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                 AutomationProperties.LiveSetting="Polite"
-                VerticalAlignment="Center" />
+                VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
             <TextBlock
                 Grid.Row="1"
-                Margin="0,8,0,0"
+                Margin="0,0,0,0"
                 HorizontalAlignment="Left"
                 TextWrapping="Wrap"
                 FontSize="12"

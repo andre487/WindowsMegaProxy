@@ -59,10 +59,22 @@ public sealed class RuleWindow : Window
         source.SelectionChanged += (_, _) => { path.Clear(); path.IsEnabled = browse.IsEnabled = source.SelectedIndex != 0; };
         browse.IsEnabled = false;
         AutomationProperties.SetName(path, Ui.T("Application path"));
-        panel.Children.Add(path);
-        panel.Children.Add(browse);
-        AddField(panel, Ui.T("Destination"), destinationType);
-        AddField(panel, Ui.T("Destination: domain, *.domain, IP or CIDR; empty means any"), destination);
+        var pathRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition());
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        browse.Margin = new Thickness(8, 0, 0, 0);
+        browse.VerticalAlignment = VerticalAlignment.Center;
+        path.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(browse, 1);
+        pathRow.Children.Add(path);
+        pathRow.Children.Add(browse);
+        panel.Children.Add(pathRow);
+        AddField(panel, Ui.T("Destination"), destinationType, topMargin: 16);
+        destination.Margin = new Thickness(0, 8, 0, 0);
+        AutomationProperties.SetName(destination, Ui.T("Destination"));
+        panel.Children.Add(destination);
+        var destinationHint = new TextBlock { Text = Ui.T("Destination: domain, *.domain, IP or CIDR; empty means any"), Style = UiTheme.ExplanationStyle, Margin = new Thickness(0, 4, 0, 0) };
+        panel.Children.Add(destinationHint);
         var lists = new StackPanel();
         foreach (var list in PodkopCatalog.Lists)
         {
@@ -78,7 +90,7 @@ public sealed class RuleWindow : Window
             listScroll.Visibility = destinationType.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
             podkopThroughProxy.Visibility = listScroll.Visibility;
         };
-        AddField(panel, Ui.T("Action"), action);
+        AddField(panel, Ui.T("Action"), action, topMargin: 16);
         if (existingRule is not null)
         {
             name.Text = existingRule.Name;
@@ -102,16 +114,16 @@ public sealed class RuleWindow : Window
                 Destination = destinationType.SelectedIndex == 1 ? "podkop:" + string.Join(',', podkop.Where(item => item.Value.IsChecked == true).Select(item => item.Key)) : destination.Text.Trim(), Action = new[] { "proxy", "system", "block" }[action.SelectedIndex] };
             rule.PodkopThroughProxy = destinationType.SelectedIndex == 1 && podkopThroughProxy.IsChecked == true;
             try { Configuration.BuildRule(rule); Rule = rule; DialogResult = true; }
-            catch (ArgumentException error) { MessageBox.Show(this, error.Message, Ui.T("Rule")); }
+            catch (ArgumentException error) { MessageDialog.ShowError(this, error.Message, Ui.T("Rule")); }
         };
         buttons.Children.Add(save);
         buttons.Children.Add(new Button { Content = Ui.T("Cancel"), IsCancel = true });
         Grid.SetRow(buttons, 1);
         root.Children.Add(buttons);
     }
-    private static void AddField(StackPanel panel, string label, Control control)
+    private static void AddField(StackPanel panel, string label, Control control, double topMargin = 8)
     {
-        panel.Children.Add(new Label { Content = label, Target = control, Padding = new Thickness(0), Margin = new Thickness(0, 8, 0, 4) });
+        panel.Children.Add(new Label { Content = label, Target = control, Padding = new Thickness(0), Margin = new Thickness(0, topMargin, 0, 4) });
         panel.Children.Add(control);
     }
 }

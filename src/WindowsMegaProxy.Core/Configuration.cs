@@ -28,6 +28,7 @@ public sealed class Settings
     public bool ShowAllConnections { get; set; }
     public string Language { get; set; } = Ui.DefaultLanguage(Ui.WindowsLanguage);
     public string Theme { get; set; } = "auto";
+    public bool AlwaysMinimizeToTray { get; set; }
     public string TlsFingerprint { get; set; } = "default";
     public string BootstrapDnsProvider { get; set; } = "auto";
     public int TunMtu { get; set; } = 1500;

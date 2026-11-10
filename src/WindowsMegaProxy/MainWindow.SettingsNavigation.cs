@@ -14,6 +14,12 @@ public partial class MainWindow
     private async void SettingsCategoryClick(object sender, RoutedEventArgs e) =>
         await NavigateSettingsAsync((string)((Button)sender).Tag);
 
+    private async void OpenTransferSettingsClick(object sender, RoutedEventArgs e)
+    {
+        Sections.SelectedItem = SettingsTab;
+        await NavigateSettingsAsync("transfer");
+    }
+
     private async void SettingsBackClick(object sender, RoutedEventArgs e) => await NavigateSettingsAsync(null);
 
     private async void SettingsNavigationKeyDown(object sender, KeyEventArgs e)
@@ -43,12 +49,13 @@ public partial class MainWindow
             if (quitting) return;
             settingsPage = page;
             SettingsDetailHost.Content = null;
-            foreach (var form in new FrameworkElement[] { AppearanceSettings, StartupSettings, ConnectionSettings, LogSettings, UpdatesSettings, DynamicSettingsCard })
+            foreach (var form in new FrameworkElement[] { TransferSettings, AppearanceSettings, StartupSettings, ConnectionSettings, LogSettings, UpdatesSettings, DynamicSettingsCard })
                 form.Visibility = Visibility.Collapsed;
             string? title = null;
             FrameworkElement? selected = null;
             switch (page)
             {
+                case "transfer": title = "Import and export configuration"; selected = TransferSettings; break;
                 case "appearance": title = "Appearance"; selected = AppearanceSettings; break;
                 case "startup": title = "Application startup"; selected = StartupSettings; break;
                 case "connection": title = "Connection settings"; selected = ConnectionSettings; break;
