@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Windows;
 
 namespace WindowsMegaProxy;
 
@@ -11,17 +10,6 @@ public partial class MainWindow
         bool unavailable = service is not null && !serviceAvailable;
         bool connected = !unavailable && engine?.Running == true;
         var profile = connected && engine!.HasProbeProfile ? engine.AppliedSettings?.ActiveProfile : null;
-        string protocol = profile?.Type switch
-        {
-            "HTTPS" or "HTTPS_JUMP" or "MASQUE" when engine!.Http3Selected => "HTTP/3 · QUIC",
-            "HTTPS" or "HTTPS_JUMP" when profile.PreferHttp2 => "",
-            "HTTPS" or "HTTPS_JUMP" or "HTTP" => "HTTP/1.1",
-            "SOCKS5" => "SOCKS5",
-            "SSH" or "SSH_JUMP" => "SSH",
-            _ => ""
-        };
-        TransportText.Text = protocol.Length == 0 ? "" : "(" + protocol + ")";
-        TransportText.Visibility = protocol.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (tray is null) return;
         bool connecting = connection.State == ConnectionState.Connecting;
         if (connecting) profile = null;
@@ -31,9 +19,8 @@ public partial class MainWindow
             : BrandLabel(unavailable && ServiceUpdateInProgress ? "MegaProxy \u2014 update in progress" : unavailable ? "MegaProxy \u2014 service unavailable" : "MegaProxy \u2014 disconnected");
         if (connected && !connecting && profile is null) heading += " \u2014 " + Ui.T("Connected");
         string suffix = profile is null ? "" : " [" + profile.TypeLabel + "]";
-        if (profile is not null && protocol.Length > 0 && protocol is not ("SSH" or "SOCKS5")) suffix += "\n" + protocol;
         string name = profile is null ? "" : new string(profile.Name.Select(character => char.IsControl(character) ? ' ' : character).ToArray()).Trim();
-        // NotifyIcon limits tooltip text to 127 UTF-16 code units; preserve type and protocol.
+        // NotifyIcon limits tooltip text to 127 UTF-16 code units; preserve the profile type.
         int limit = 127 - heading.Length - suffix.Length - 3;
         if (name.Length > limit)
         {
