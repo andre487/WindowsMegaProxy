@@ -1,5 +1,16 @@
 # Installer and release builds
 
+User downloads and setup instructions: [English](../docs/en/installation.md) /
+[Русский](../docs/ru/installation.md).
+
+Releases from 0.1.1 include
+[`WindowsMegaProxy-setup.exe`](https://github.com/andre487/WindowsMegaProxy/releases/latest/download/WindowsMegaProxy-setup.exe).
+Publication copies this permanent-name asset from the installer already verified
+against the signed manifest; it has the same signature and SHA-256 as the versioned
+Setup. Existing manifests, checksums and auto-update URLs keep versioned names.
+The alias is uploaded while the release is still a draft, before publication.
+Published-release retries do not replace it or other published assets.
+
 Credential setup and local file locations: [local development secrets](LOCAL-SECRETS.md).
 
 Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in

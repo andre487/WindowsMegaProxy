@@ -21,6 +21,7 @@ from authenticode import PUBLIC_CERTIFICATE
 START = "<!-- megaproxy-virustotal -->"
 END = "<!-- /megaproxy-virustotal -->"
 METADATA = {"SHA256SUMS", "update-manifest.json", "update-manifest.sig", "update-public-key.txt"}
+SETUP_ALIAS = "WindowsMegaProxy-setup.exe"
 
 
 def has_current_authenticode(directory):
@@ -188,7 +189,10 @@ def publish(directory, repo, tag, commit, notes_path):
                     break
             if current is None or not current["draft"]:
                 raise RuntimeError("Release is no longer a draft; refusing asset replacement")
-            gh("release", "upload", tag, *[str(directory / name) for name in sorted(names)], "--repo", repo, "--clobber")
+            # The permalink is byte-identical to the installer verified against the signed manifest above.
+            alias = temporary / SETUP_ALIAS
+            shutil.copyfile(directory / package_names(tag)["installer"], alias)
+            gh("release", "upload", tag, *[str(directory / name) for name in sorted(names)], str(alias), "--repo", repo, "--clobber")
             gh("release", "edit", tag, "--repo", repo, "--notes-file", str(notes), "--draft=false")
         else:
             gh("release", "edit", tag, "--repo", repo, "--notes-file", str(notes))

@@ -173,6 +173,26 @@ class VirusTotalTests(unittest.TestCase):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class ReleaseRetryTests(unittest.TestCase):
+    def test_setup_permalink_uploads_the_verified_installer_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "build"
+            fixture(directory)
+            notes = Path(temporary) / "notes.md"
+            notes.write_text("Release notes")
+            uploads = []
+
+            def gh(*args):
+                if args[:2] == ("release", "upload"):
+                    alias = next(Path(arg) for arg in args if Path(arg).name == release.SETUP_ALIAS)
+                    self.assertEqual(alias.read_bytes(), (directory / release.package_names(TAG)["installer"]).read_bytes())
+                    uploads.append(alias.name)
+
+            with patch.object(release, "release_state", return_value={"draft": True}), patch.object(release, "gh", side_effect=gh), patch.object(release.time, "sleep"):
+                release.publish(directory, REPO, TAG, COMMIT, notes)
+            self.assertEqual(uploads, [release.SETUP_ALIAS])
+            self.assertFalse((directory / release.SETUP_ALIAS).exists())
+            release.verify(directory, TAG, COMMIT)
+
     def test_new_draft_visibility_is_retried_with_exponential_backoff(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / "build"
