@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -14,6 +15,7 @@ public sealed class ServiceBroker : IAsyncDisposable
     private readonly Func<IEngine> createEngine;
     private readonly SemaphoreSlim configuration = new(1), network = new(1);
     private readonly SemaphoreSlim subscription = new(1);
+    private readonly Dictionary<Task, CancellationTokenSource> reads = new();
     private readonly Func<bool, Task> setAutostart;
     private readonly BackgroundLog log;
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
@@ -65,6 +67,8 @@ public sealed class ServiceBroker : IAsyncDisposable
         }
         if (!peer.CanEdit) return new(false, Error: "Read-only mode");
         if (request.InstanceId != InstanceId) throw new ServiceStateChangedException("The service restarted. Refresh and try again.");
+        if (request.Operation is "connections" or "http3")
+            return await ReadEngineAsync(peer, request, token).ConfigureAwait(false);
         switch (request.Operation)
         {
             case "refreshSubscription":
@@ -103,8 +107,6 @@ public sealed class ServiceBroker : IAsyncDisposable
                 return Reply(peer, true);
             case "start":
             case "stop":
-            case "connections":
-            case "http3":
                 await network.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
@@ -116,20 +118,51 @@ public sealed class ServiceBroker : IAsyncDisposable
                     if (request.Lease != lease || lease is not null && peer.Sid != leaseOwner)
                         throw new ServiceStateChangedException("The connection test changed. Refresh and try again.");
                     if (lease is not null) leaseDeadline = DateTimeOffset.UtcNow.AddMinutes(6);
-                    switch (request.Operation)
-                    {
-                        case "stop": desiredSettings = null; await StopAsync().ConfigureAwait(false); return Reply(peer);
-                        case "connections":
-                            return Reply(peer, includeAppliedSettings: false) with { Connections = engine?.Running == true ? await engine.GetConnectionsAsync(request.ShowAll).ConfigureAwait(false) : new([], 0, 0, 0) };
-                        default:
-                            if (engine?.Running != true) throw new IOException("The proxy is disconnected.");
-                            return Reply(peer, includeAppliedSettings: false) with { Text = await engine.CheckHttp3Async(token).ConfigureAwait(false) };
-                    }
+                    desiredSettings = null;
+                    await StopAsync().ConfigureAwait(false);
+                    return Reply(peer);
                 }
                 finally { network.Release(); }
             case "log": return Reply(peer, includeAppliedSettings: false) with { Text = await log.ReadAsync(tailOnly: true).ConfigureAwait(false) };
             default: throw new IOException("Unknown service operation.");
         }
+    }
+
+    private async Task<ServiceReply> ReadEngineAsync(ClientAccess peer, ServiceRequest request, CancellationToken token)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ServiceReply> read;
+        await network.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            await ExpireLeaseAsync().ConfigureAwait(false);
+            if (request.Generation != status.Generation || request.Lease != lease || lease is not null && peer.Sid != leaseOwner)
+                throw new ServiceStateChangedException("The connection changed. Refresh and try again.");
+            if (lease is not null) leaseDeadline = DateTimeOffset.UtcNow.AddMinutes(6);
+            var reply = Reply(peer, includeAppliedSettings: false);
+            if (engine?.Running != true)
+            {
+                if (request.Operation == "connections") return reply with { Connections = new([], 0, 0, 0) };
+                throw new IOException("The proxy is disconnected.");
+            }
+            read = ReadAsync(engine, reply);
+            reads.Add(read, cancellation);
+        }
+        finally { network.Release(); }
+        ServiceReply result;
+        try { result = await read.ConfigureAwait(false); }
+        finally
+        {
+            await network.WaitAsync().ConfigureAwait(false);
+            try { reads.Remove(read); }
+            finally { network.Release(); }
+        }
+        cancellation.Token.ThrowIfCancellationRequested();
+        return result;
+
+        async Task<ServiceReply> ReadAsync(IEngine current, ServiceReply reply) => request.Operation == "connections"
+            ? reply with { Connections = await current.GetConnectionsAsync(request.ShowAll, cancellation.Token).ConfigureAwait(false) }
+            : reply with { Text = await current.CheckHttp3Async(cancellation.Token).ConfigureAwait(false) };
     }
 
     private async Task<ServiceReply> StartConnectionAsync(ClientAccess peer, ServiceRequest request, Settings requested, CancellationToken token, bool recovering = false)
@@ -233,6 +266,10 @@ public sealed class ServiceBroker : IAsyncDisposable
 
     private async Task StopAsync()
     {
+        // Cancel and drain readers before disposing the core; they never hold the network gate while awaiting I/O.
+        foreach (var cancellation in reads.Values) cancellation.Cancel();
+        try { await Task.WhenAll(reads.Keys).ConfigureAwait(false); }
+        catch (Exception) { /* Each reader observes its own failure. */ }
         bool running = status.Running;
         status = status with { Running = false };
         probe = null;

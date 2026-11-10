@@ -100,6 +100,31 @@ internal static class ServiceChecks
         visible = await broker.HandleAsync(reader, new("status"), default);
         Assert(visible.Status?.Running == true && visible.Status.AppliedSignature is null && visible.Probe is null,
             "Read-only status cannot leak configuration signatures or diagnostic credentials.");
+        foreach (var (operation, lateResult) in new[] { ("http3", false), ("connections", false), ("http3", true) })
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            async Task Delay(CancellationToken token)
+            {
+                entered.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, token); }
+                catch (OperationCanceledException) when (lateResult) { }
+            }
+            fake.Http3 = async token => { await Delay(token); return "old result"; };
+            fake.Connections = operation == "connections" ? async token => { await Delay(token); return new([], 0, 0, 0); } : null;
+            var reading = broker.HandleAsync(admin, new(operation, InstanceId: broker.InstanceId, Generation: started.Status!.Generation), default);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (operation == "http3")
+                await broker.HandleAsync(admin, new("connections", InstanceId: broker.InstanceId, Generation: started.Status.Generation), default).WaitAsync(TimeSpan.FromSeconds(5));
+            await broker.HandleAsync(admin, new("stop", InstanceId: broker.InstanceId, Generation: started.Status.Generation), default).WaitAsync(TimeSpan.FromSeconds(5));
+            bool cancelled = false;
+            try { await reading; }
+            catch (OperationCanceledException) { cancelled = true; }
+            Assert(cancelled && !fake.Running, "Stopping cancels an in-flight " + operation + " request without waiting for its network timeout.");
+            fake.Http3 = null; fake.Connections = null;
+            started = await broker.HandleAsync(admin, new("start", InstanceId: broker.InstanceId), default);
+            var fresh = await broker.HandleAsync(admin, new("connections", InstanceId: broker.InstanceId, Generation: started.Status!.Generation), default);
+            Assert(fresh.Connections is not null, "Core reads work again after reconnecting.");
+        }
         await broker.HandleAsync(admin, new("stop", InstanceId: broker.InstanceId, Generation: started.Status!.Generation), default);
         var test = await broker.HandleAsync(admin, new("start", TestOnly: true, InstanceId: broker.InstanceId), default);
         Assert(test.Lease is not null, "Temporary diagnostics receive a lease.");

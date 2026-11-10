@@ -67,9 +67,9 @@ public sealed class RemoteEngine(ServiceClient client, Func<SshHostKeyUpdate, Ta
         finally { lease = null; }
     }
 
-    public async Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll)
+    public async Task<ConnectionSnapshot> GetConnectionsAsync(bool showAll, CancellationToken token = default)
     {
-        var reply = await client.CallAsync(new("connections", ShowAll: showAll, Lease: lease, InstanceId: InstanceId, Generation: Generation)).ConfigureAwait(false);
+        var reply = await client.CallAsync(new("connections", ShowAll: showAll, Lease: lease, InstanceId: InstanceId, Generation: Generation), token).ConfigureAwait(false);
         Apply(reply);
         var snapshot = reply.Connections ?? new([], 0, 0, 0);
         return snapshot with { Rows = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Select(snapshot.Rows, row =>

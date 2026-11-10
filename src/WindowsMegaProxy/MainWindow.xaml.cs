@@ -194,7 +194,7 @@ public partial class MainWindow : Window
         {
             await RefreshServiceStateAsync();
             await RefreshServiceAsync();
-            await RefreshConnectionsAsync();
+            await RefreshConnectionsAsync(scheduled: true);
             await RefreshLogAsync();
             await RefreshSubscriptionAsync();
             await RunAppUpdateCheckAsync(manual: false);
@@ -916,10 +916,13 @@ public partial class MainWindow : Window
     private bool CanPollConnections() => IsVisible && WindowState != WindowState.Minimized &&
         ((TabItem)Sections.Items[0]).IsSelected && connection.State == ConnectionState.Connected && engine?.Running == true;
 
-    private async Task RefreshConnectionsAsync()
+    private DateTimeOffset nextConnectionsPoll;
+
+    private async Task RefreshConnectionsAsync(bool scheduled = false)
     {
-        if (!canEdit || !CanPollConnections()) { previousTrafficTime = default; return; }
+        if (!canEdit || !CanPollConnections()) { previousTrafficTime = default; nextConnectionsPoll = default; return; }
         if (polling) return;
+        if (scheduled && DateTimeOffset.UtcNow < nextConnectionsPoll) return;
         polling = true;
         var current = engine!;
         bool showAll = ShowAllConnectionsBox.IsChecked == true;
@@ -933,6 +936,7 @@ public partial class MainWindow : Window
                 row.RouteGroup, row.UploadedBytes, row.DownloadedBytes, row.Id)).ToArray());
             ConnectionsHint.Text = Ui.F("Shown: {0} of {1}.", snapshot.Rows.Count, snapshot.Total);
             var now = DateTimeOffset.UtcNow;
+            nextConnectionsPoll = snapshot.Total >= 1000 ? now + ConnectionSnapshot.PollInterval(snapshot.Total) : default;
             if (previousTrafficTime != default)
             {
                 double seconds = (now - previousTrafficTime).TotalSeconds;
