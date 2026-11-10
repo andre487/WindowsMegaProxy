@@ -1,71 +1,87 @@
-# WindowsMegaProxy
+# MegaProxy for Windows
 
-A native Windows 10/11 proxy client for the MegaProxy family. Route all applications or selected traffic through your active proxy profile.
+[![CI](https://github.com/andre487/WindowsMegaProxy/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/andre487/WindowsMegaProxy/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Release](https://img.shields.io/github/v/release/andre487/WindowsMegaProxy)](https://github.com/andre487/WindowsMegaProxy/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-blue)](docs/en/installation.md)
+
+<p align="center">
+  <img src="assets/branding/icon-toolbar.svg" width="128" alt="MegaProxy app icon">
+</p>
+
+MegaProxy is an open-source Windows client for HTTPS, SOCKS5, SSH and experimental
+MASQUE (HTTP/3) proxies, including **HTTPS and SSH Jump** connections.
+Route all applications or selected traffic through servers you control or trust.
+**Servers and credentials are not included.**
+
+## Installation
+
+Windows 10/11 x64 and an administrator account are required.
+
+[![Download Setup](https://img.shields.io/badge/Download-MegaProxy%20Setup-0078D4?style=for-the-badge&logo=github)](https://github.com/andre487/WindowsMegaProxy/releases/latest/download/WindowsMegaProxy-setup.exe)
+
+[Latest release and changelog](https://github.com/andre487/WindowsMegaProxy/releases/latest) ·
+[Installation guide](docs/en/installation.md) · [Установка на русском](docs/ru/installation.md)
+
+The installer includes .NET and both proxy cores and prepares Windows OpenSSH Client
+if missing. Choose a personal or system-wide installation and a startup mode.
+The application is signed with a self-signed certificate; Windows may show an
+unrecognized-publisher warning. [Signatures and antivirus notes](docs/ANTIVIRUS.md).
+
+1. Install MegaProxy, then add or import a proxy profile.
+2. Choose the default route and add application or destination rules.
+3. Select a profile and connect.
+4. Open **Diagnostics** to check the connection and run a speed test.
+
+For updates, use **Settings → Application updates** or install the latest Setup
+over the existing installation, keeping its scope. Profiles and settings are preserved.
+The download link above always points to the latest release's installer, starting with 0.1.1.
+
+Server setup: [MegaProxyServer](https://github.com/andre487/MegaProxyServer).
+Other clients: [Android](https://github.com/andre487/AndroidMegaProxy) ·
+[Browser](https://github.com/andre487/BrowserMegaProxy).
 
 ## Features
 
-- **Proxy profiles:** HTTPS, SOCKS5, SSH, HTTPS Jump, SSH Jump and experimental MASQUE (HTTP/3). Create, edit, duplicate and switch profiles, with colors and country flags. SSH Jump verifies both server keys independently.
-- **Installation scope:** system-wide with shared administrator-managed settings and optional Windows service, or current-user with personal encrypted settings and a protected scheduled launch. Current-user installation requires an administrator account; normal launches need no repeated UAC approval.
-- **Flexible routing:** named, individually enabled rules for EXE files, recursive folders, domains, wildcard domains, IP addresses, subnets and Podkop community lists. Podkop rules can refresh their lists through the connected proxy, using cached lists before connection. Use the active profile, system mode or blocking; system mode is the default.
-- **HTTP versions:** choose the stable core (HTTP/1.1), HTTP/2 or HTTP/2 + HTTP/3 for HTTPS and HTTPS Jump. H2/H3 use the bundled 1.15 alpha core, with fallback to lower versions when unsupported. HTTP/3 checks appear only for supported transports.
-- **Connection monitoring:** grouped connections, traffic rates with IEC/SI units, sortable columns and copyable application paths. Configurable MTU and per-profile IPv6 destinations.
-- **Profile DNS:** Cloudflare, Google, Quad9, Yandex Basic/Safe/Family or custom HTTPS DoH and TCP/UDP DNS endpoints. Used through the active proxy when it is the default route; system mode retains Windows DNS. UDP DNS requires a UDP-capable profile and never falls back to a direct connection. Custom URL query strings are unsupported.
-- **Bootstrap DNS:** independently choose Windows DNS or a built-in DoH provider to resolve proxy server names directly before connecting, including selective proxy routing. Automatic preserves the existing mode-dependent behavior.
-- **Diagnostics:** HTTPS checks, exit IP and country, HTTP/3 checks and download/upload speed tests, including client HTTP/3 through SOCKS5 UDP. Speed results include ProxyCheck exit-IP reputation for each route; this is not proof of anonymity.
-- **Security options:** certificate verification, password or private-key SSH authentication, TCP TLS and SSH fingerprint presets, and knock-host checks for masked HTTPS proxies.
-- **Configuration transfer:** import MegaProxy JSON v1–8, FoxyProxy JSON, ProxyList and SuperProxy. Export MegaProxy JSON or ProxyList; review changed settings and optionally remove missing profiles. Passwords and private keys are excluded by default. Other clients' settings are preserved.
-- **Subscriptions:** HTTPS sources with backups, optional Basic authentication, automatic/manual updates and subscription definitions imported from JSON. Updates preserve local profiles and require reconnecting to apply network changes.
-- **Failover:** optional selected/all-profile backups in profile order, triggered by proxy transport failures; retains certificate and SSH key checks.
-- **Windows integration:** manual launch, elevated startup at sign-in, or a shared Windows service; the active profile and transport in the system tray and main window, optional automatic connection, automatic settings saving and reconnect indicators for pending changes.
-- **Application updates:** daily checks on GitHub Releases, signed manifests, and separate download and installation actions. Checks and downloads can use the connected proxy profile. Update immediately or at the next application start; service installations can update during the next computer restart or restart now. Automatic checks can be disabled in settings or during installation.
-- **Shared service:** one protected configuration for the machine; administrator accounts can edit without repeated UAC prompts, other users have a read-only interface.
-- **Appearance:** English and Russian, automatic/light/dark themes and Windows display scaling.
-- **Logs:** local rotating logs, configurable size and export. Log entries are always in English.
+- HTTPS CONNECT over HTTP/1.1, optional HTTP/2 and experimental HTTP/3; HTTPS and SSH Jump.
+- SOCKS5 TCP/UDP, SSH password/private-key authentication and experimental MASQUE.
+- Rules for EXE files, recursive folders, domains, IP/subnet destinations and Podkop lists.
+- Multiple profiles with country flags, import/export, configuration subscriptions and failover.
+- Per-profile IPv6, DNS-over-HTTPS and TCP/UDP DNS; separate bootstrap DNS settings.
+- Connection tables, traffic rates, connection/speed diagnostics and exit-IP reputation.
+- Manual launch, sign-in startup or a Windows service; system tray and application updates.
+- English/Russian, light/dark/system themes, display scaling and local rotating logs.
 
-## Quick start
+[Profiles and routing](docs/en/profiles-and-routing.md) · [Updates](docs/en/updates.md) ·
+[English documentation](docs/en/index.md) / [Документация на русском](docs/ru/index.md)
 
-See [screenshots of the main sections](docs/screenshots/README.md) in light and dark themes.
+## Screenshots
 
-Native installer and release packages: see [installer builds](installer/README.md).
+| Connections | Profiles |
+| --- | --- |
+| [![Connections](docs/screenshots/connections-light.png)](docs/screenshots/connections-light.png) | [![Profiles](docs/screenshots/profiles-dark.png)](docs/screenshots/profiles-dark.png) |
 
-Requires Windows 10/11 x64 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+[All sections in light and dark themes](docs/screenshots/README.md).
+Screenshots use synthetic profiles and may differ from the current release.
 
-The build downloads a pinned Go SDK into `.tools` for the standalone HTTP/3 diagnostic client. Go is not required on users' computers.
+## Privacy and security
 
-```cmd
-setup.cmd
-build.cmd
-install.cmd
-```
+Proxy operators can see destinations and unencrypted traffic. SOCKS5 does not encrypt
+the proxy connection or its credentials. HTTPS/MASQUE verify server certificates by
+default. **SSH and SSH Jump currently accept any server host key**; imported host-key
+pins are preserved for compatibility but are not enforced.
 
-Production packages bundle a pinned .NET runtime and both proxy cores. Installation requires administrator approval and prepares Windows OpenSSH Client if missing. Add or import a profile, configure routing rules and connect. VS Code tasks are included; Visual Studio is not required.
+Stored credentials are protected with Windows DPAPI. Logs stay local unless exported.
+Diagnostics, subscriptions, DNS and enabled update checks contact their respective
+services. [Privacy policy](PRIVACY.md) · [Antivirus and signing](docs/ANTIVIRUS.md).
 
-Upgrading from 0.0.4: if service mode shows **Read-only mode**, open MegaProxy once as administrator and use **Settings → Application updates**. The updated installer fixes service access and removes the old version directories while preserving settings.
+## Development
 
-`install.cmd` defaults to manual launch; use `install.cmd --mode login` or
-`install.cmd --mode service` for the other modes. Standalone hosts run elevated;
-the interface in service mode can run without elevation.
-
-Choose an operating mode in the native installer or application settings. Manual and sign-in modes require administrator privileges and stop interception when you exit the application. Service mode keeps the shared connection running when the interface closes. Changing mode restarts the application and preserves its configuration.
-
-For development, run `run.cmd` from an administrator terminal (or approve UAC). DEV has separate processes, icons and settings. In manual mode, `run.cmd` rebuilds and starts directly from `artifacts/dev/app`; login/service modes rebuild the isolated protected DEV installation and restart it. The selected mode is preserved. When the other channel is running, either client offers to stop it or exit the current channel; `stop-prod.cmd` remains available for explicit cleanup. Repeated launches restore the existing window and preserve its connection. `cleanup-dev.cmd` (also `uninstall-dev.cmd`) explicitly removes DEV services, startup entries and installed binaries while preserving settings. `build.cmd --dev` only builds DEV.
-
-Windows OpenSSH Client is a mandatory system component prepared by the installer.
-
-`run-trace-probe.cmd` builds and runs the standalone console test: Cloudflare trace followed by repeated 50 MB download/upload measurements with HTTP latency and a one-second pause. It shows the latest three results; press Enter to stop. The existing `trace-probe.cmd` command remains available.
-
-Run `ipv6-test.cmd` for local IPv6 forwarding and routing checks across every proxy type. It uses the pinned sing-box cores and a local SSH fixture, without TUN or external traffic. Profile editor checks run with `ui-test.cmd`.
-
-## Status
-
-Early preview. HTTP/3 is experimental. SSH Jump and passphrase-protected SSH keys are not yet supported. Automatic failover to SSH requires a previously verified server key.
-
-See [antivirus notes and official dependency sources](docs/ANTIVIRUS.md) for possible false positives and upstream sing-box classifications.
+Develop with VS Code, cmd scripts and uv; Visual Studio is not required.
+[Build, DEV isolation and tests](docs/development.md) · [Installer and release automation](installer/README.md).
 
 ## License
 
-See the [Privacy Policy](PRIVACY.md) for local storage, network requests and third-party services.
-
-The .NET application is licensed under [MIT](LICENSE). The standalone [HTTP/3 diagnostic helper](native/diagnostics/LICENSE) is GPL-3.0-or-later. Third-party components and [artwork](assets/branding/README.md) retain their respective licenses; packages include their notices.
-
-SSH and SSH Jump accept any server host key. Imported host-key pins are preserved for other clients but are not enforced by the Windows client.
+The .NET application is [MIT](LICENSE). The standalone
+[HTTP/3 diagnostic helper](native/diagnostics/LICENSE) is GPL-3.0-or-later.
+Bundled components and [artwork](assets/branding/README.md) retain their respective licenses.
