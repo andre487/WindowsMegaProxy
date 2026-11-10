@@ -199,6 +199,7 @@ public partial class MainWindow : Window
         DefaultActionBox.SelectionChanged += SettingsChanged;
         BypassLanBox.Click += SettingsChanged;
         AutoConnectBox.Click += SettingsChanged;
+        ResetExistingTcpBox.Click += SettingsChanged;
         AutostartBox.Click += AutostartChanged;
         OperatingModeBox.SelectedValue = StartupConfiguration.Mode;
         if (UserInstallation.IsUser) OperatingModeBox.Items.RemoveAt(2);
@@ -482,6 +483,7 @@ public partial class MainWindow : Window
         updated.DefaultAction = (string)((ComboBoxItem)DefaultActionBox.SelectedItem).Tag;
         updated.BypassLan = BypassLanBox.IsChecked == true;
         updated.AutoConnect = AutoConnectBox.IsChecked == true;
+        updated.ResetExistingTcpConnections = ResetExistingTcpBox.IsChecked == true;
         updated.ShowAllConnections = ShowAllConnectionsBox.IsChecked == true;
         updated.Language = (string)((ComboBoxItem)LanguageBox.SelectedItem).Tag;
         updated.Theme = (string)((ComboBoxItem)ThemeBox.SelectedItem).Tag;
@@ -606,6 +608,7 @@ public partial class MainWindow : Window
             SelectTag(DefaultActionBox, settings.DefaultAction);
             BypassLanBox.IsChecked = settings.BypassLan;
             AutoConnectBox.IsChecked = settings.AutoConnect;
+            ResetExistingTcpBox.IsChecked = settings.ResetExistingTcpConnections;
             AutostartBox.IsChecked = settings.LaunchAtSignIn == true;
             LogSizeBox.Text = settings.LogSizeMb.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (rulesChanged)
@@ -854,7 +857,7 @@ public partial class MainWindow : Window
         RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, BootstrapDnsBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, TlsFingerprintBox, BootstrapDnsBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && scheduledAppUpdate?.FilesQueued != true && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         OperatingModeBox.ToolTip = scheduledAppUpdate?.FilesQueued == true ? Ui.T("Restart Windows to finish the update. File replacement has already been scheduled.") : null;

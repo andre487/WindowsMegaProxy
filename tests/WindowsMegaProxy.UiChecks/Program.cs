@@ -25,6 +25,8 @@ internal static partial class Program
         if (args.Length == 2 && args[0] == "--update-preservation-check") { PublishedUpdateChecks.Settings(args[1]); return; }
         InstallationChecks.Run();
         RebootFilesChecks.Run();
+        ExistingTcpChecks.Run();
+        if (args.Contains("--existing-tcp-check")) return;
         if (args.Contains("--reboot-files-check")) return;
         if (args.Length == 2 && args[0] == "--user-settings-check")
         {

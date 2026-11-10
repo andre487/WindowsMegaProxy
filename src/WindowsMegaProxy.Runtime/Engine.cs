@@ -194,6 +194,9 @@ public sealed partial class Engine : IEngine
             cancellationToken.ThrowIfCancellationRequested();
             consoleLease = await CoreConsole.AcquireAsync(cancellationToken);
             job = new ProcessJob();
+            var existing = !testOnly && settings.ResetExistingTcpConnections
+                ? await Task.Run(() => ExistingTcpConnections.Capture(settings, message => Log?.Invoke(message)), cancellationToken)
+                : [];
             process = Process.Start(StartInfo(executable, "run")) ?? throw new InvalidOperationException("The core did not start.");
             job.Assign(process);
             process.EnableRaisingEvents = true;
@@ -205,7 +208,13 @@ public sealed partial class Engine : IEngine
                 try
                 {
                     using var response = await client.GetAsync("version", cancellationToken);
-                    if (response.IsSuccessStatusCode) return;
+                    if (response.IsSuccessStatusCode)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (existing.Length > 0)
+                            await Task.Run(() => ExistingTcpConnections.Close(existing, message => Log?.Invoke(message)), cancellationToken);
+                        return;
+                    }
                 }
                 catch (HttpRequestException) { }
                 catch (TaskCanceledException) { }
