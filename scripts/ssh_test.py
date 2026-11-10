@@ -5,6 +5,7 @@ import logging
 import select
 import socket
 import subprocess as sp
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -25,13 +26,22 @@ class Origin(BaseHTTPRequestHandler):
 
 
 def main():
+    ipv6 = sys.argv[1:] == ['--ipv6']
+    host = '::1' if ipv6 else '127.0.0.1'
     logging.getLogger('paramiko').setLevel(logging.CRITICAL)
-    directory = ROOT / 'artifacts/ssh-checks'
+    directory = ROOT / ('artifacts/ipv6-checks' if ipv6 else 'artifacts/ssh-checks')
     directory.mkdir(parents=True, exist_ok=True)
     host_key, client_key, other_key = (paramiko.RSAKey.generate(2048) for _ in range(3))
     ecdsa_key = paramiko.ECDSAKey.generate()
     origin = ThreadingHTTPServer(('127.0.0.1', 0), Origin)
     threading.Thread(target=origin.serve_forever, daemon=True).start()
+
+    class IPv6Origin(ThreadingHTTPServer):
+        address_family = socket.AF_INET6
+
+    origin6 = IPv6Origin(('::1', 0), Origin) if ipv6 else None
+    if origin6:
+        threading.Thread(target=origin6.serve_forever, daemon=True).start()
     stop = threading.Event()
     sessions = []
 
@@ -49,7 +59,10 @@ def main():
             return 'publickey,password'
 
         def check_channel_direct_tcpip_request(self, _channel, _source, destination):
-            if destination not in (('127.0.0.1', origin.server_port), listener.getsockname()):
+            allowed = [('127.0.0.1', origin.server_port), (host, listener.getsockname()[1])]
+            if origin6:
+                allowed.append(('::1', origin6.server_port))
+            if destination not in allowed:
                 return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
             self.destinations[_channel] = destination
             return paramiko.OPEN_SUCCEEDED
@@ -84,8 +97,8 @@ def main():
         finally:
             transport.close()
 
-    with socket.socket() as listener:
-        listener.bind(('127.0.0.1', 0))
+    with socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET) as listener:
+        listener.bind((host, 0))
         listener.listen()
         listener.settimeout(0.5)
 
@@ -103,12 +116,14 @@ def main():
         private_key = io.StringIO()
         client_key.write_private_key(private_key)
         fixture = directory / 'fixture.json'
-        fixture.write_text(json.dumps(dict(port=listener.getsockname()[1], origin=f'http://127.0.0.1:{origin.server_port}/',
+        fixture.write_text(json.dumps(dict(host=host, port=listener.getsockname()[1], origin=f'http://127.0.0.1:{origin.server_port}/',
+            origin6=f'http://[::1]:{origin6.server_port}/' if origin6 else None,
             hostKey=host_key.get_name() + ' ' + host_key.get_base64(), otherKey=other_key.get_name() + ' ' + other_key.get_base64(),
             privateKey=private_key.getvalue())), encoding='utf-8')
         try:
             try:
-                dotnet('run', '--project', ROOT / 'tests/WindowsMegaProxy.UiChecks', '-c', 'Release', '--', '--ssh-check', fixture)
+                dotnet('run', '--project', ROOT / 'tests/WindowsMegaProxy.UiChecks', '-c', 'Release', '--',
+                       '--ipv6-check' if ipv6 else '--ssh-check', fixture)
             except sp.CalledProcessError:
                 report = directory / 'failure.txt'
                 if report.exists():
@@ -122,6 +137,9 @@ def main():
                 session.close()
             origin.shutdown()
             origin.server_close()
+            if origin6:
+                origin6.shutdown()
+                origin6.server_close()
 
 
 if __name__ == '__main__':

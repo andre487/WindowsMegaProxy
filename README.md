@@ -54,6 +54,8 @@ Windows OpenSSH Client is a mandatory system component prepared by the installer
 
 `run-trace-probe.cmd` builds and runs the standalone console test: Cloudflare trace followed by repeated 50 MB download/upload measurements with HTTP latency and a one-second pause. It shows the latest three results; press Enter to stop. The existing `trace-probe.cmd` command remains available.
 
+Run `ipv6-test.cmd` for local IPv6 forwarding and routing checks across every proxy type. It uses the pinned sing-box cores and a local SSH fixture, without TUN or external traffic. Profile editor checks run with `ui-test.cmd`.
+
 ## Status
 
 Early preview. HTTP/3 is experimental. SSH Jump and passphrase-protected SSH keys are not yet supported. Automatic failover to SSH requires a previously verified server key.

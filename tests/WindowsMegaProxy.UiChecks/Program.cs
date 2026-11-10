@@ -116,6 +116,7 @@ internal static partial class Program
             return;
         }
         System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+        if (args.Length == 2 && args[0] == "--ipv6-check") { Ipv6Checks.RunAsync(args[1]).GetAwaiter().GetResult(); return; }
         if (args.Length == 2 && args[0] == "--ssh-check") { SshChecks.RunAsync(args[1]).GetAwaiter().GetResult(); return; }
         if (args.Contains("--http3-check")) { Http3Checks.RunAsync().GetAwaiter().GetResult(); return; }
         if (args.Contains("--http3-network-check")) { Http3Checks.RunAsync(network: true).GetAwaiter().GetResult(); return; }
@@ -830,6 +831,7 @@ internal static partial class Program
             Assert(testConnection.Engine is null, "UI check must never start TUN.");
             var editorProfile = profile.Copy();
             editorProfile.Data["browser"] = new System.Text.Json.Nodes.JsonObject { ["futureField"] = "retain" };
+            Ipv6UiChecks.Run(window);
             var editor = new ProfileWindow(editorProfile) { Owner = window, WindowStartupLocation = WindowStartupLocation.Manual, Left = -10000, Top = -10000, ShowInTaskbar = false };
             editor.Show();
             Layout(editor);
