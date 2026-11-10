@@ -112,6 +112,9 @@ jobs:
       - name: Test SSH on a local server
         run: ssh-test.cmd
 
+      - name: Test IPv6 routing across all proxy types on local servers
+        run: ipv6-test.cmd
+
       - name: Test selective domain sniffing on local servers
         run: scripts\tools.cmd scripts\sniff_test.py
 

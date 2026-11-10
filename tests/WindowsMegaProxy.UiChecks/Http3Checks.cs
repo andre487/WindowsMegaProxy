@@ -235,12 +235,13 @@ internal static class Http3Checks
         }
     }
 
-    private static (TcpListener Tcp, UdpClient Udp) ReserveProxyPort()
+    internal static (TcpListener Tcp, UdpClient Udp) ReserveProxyPort(IPAddress? address = null)
     {
+        address ??= IPAddress.Loopback;
         for (int attempt = 0; ; attempt++)
         {
-            var tcp = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
-            var udp = new UdpClient(AddressFamily.InterNetwork) { ExclusiveAddressUse = true };
+            var tcp = new TcpListener(address, 0) { ExclusiveAddressUse = true };
+            var udp = new UdpClient(address.AddressFamily) { ExclusiveAddressUse = true };
             try
             {
                 tcp.Start();
@@ -295,11 +296,12 @@ internal static class Http3Checks
         finally { await engine.StopAsync(); }
     }
 
-    private static async Task CheckUdpAsync(JsonNode config, CancellationToken token)
+    internal static async Task CheckUdpAsync(JsonNode config, CancellationToken token, IPAddress? destination = null, bool allowed = true)
     {
+        destination ??= IPAddress.Loopback;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(8));
-        using var echo = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        using var echo = new UdpClient(new IPEndPoint(destination, 0));
         var inbound = config["inbounds"]![0]!;
         using var association = await SocksUdpAssociation.OpenAsync("127.0.0.1", inbound["listen_port"]!.GetValue<int>(),
             "diagnostic", inbound["users"]![0]!["password"]!.ToString(), deadline.Token);
@@ -307,8 +309,16 @@ internal static class Http3Checks
         using var client = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         int port = ((IPEndPoint)echo.Client.LocalEndPoint!).Port;
         byte[] payload = Encoding.ASCII.GetBytes("udp-fixture");
-        byte[] packet = [0, 0, 0, 1, 127, 0, 0, 1, (byte)(port >> 8), (byte)port, .. payload];
+        byte[] packet = [0, 0, 0, (byte)(destination.AddressFamily == AddressFamily.InterNetworkV6 ? 4 : 1),
+            .. destination.GetAddressBytes(), (byte)(port >> 8), (byte)port, .. payload];
         await client.SendAsync(packet, association!.Relay, deadline.Token);
+        if (!allowed)
+        {
+            using var rejected = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            rejected.CancelAfter(TimeSpan.FromSeconds(1));
+            try { await echo.ReceiveAsync(rejected.Token); throw new Exception("Blocked IPv6 UDP reached its destination."); }
+            catch (OperationCanceledException) when (!deadline.IsCancellationRequested) { return; }
+        }
         var request = await echo.ReceiveAsync(deadline.Token);
         Assert(request.Buffer.SequenceEqual(payload), "CONNECT-UDP delivers the original datagram.");
         await echo.SendAsync(request.Buffer, request.RemoteEndPoint, deadline.Token);
