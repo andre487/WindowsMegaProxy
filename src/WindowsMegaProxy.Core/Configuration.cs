@@ -22,6 +22,7 @@ public sealed class Settings
     public string DefaultAction { get; set; } = "system";
     public bool BypassLan { get; set; } = true;
     public bool AutoConnect { get; set; }
+    public bool ResetExistingTcpConnections { get; set; }
     public bool? LaunchAtSignIn { get; set; }
     public int LogSizeMb { get; set; } = 5;
     public bool ShowAllConnections { get; set; }
@@ -87,6 +88,7 @@ public sealed class RoutingRule : INotifyPropertyChanged
 
 public static class Configuration
 {
+    public static readonly string[] DirectProcessNames = ["sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe", "WindowsMegaProxy.Diagnostics.exe"];
     public const string CoreVersion = "1.14.4";
     public const string Http3CoreVersion = "1.15.0-alpha.13";
     public const string DefaultTlsFingerprint = "chrome";
@@ -144,7 +146,7 @@ public static class Configuration
         {
             proxyDefault ? new JsonObject { ["port"] = 53, ["action"] = "hijack-dns" }
                 : new JsonObject { ["port"] = 53, ["action"] = "route", ["outbound"] = "direct" },
-            new JsonObject { ["process_name"] = new JsonArray("sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe", "WindowsMegaProxy.Diagnostics.exe"), ["action"] = "route", ["outbound"] = "direct" }
+            new JsonObject { ["process_name"] = new JsonArray(DirectProcessNames.Select(name => (JsonNode)JsonValue.Create(name)!).ToArray()), ["action"] = "route", ["outbound"] = "direct" }
         };
         var sniffedSources = new HashSet<string>(StringComparer.Ordinal);
         foreach (var rule in settings.Rules.Where(rule => rule.Enabled))

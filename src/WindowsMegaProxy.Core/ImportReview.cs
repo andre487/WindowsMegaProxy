@@ -127,6 +127,7 @@ public sealed class ImportReview
             result.ShowAllConnections = current.ShowAllConnections; result.Language = current.Language; result.Theme = current.Theme;
             result.TlsFingerprint = current.TlsFingerprint; result.LaunchAtSignIn = current.LaunchAtSignIn;
             result.BootstrapDnsProvider = current.BootstrapDnsProvider;
+            result.ResetExistingTcpConnections = current.ResetExistingTcpConnections;
             result.WindowsOptions = (JsonObject)current.WindowsOptions.DeepClone();
             result.Rules = current.Rules.Select(rule => rule.Copy()).ToList();
             result.ActiveProfileId = current.ActiveProfileId;

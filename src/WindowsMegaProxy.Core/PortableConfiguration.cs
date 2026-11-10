@@ -86,6 +86,7 @@ public static class PortableConfiguration
                 {
                     if (windows.ContainsKey("defaultAction")) candidate.DefaultAction = String(windows, "defaultAction");
                     if (windows.ContainsKey("bypassLocalNetworks")) candidate.BypassLan = windows["bypassLocalNetworks"]!.GetValue<bool>();
+                    if (windows.ContainsKey("resetExistingTcpConnections")) candidate.ResetExistingTcpConnections = windows["resetExistingTcpConnections"]!.GetValue<bool>();
                     if (windows.ContainsKey("autoConnect")) candidate.AutoConnect = windows["autoConnect"]!.GetValue<bool>();
                     if (windows.ContainsKey("logSizeMb")) candidate.LogSizeMb = windows["logSizeMb"]!.GetValue<int>();
                     if (windows.ContainsKey("showAllConnections")) candidate.ShowAllConnections = windows["showAllConnections"]!.GetValue<bool>();
@@ -144,6 +145,7 @@ public static class PortableConfiguration
             windows["defaultAction"] = settings.DefaultAction;
             windows["bypassLocalNetworks"] = settings.BypassLan;
             windows["autoConnect"] = settings.AutoConnect;
+            windows["resetExistingTcpConnections"] = settings.ResetExistingTcpConnections;
             windows["logSizeMb"] = settings.LogSizeMb;
             windows["showAllConnections"] = settings.ShowAllConnections;
             windows["language"] = settings.Language;

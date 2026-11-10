@@ -1116,6 +1116,18 @@
                                             TextWrapping="Wrap"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,0,0,20" />
+                                        <CheckBox
+                                            x:Name="ResetExistingTcpBox"
+                                            Margin="0,0,0,8">
+                                            <TextBlock
+                                                Text="{DynamicResource &quot;Close existing TCP connections of selected applications on connection&quot;}"
+                                                TextWrapping="Wrap" />
+                                        </CheckBox>
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Applies on the next connection. IPv4 TCP only, for EXE or folder rules routed through the active profile. Ambiguous domain rules are skipped. Downloads and sessions may be interrupted.&quot;}"
+                                            TextWrapping="Wrap"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                            Margin="0,0,0,20" />
                                         <Label
                                             Content="{DynamicResource &quot;Bootstrap DNS&quot;}"
                                             Target="{Binding ElementName=BootstrapDnsBox}"

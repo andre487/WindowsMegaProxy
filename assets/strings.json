@@ -1,4 +1,6 @@
 {
+    "Close existing TCP connections of selected applications on connection": "Закрывать существующие TCP-соединения выбранных приложений при подключении",
+    "Applies on the next connection. IPv4 TCP only, for EXE or folder rules routed through the active profile. Ambiguous domain rules are skipped. Downloads and sessions may be interrupted.": "Применяется при следующем подключении. Только IPv4 TCP по правилам EXE или папки через активный профиль. Неоднозначные доменные правила пропускаются. Загрузки и сеансы могут прерваться.",
     "Enter an HTTPS DoH URL or tcp://IP:port / udp://IP:port.": "Введите URL HTTPS DoH либо tcp://IP:порт / udp://IP:порт.",
     "ProxyCheck rate limit reached": "Слишком много запросов к ProxyCheck",
     "These options are preserved but are not applied by the Windows client:": "Эти параметры сохраняются, но не применяются Windows-клиентом:",
