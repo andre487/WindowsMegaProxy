@@ -231,15 +231,6 @@
                         </InlineUIContainer>
                         <InlineUIContainer BaselineAlignment="Baseline">
                             <TextBlock
-                                x:Name="TransportText"
-                                FontSize="12"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Margin="6,4,0,4"
-                                Visibility="Collapsed"
-                                AutomationProperties.LiveSetting="Polite" />
-                        </InlineUIContainer>
-                        <InlineUIContainer BaselineAlignment="Baseline">
-                            <TextBlock
                                 x:Name="ServiceStateText"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"

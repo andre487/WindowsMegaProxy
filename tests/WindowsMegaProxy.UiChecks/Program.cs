@@ -245,43 +245,40 @@ internal static partial class Program
                     applySettings.Invoke(window, [pendingSettings]);
                     Layout(window);
                     string summary = ((TextBlock)window.FindName("ProfileSummary")).Text;
-                    var transport = (TextBlock)window.FindName("TransportText");
+                    Assert(window.FindName("TransportText") is null, "The status line has no negotiated proxy protocol indicator.");
                     var status = (TextBlock)window.FindName("StatusText");
                     var serviceStatus = (TextBlock)window.FindName("ServiceStateText");
-                    var protocolInline = (System.Windows.Documents.InlineUIContainer)transport.Parent;
-                    var statusLine = (TextBlock)protocolInline.Parent;
+                    var statusInline = (System.Windows.Documents.InlineUIContainer)status.Parent;
+                    var statusLine = (TextBlock)statusInline.Parent;
                     var statusItems = statusLine.Inlines.OfType<System.Windows.Documents.InlineUIContainer>().ToArray();
-                    Assert(statusItems[1] == protocolInline && statusItems[0].Child == status &&
-                        statusItems[2].Child == serviceStatus &&
-                        transport.FontSize == serviceStatus.FontSize,
-                        "Protocol belongs between connection and service status, with the service font size.");
+                    Assert(statusItems.Length == 2 && statusItems[0].Child == status && statusItems[1].Child == serviceStatus,
+                        "Connection and service status are adjacent without a protocol placeholder.");
                     serviceStatus.Visibility = Visibility.Visible;
                     serviceStatus.Text = "Service: running";
                     Layout(window);
                     double Baseline(TextBlock text) => text.TranslatePoint(new Point(0, text.BaselineOffset), statusLine).Y;
-                    Assert(Math.Abs(Baseline(status) - Baseline(transport)) <= 1 &&
-                        Math.Abs(Baseline(status) - Baseline(serviceStatus)) <= 1,
-                        "Connection, protocol and service text share a baseline despite different font sizes.");
+                    Assert(Math.Abs(Baseline(status) - Baseline(serviceStatus)) <= 1,
+                        "Connection and service text share a baseline despite different font sizes.");
                     var trayIcon = (System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
-                    Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && transport.Text == "(HTTP/3 · QUIC)" && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
-                    Assert(trayIcon.Text.Contains("Running H3 profile") && trayIcon.Text.Contains("HTTP/3") && !trayIcon.Text.Contains("SSH KZ") && !trayIcon.Text.Contains("TLS"), "Tray details use the applied profile and omit unavailable TLS negotiation data.");
+                    Assert(summary.Contains("Running H3 profile") && summary.Contains("MASQUE") && !summary.Contains("SSH KZ"), "A pending SSH selection cannot replace the running profile name or mix SSH with the old H3 transport.");
+                    Assert(trayIcon.Text.Contains("Running H3 profile") && trayIcon.Text.EndsWith("[" + fakeEngine.AppliedSettings!.ActiveProfile!.TypeLabel + "]") && !trayIcon.Text.Contains('\n') && !trayIcon.Text.Contains("SSH KZ") && !trayIcon.Text.Contains("TLS"), "Tray details show only the applied profile and its type.");
                     fakeEngine.AppliedSettings!.ActiveProfile!.Data["name"] = new string('x', 200) + "😀";
                     updateSummary.Invoke(window, null);
-                    Assert(trayIcon.Text.Length <= 127 && trayIcon.Text.EndsWith("HTTP/3 · QUIC") && trayIcon.Text.Contains("…"), "Long profile names fit the native tray tooltip without losing protocol details.");
+                    Assert(trayIcon.Text.Length <= 127 && trayIcon.Text.EndsWith("[" + fakeEngine.AppliedSettings!.ActiveProfile!.TypeLabel + "]") && !trayIcon.Text.Contains('\n') && trayIcon.Text.Contains("…"), "Long profile names fit the native tray tooltip without losing the profile type.");
                     fakeEngine.AppliedSettings.ActiveProfile.Proxy["type"] = "HTTPS";
                     fakeEngine.Http3Selected = false; fakeEngine.UsedHttp3Fallback = true;
                     updateSummary.Invoke(window, null);
-                    Assert(transport.Text == "(HTTP/1.1)" && trayIcon.Text.EndsWith("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/3"), "HTTP/3 fallback reports the actual HTTP/1.1 transport in the window and tray.");
+                    Assert(trayIcon.Text.EndsWith("[HTTPS]") && !trayIcon.Text.Contains("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/3"), "HTTP/3 fallback keeps the profile type without reporting a negotiated protocol.");
                     fakeEngine.AppliedSettings.ActiveProfile.Proxy["preferHttp2"] = true;
                     updateSummary.Invoke(window, null);
-                    Assert(transport.Visibility == Visibility.Collapsed && !trayIcon.Text.Contains("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/2"), "Do not label H2/H1 negotiation as a known HTTP version.");
+                    Assert(trayIcon.Text.EndsWith("[HTTPS]") && !trayIcon.Text.Contains("HTTP/1.1") && !trayIcon.Text.Contains("HTTP/2"), "Do not label H2/H1 negotiation as a known HTTP version.");
                     Assert(((Button)window.FindName("ConnectButton")).IsEnabled && ((Button)window.FindName("ReconnectButton")).IsEnabled, "Accept-new enables SSH reconnect without a manually pasted server key.");
                     fakeEngine.AppliedSettings = pendingSettings;
                     fakeEngine.Http3Selected = false;
                     fakeEngine.UsedHttp3Fallback = false;
                     updateSummary.Invoke(window, null);
                     Assert(((TextBlock)window.FindName("ProfileSummary")).Text.Contains("SSH KZ") && !((TextBlock)window.FindName("ProfileSummary")).Text.Contains("HTTP/3"), "After reconnect the summary switches to the applied SSH profile and drops H3.");
-                    Assert(transport.Text == "(SSH)" && trayIcon.Text.Contains("SSH KZ") && trayIcon.Text.EndsWith("SSH KZ [SSH]"), "SSH updates the window and tray without stale H3 details.");
+                    Assert(trayIcon.Text.Contains("SSH KZ") && trayIcon.Text.EndsWith("SSH KZ [SSH]"), "SSH updates the window and tray without stale H3 details.");
                     Assert(trayIcon.Text == AppIdentity.DisplayName + " — SSH KZ [SSH]", "Application, profile and SSH type occupy one tooltip line.");
                     fakeEngine.AppliedSettings.ActiveProfile!.Proxy["type"] = "SSH_JUMP";
                     updateSummary.Invoke(window, null);
@@ -291,7 +288,7 @@ internal static partial class Program
                     Wait(window, testConnection.DisconnectAsync());
                     Assert(!trayIcon.Text.Contains("SSH KZ"), "Disconnect updates the tray immediately without a later refresh.");
                     updateSummary.Invoke(window, null);
-                    Assert(transport.Visibility == Visibility.Collapsed && !trayIcon.Text.Contains("SSH KZ"), "Disconnect clears active transport and profile details.");
+                    Assert(!trayIcon.Text.Contains("SSH KZ"), "Disconnect clears active transport and profile details.");
                     string key = "ssh-ed25519 " + Convert.ToBase64String(Convert.FromHexString("0000000B7373682D6564323535313900000020" + new string('0', 64)));
                     var update = new SshHostKeyUpdate(pendingSsh.Id, pendingSsh.Name, pendingSsh.Host, pendingSsh.Port, "", SshConfiguration.Fingerprint(key), key);
                     Wait(window, (Task)typeof(MainWindow).GetMethod("SaveSshHostKey", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [update])!);
