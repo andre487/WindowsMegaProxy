@@ -235,12 +235,14 @@ internal static class Http3Checks
         }
     }
 
-    internal static (TcpListener Tcp, UdpClient Udp) ReserveProxyPort(IPAddress? address = null)
+    internal static (TcpListener Tcp, UdpClient Udp) ReserveProxyPort(IPAddress? address = null, int initialPort = 0)
     {
         address ??= IPAddress.Loopback;
         for (int attempt = 0; ; attempt++)
         {
-            var tcp = new TcpListener(address, 0) { ExclusiveAddressUse = true };
+            // Randomize retries so an excluded UDP range cannot consume consecutive TCP allocations.
+            int port = attempt == 0 ? initialPort : RandomNumberGenerator.GetInt32(10240, 65536);
+            var tcp = new TcpListener(address, port) { ExclusiveAddressUse = true };
             var udp = new UdpClient(address.AddressFamily) { ExclusiveAddressUse = true };
             try
             {
@@ -249,7 +251,7 @@ internal static class Http3Checks
                 udp.Client.Bind(tcp.LocalEndpoint);
                 return (tcp, udp);
             }
-            catch (SocketException error) when (attempt < 31 && error.SocketErrorCode is SocketError.AccessDenied or SocketError.AddressAlreadyInUse)
+            catch (SocketException error) when (attempt < 127 && error.SocketErrorCode is SocketError.AccessDenied or SocketError.AddressAlreadyInUse)
             { tcp.Stop(); udp.Dispose(); }
             catch { tcp.Stop(); udp.Dispose(); throw; }
         }
@@ -266,6 +268,14 @@ internal static class Http3Checks
         try { contender.Client.Bind(tcp.LocalEndpoint); }
         catch (SocketException error) when (error.SocketErrorCode is SocketError.AccessDenied or SocketError.AddressAlreadyInUse) { rejected = true; }
         Assert(rejected, "The fallback UDP blackhole remains exclusively reserved until fixture cleanup.");
+        int blockedPort = ((IPEndPoint)tcp.LocalEndpoint).Port;
+        tcp.Stop();
+        var retried = ReserveProxyPort(initialPort: blockedPort);
+        using var retryTcp = retried.Tcp;
+        using var retryUdp = retried.Udp;
+        Assert(((IPEndPoint)retryTcp.LocalEndpoint).Port != blockedPort &&
+            retryTcp.LocalEndpoint.Equals(retryUdp.Client.LocalEndPoint),
+            "A TCP-free port occupied by UDP is skipped and both protocols are reserved on another port.");
     }
 
     private static async Task CheckSocksWithoutUdpAsync(string directory, CancellationToken token)
