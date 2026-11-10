@@ -43,7 +43,7 @@
         <TextBlock
             Text="{DynamicResource &quot;The file is not encrypted. Subscription URLs and extra fields may contain tokens even without passwords. Share it only with trusted recipients.&quot;}"
             TextWrapping="Wrap"
-            Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            Style="{x:Static local:UiTheme.ExplanationStyle}" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
             <Button
                 Content="{DynamicResource &quot;Export&quot;}"

@@ -46,8 +46,18 @@ internal static class UpdateInstallChecks
                 throw new Exception("Update choices must match the operating mode and default to Cancel.");
             string text = string.Join(" ", choices.Select(button => button.Content).OfType<StackPanel>()
                 .SelectMany(content => content.Children.OfType<TextBlock>().Select(item => item.Text)));
-            if (text.Contains(Ui.T("While the service is updating, connections will use the system network settings."), StringComparison.Ordinal) != service)
-                throw new Exception("Only service mode needs the system-routing interruption explanation.");
+            if (!text.Contains(Ui.T("During the update, connections will use the system route."), StringComparison.Ordinal))
+                throw new Exception("Both modes must explain the system route during updates.");
+            string[] expected = service ? ["UpdateNowButton", "UpdaterebootButton", "UpdaterestartButton"] : ["UpdateNowButton", "UpdatelaunchButton"];
+            if (!choices.Take(choices.Length - 1).Select(button => button.Name).SequenceEqual(expected))
+                throw new Exception("Update choices must put deferred installation before restarting now.");
+            foreach (var choice in choices.Take(choices.Length - 1))
+            {
+                var labels = ((StackPanel)choice.Content).Children.OfType<TextBlock>().ToArray();
+                if (labels.Length != 2 || labels[1].FontSize != 12 || labels[1].FontWeight != FontWeights.Normal ||
+                    !ReferenceEquals(labels[1].Foreground, dialog.FindResource("TextFillColorSecondaryBrush")))
+                    throw new Exception("Every update action must have a secondary explanation.");
+            }
             dialog.Close();
         }
         var handoff = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

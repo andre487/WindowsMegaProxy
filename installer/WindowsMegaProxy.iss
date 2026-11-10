@@ -66,10 +66,11 @@ Source: "{#PayloadDirectory}\*"; DestDir: "{code:RuntimePath}"; Excludes: "launc
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsUserInstall
 
 [Icons]
-Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"
-Name: "{autodesktop}\MegaProxy"; Filename: "{code:LaunchPath}"; Tasks: desktopicon
+Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"; AppUserModelID: "WindowsMegaProxy"
+Name: "{autodesktop}\MegaProxy"; Filename: "{code:LaunchPath}"; AppUserModelID: "WindowsMegaProxy"; Tasks: desktopicon
 
 [Registry]
+Root: HKA; Subkey: "Software\Classes\AppUserModelId\WindowsMegaProxy"; ValueType: expandsz; ValueName: "DisplayName"; ValueData: "MegaProxy"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueName: "WindowsMegaProxy"; Flags: uninsdeletevalue; Check: IsAdminInstallMode
 Root: HKLM; Subkey: "SOFTWARE\WindowsMegaProxy"; Flags: uninsdeletekey; Check: IsAdminInstallMode
 Root: HKCU; Subkey: "SOFTWARE\WindowsMegaProxy\UserInstallation"; Flags: uninsdeletekey; Check: IsUserInstall

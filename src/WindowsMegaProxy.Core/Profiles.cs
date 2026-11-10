@@ -9,7 +9,11 @@ namespace WindowsMegaProxy;
 public sealed class ProxyProfile : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
-    public void RefreshLanguage() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CountryName)));
+    public void RefreshLanguage()
+    {
+        foreach (string property in new[] { nameof(CountryName), nameof(TypeLabel), nameof(Description), nameof(SelectionLabel) })
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+    }
     public JsonObject Data { get; set; } = new();
 
     public ProxyProfile() { }
@@ -19,6 +23,11 @@ public sealed class ProxyProfile : INotifyPropertyChanged
     [JsonIgnore] public string Name => Data["name"]?.GetValue<string>() is { Length: > 0 } name ? name : Host;
     [JsonIgnore] public JsonObject Proxy => Data["proxy"]!.AsObject();
     [JsonIgnore] public string Type => Proxy["type"]!.GetValue<string>();
+    [JsonIgnore] public string TypeLabel => Type switch
+    {
+        "HTTPS_JUMP" => Ui.T("HTTPS with Jump"), "SSH_JUMP" => Ui.T("SSH with Jump"),
+        "MASQUE" => "MASQUE α (HTTP/3)", _ => Type
+    };
     [JsonIgnore] public string Host => Proxy["host"]!.GetValue<string>();
     [JsonIgnore] public int Port => Proxy["port"]!.GetValue<int>();
     [JsonIgnore] public bool Supported => Type is "HTTPS" or "HTTPS_JUMP" or "SOCKS5" or "HTTP" or "MASQUE" or "SSH" or "SSH_JUMP";
@@ -26,8 +35,9 @@ public sealed class ProxyProfile : INotifyPropertyChanged
     [JsonIgnore] public bool PreferHttp2 => Type is "HTTPS" or "HTTPS_JUMP" && ((Proxy["preferHttp2"]?.GetValue<bool>() ?? false) || PreferHttp3);
     [JsonIgnore] public bool UsesHttp3 => Type == "MASQUE" || PreferHttp3;
     [JsonIgnore] public bool AllowIpv6 => Data["routing"]?["allowIpv6"]?.GetValue<bool>() ?? true;
-    [JsonIgnore] public string Description => $"{Host}:{Port} · {Type}";
-    [JsonIgnore] public string SelectionLabel => $"{Name} · {Type}";
+    [JsonIgnore] public string Endpoint => $"{Host}:{Port}";
+    [JsonIgnore] public string Description => $"{Endpoint} · {TypeLabel}";
+    [JsonIgnore] public string SelectionLabel => $"{Name} · {TypeLabel}";
     [JsonIgnore] public string Availability => Supported ? "" : Ui.T("This connection type is not supported by the Windows client yet");
     [JsonIgnore] public int ColorIndex => (Data["color"]?.GetValue<int>() ?? 0) % ProfileAppearance.ColorCount;
     [JsonIgnore] public string ColorHex => ProfileAppearance.Colors[ColorIndex].Hex;

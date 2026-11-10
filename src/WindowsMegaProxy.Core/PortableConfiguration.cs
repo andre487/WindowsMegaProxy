@@ -92,6 +92,7 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("showAllConnections")) candidate.ShowAllConnections = windows["showAllConnections"]!.GetValue<bool>();
                     if (windows.ContainsKey("language")) candidate.Language = String(windows, "language");
                     if (windows.ContainsKey("theme")) candidate.Theme = String(windows, "theme");
+                    if (windows.ContainsKey("alwaysMinimizeToTray")) candidate.AlwaysMinimizeToTray = windows["alwaysMinimizeToTray"]!.GetValue<bool>();
                     if (windows.ContainsKey("tlsFingerprint")) candidate.TlsFingerprint = String(windows, "tlsFingerprint");
                     if (windows.ContainsKey("bootstrapDnsProvider")) candidate.BootstrapDnsProvider = String(windows, "bootstrapDnsProvider");
                     if (windows.ContainsKey("launchAtSignIn")) candidate.LaunchAtSignIn = windows["launchAtSignIn"]!.GetValue<bool>();
@@ -150,6 +151,7 @@ public static class PortableConfiguration
             windows["showAllConnections"] = settings.ShowAllConnections;
             windows["language"] = settings.Language;
             windows["theme"] = settings.Theme;
+            windows["alwaysMinimizeToTray"] = settings.AlwaysMinimizeToTray;
             windows["tlsFingerprint"] = settings.TlsFingerprint;
             windows["bootstrapDnsProvider"] = settings.BootstrapDnsProvider;
             windows["launchAtSignIn"] = settings.LaunchAtSignIn ?? false;

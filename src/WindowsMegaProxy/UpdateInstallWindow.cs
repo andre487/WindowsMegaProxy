@@ -13,17 +13,16 @@ public sealed class UpdateInstallWindow : Window
         Title = Ui.T("Install update");
         Width = 480; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"); FontSize = 14;
+        FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"); FontSize = 14; FontWeight = FontWeights.Normal;
         var panel = new StackPanel { Margin = new Thickness(24) };
-        panel.Children.Add(new TextBlock { Text = Ui.T("When should the update be installed?"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
+        panel.Children.Add(new TextBlock { Text = Ui.T("Choose an update option"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         void Add(string action, string title, string? description = null)
         {
             var content = new StackPanel();
             content.Children.Add(new TextBlock { Text = Ui.T(title), TextWrapping = TextWrapping.Wrap });
             if (description is not null)
             {
-                var detail = new TextBlock { Text = Ui.T(description), TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 4, 0, 0) };
-                detail.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorSecondaryBrush");
+                var detail = new TextBlock { Text = Ui.T(description), Style = UiTheme.ExplanationStyle, Margin = new Thickness(0, 4, 0, 0) };
                 content.Children.Add(detail);
             }
             var button = new Button { Name = action == "now" ? "UpdateNowButton" : "Update" + action + "Button", Content = content,
@@ -32,13 +31,13 @@ public sealed class UpdateInstallWindow : Window
             button.Click += (_, _) => { Action = action; DialogResult = true; };
             panel.Children.Add(button);
         }
-        Add("now", "Update now", service ? "While the service is updating, connections will use the system network settings." : null);
+        Add("now", service ? "Now without restarting" : "Now", "During the update, connections will use the system route.");
         if (service)
         {
-            Add("restart", "Restart computer and update");
-            Add("reboot", "Update at the next computer restart");
+            Add("reboot", "At the next computer startup", "The current version will keep running until the next computer startup.");
+            Add("restart", "Restart now", "The computer will restart and the update will be installed before user sign-in.");
         }
-        else Add("launch", "Update at the next application start");
+        else Add("launch", "At the next application start", "The current version will keep running until the next application start.");
         panel.Children.Add(new Button { Content = Ui.T("Cancel"), IsCancel = true, IsDefault = true, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) });
         Content = panel;
     }

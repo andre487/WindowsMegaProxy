@@ -36,10 +36,10 @@
                         Margin="0,0,0,4" />
                     <ComboBox x:Name="TypeBox" SelectionChanged="TypeChanged" Margin="0,0,0,16">
                         <ComboBoxItem Content="HTTPS" Tag="HTTPS" />
-                        <ComboBoxItem Content="HTTPS Jump" Tag="HTTPS_JUMP" />
+                        <ComboBoxItem Content="{DynamicResource &quot;HTTPS with Jump&quot;}" Tag="HTTPS_JUMP" />
                         <ComboBoxItem Content="SOCKS5" Tag="SOCKS5" />
                         <ComboBoxItem Content="SSH" Tag="SSH" />
-                        <ComboBoxItem Content="SSH Jump" Tag="SSH_JUMP" />
+                        <ComboBoxItem Content="{DynamicResource &quot;SSH with Jump&quot;}" Tag="SSH_JUMP" />
                         <ComboBoxItem Content="MASQUE α (HTTP/3)" Tag="MASQUE" />
                     </ComboBox>
                     <Grid Margin="0,0,0,16">
@@ -88,16 +88,11 @@
                             <ComboBoxItem Content="{DynamicResource &quot;Enable HTTP/2 + HTTP/3 (1.15 alpha)&quot;}" />
                         </ComboBox>
                     </StackPanel>
-                    <Expander
+                    <TextBlock
                         x:Name="Http3HelpText"
-                        Header="{DynamicResource &quot;About HTTP versions&quot;}"
-                        Margin="0,0,0,16">
-                        <TextBlock
-                            Text="{DynamicResource &quot;HTTP/2 and HTTP/3 use the alpha core. HTTPS falls back to a lower HTTP version when unsupported. HTTP/3 requires UDP; MASQUE requires HTTP/3.&quot;}"
-                            TextWrapping="Wrap"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Margin="0,0,0,16" />
-                    </Expander>
+                        Text="{DynamicResource &quot;HTTP/2 and HTTP/3 use the alpha core. HTTPS falls back to a lower HTTP version when unsupported. HTTP/3 requires UDP; MASQUE requires HTTP/3.&quot;}"
+                        Style="{x:Static local:UiTheme.ExplanationStyle}"
+                        Margin="0,0,0,16" />
                     <StackPanel x:Name="JumpFields">
                         <Label
                             Content="{DynamicResource &quot;Jump server&quot;}"
@@ -197,7 +192,7 @@
                     <TextBlock
                         Text="{DynamicResource &quot;Optional. For HTTPS: the server's knock host reveals masked authentication failures.&quot;}"
                         TextWrapping="Wrap"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Style="{x:Static local:UiTheme.ExplanationStyle}"
                         Margin="0,4,0,0" />
                 </StackPanel>
                 <CheckBox
@@ -222,13 +217,13 @@
                             <TextBlock
                                 Text="{DynamicResource &quot;HTTPS DoH, or tcp://IP:53 / udp://IP:53. Plain DNS uses the proxy and is unencrypted after the proxy.&quot;}"
                                 TextWrapping="Wrap"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Style="{x:Static local:UiTheme.ExplanationStyle}"
                                 Margin="0,4,0,0" />
                         </StackPanel>
                         <TextBlock
                             Text="{DynamicResource &quot;Used through the active proxy when the default route is the active profile. System mode keeps Windows DNS. Apps using their own encrypted DNS are not redirected.&quot;}"
                             TextWrapping="Wrap"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Style="{x:Static local:UiTheme.ExplanationStyle}"
                             Margin="0,8,0,0" />
                     </StackPanel>
                 </Expander>
@@ -280,7 +275,7 @@
                 <TextBlock
                     x:Name="SupportText"
                     TextWrapping="Wrap"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    Style="{x:Static local:UiTheme.ExplanationStyle}" />
             </StackPanel>
         </ScrollViewer>
         <TextBlock

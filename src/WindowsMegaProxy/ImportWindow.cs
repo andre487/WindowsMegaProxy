@@ -30,7 +30,7 @@ public sealed class ImportWindow : Window
         var panel = new StackPanel();
         root.Children.Add(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         panel.Children.Add(new TextBlock { Text = Ui.F("Import {0} profiles. Unsupported entries skipped: {1}.", review.Import.Profiles.Count, review.Import.Skipped), TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = Ui.T("Choose which existing options to replace. Unchecked options and missing profiles are kept."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) });
+        panel.Children.Add(new TextBlock { Text = Ui.T("Choose which existing options to replace. Unchecked options and missing profiles are kept."), Style = UiTheme.ExplanationStyle, Margin = new Thickness(0, 8, 0, 8) });
         if (review.UnsupportedOptions.Count > 0)
             panel.Children.Add(new TextBlock
             {

@@ -20,6 +20,32 @@ internal static partial class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--preview-notifications")) { PreviewNotifications(); return; }
+        if (args.Contains("--preview-rule-dialog"))
+        {
+            var preview = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            Ui.SetLanguage("ru");
+            var dialog = new RuleWindow(new RoutingRule { Name = "Example rule", Source = "folder", Path = @"C:\Example\Apps", Destination = "example.com", Action = "proxy" })
+            { WindowStartupLocation = WindowStartupLocation.CenterScreen };
+            UiTheme.Apply("ru", "system", dialog);
+            dialog.ShowDialog();
+            preview.Shutdown();
+            return;
+        }
+        if (args.Contains("--preview-remaining-dialogs")) { PreviewRemainingDialogs(); return; }
+        if (args.Contains("--preview-update-dialogs"))
+        {
+            var preview = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            Ui.SetLanguage("ru");
+            foreach (bool service in new[] { false, true })
+            {
+                var dialog = new UpdateInstallWindow(service) { WindowStartupLocation = WindowStartupLocation.CenterScreen };
+                UiTheme.Apply("ru", "system", dialog);
+                dialog.ShowDialog();
+            }
+            preview.Shutdown();
+            return;
+        }
         if (args.Contains("--documentation-screenshots")) { CaptureDocumentation(); return; }
         if (args.Length == 2 && args[0] == "--published-update-check") { PublishedUpdateChecks.Run(args[1]); return; }
         if (args.Length == 2 && args[0] == "--update-preservation-check") { PublishedUpdateChecks.Settings(args[1]); return; }
@@ -101,19 +127,22 @@ internal static partial class Program
         }
         if (args.Contains("--engine-check")) { CheckEngineAsync().GetAwaiter().GetResult(); return; }
         if (args.Contains("--app-update-check")) { AppUpdateChecks.RunAsync().GetAwaiter().GetResult(); return; }
-        Http3SpeedChecks.RunAsync().GetAwaiter().GetResult();
-        AppUpdateChecks.RunAsync().GetAwaiter().GetResult();
-        ControllerChecks.RunAsync().GetAwaiter().GetResult();
-        ConfigurationRefreshChecks.RunAsync().GetAwaiter().GetResult();
-        FailoverChecks.RunIsolatedAsync().GetAwaiter().GetResult();
-        CoreProcessChecks.RunAsync().GetAwaiter().GetResult();
-        PerformanceChecks.RunAsync().GetAwaiter().GetResult();
-        ServiceChecks.RunAsync().GetAwaiter().GetResult();
-        RecoveryChecks.RunAsync().GetAwaiter().GetResult();
-        ServiceStabilityChecks.RunAsync().GetAwaiter().GetResult();
-        UiRecoveryChecks.RunIsolatedAsync().GetAwaiter().GetResult();
-        StartupChecks.RunIsolatedAsync().GetAwaiter().GetResult();
-        UpdateInstallChecks.RunIsolatedAsync().GetAwaiter().GetResult();
+        if (!args.Contains("--ui-only"))
+        {
+            Http3SpeedChecks.RunAsync().GetAwaiter().GetResult();
+            AppUpdateChecks.RunAsync().GetAwaiter().GetResult();
+            ControllerChecks.RunAsync().GetAwaiter().GetResult();
+            ConfigurationRefreshChecks.RunAsync().GetAwaiter().GetResult();
+            FailoverChecks.RunIsolatedAsync().GetAwaiter().GetResult();
+            CoreProcessChecks.RunAsync().GetAwaiter().GetResult();
+            PerformanceChecks.RunAsync().GetAwaiter().GetResult();
+            ServiceChecks.RunAsync().GetAwaiter().GetResult();
+            RecoveryChecks.RunAsync().GetAwaiter().GetResult();
+            ServiceStabilityChecks.RunAsync().GetAwaiter().GetResult();
+            UiRecoveryChecks.RunIsolatedAsync().GetAwaiter().GetResult();
+            StartupChecks.RunIsolatedAsync().GetAwaiter().GetResult();
+            UpdateInstallChecks.RunIsolatedAsync().GetAwaiter().GetResult();
+        }
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         System.Threading.SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(app.Dispatcher));
         app.Resources.MergedDictionaries.Add(new ResourceDictionary
@@ -157,14 +186,14 @@ internal static partial class Program
             string build = ((System.Windows.Documents.Run)window.FindName("BuildInformationText")).Text;
             string version = typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
             Assert(build.StartsWith($"v{version} · ") && build.Length >= 16, "Footer shows the version and source revision.");
-            Assert(window.Title == AppIdentity.DisplayName && ((TextBlock)window.FindName("AppTitle")).Text == AppIdentity.DisplayName, "The build's window and header identify its channel.");
+            Assert(window.Title == AppIdentity.DisplayName && window.FindName("AppTitle") is null, "The build's window and header identify its channel.");
             var access = typeof(MainWindow).GetField("canEdit", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var setBusy = typeof(MainWindow).GetMethod("SetBusy", BindingFlags.NonPublic | BindingFlags.Instance)!;
             access.SetValue(window, false);
             ((TabControl)window.FindName("Sections")).IsEnabled = true;
             setBusy.Invoke(window, [false]);
             Assert(((System.Windows.Documents.Run)window.FindName("ReadOnlyModeText")).Text == " · Read-only mode", "Read-only label follows the GitHub link.");
-            foreach (string name in new[] { "ConnectButton", "ReconnectButton", "ProfilePicker", "DefaultActionBox", "BypassLanBox", "AutostartBox", "LanguageBox", "TestConnectionButton" })
+            foreach (string name in new[] { "ConnectButton", "ReconnectButton", "ProfilePicker", "DefaultActionBox", "BypassLanBox", "AutostartBox", "LanguageBox", "TestConnectionButton", "ImportConfigurationButton", "ExportConfigurationButton", "AlwaysMinimizeToTrayBox" })
                 Assert(!((Control)window.FindName(name)).IsEnabled, "Read-only control: " + name);
             Assert(((DataGrid)window.FindName("RulesList")).IsEnabled, "Read-only rules remain selectable for copying.");
             Assert(!window.RulesEditable, "Read-only users cannot toggle rules.");
@@ -207,6 +236,9 @@ internal static partial class Program
             {
                 var fakeEngine = fixtureEngine;
                 Wait(window, testConnection.ConnectAsync(runningSettings));
+                var initialTrayText = ((System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!).Text;
+                Assert(initialTrayText.Contains("Running H3 profile [") && initialTrayText.Contains("MASQUE"),
+                    "The connection event updates tray profile and type immediately, before settings or statistics refresh.");
                 try
                 {
                     applySettings.Invoke(window, [pendingSettings]);
@@ -248,8 +280,15 @@ internal static partial class Program
                     fakeEngine.UsedHttp3Fallback = false;
                     updateSummary.Invoke(window, null);
                     Assert(((TextBlock)window.FindName("ProfileSummary")).Text.Contains("SSH KZ") && !((TextBlock)window.FindName("ProfileSummary")).Text.Contains("HTTP/3"), "After reconnect the summary switches to the applied SSH profile and drops H3.");
-                    Assert(transport.Text == "(SSH)" && trayIcon.Text.Contains("SSH KZ") && trayIcon.Text.EndsWith("SSH"), "SSH updates the window and tray without stale H3 details.");
+                    Assert(transport.Text == "(SSH)" && trayIcon.Text.Contains("SSH KZ") && trayIcon.Text.EndsWith("SSH KZ [SSH]"), "SSH updates the window and tray without stale H3 details.");
+                    Assert(trayIcon.Text == AppIdentity.DisplayName + " — SSH KZ [SSH]", "Application, profile and SSH type occupy one tooltip line.");
+                    fakeEngine.AppliedSettings.ActiveProfile!.Proxy["type"] = "SSH_JUMP";
+                    updateSummary.Invoke(window, null);
+                    Assert(!trayIcon.Text.Contains('\n') && trayIcon.Text.EndsWith("[" + fakeEngine.AppliedSettings.ActiveProfile.TypeLabel + "]"),
+                        "SSH Jump does not repeat SSH on a separate tooltip line.");
+                    fakeEngine.AppliedSettings.ActiveProfile.Proxy["type"] = "SSH";
                     Wait(window, testConnection.DisconnectAsync());
+                    Assert(!trayIcon.Text.Contains("SSH KZ"), "Disconnect updates the tray immediately without a later refresh.");
                     updateSummary.Invoke(window, null);
                     Assert(transport.Visibility == Visibility.Collapsed && !trayIcon.Text.Contains("SSH KZ"), "Disconnect clears active transport and profile details.");
                     string key = "ssh-ed25519 " + Convert.ToBase64String(Convert.FromHexString("0000000B7373682D6564323535313900000020" + new string('0', 64)));
@@ -371,6 +410,12 @@ internal static partial class Program
                 {
                     sections.SelectedIndex = i;
                     Layout(window);
+                    if (i == 0)
+                    {
+                        var emptyTable = (DataGrid)window.FindName("ConnectionsGrid");
+                        Assert(emptyTable.Columns.Sum(column => column.ActualWidth) >= emptyTable.ActualWidth - 40,
+                            "Empty connection headers fill the viewport after switching themes.");
+                    }
                     var indicator = (Border)headers[i].Template.FindName("SelectionIndicator", headers[i]);
                     Capture((Visual)window.Content, Path.Combine(output, $"{theme}-{i}.png"));
                     Assert(indicator.Visibility == Visibility.Visible && indicator.ActualHeight is >= 2 and <= 4, $"Selected section needs a visible indicator at the current DPI: {theme}/{i}, {indicator.Visibility}, height={indicator.ActualHeight}.");
@@ -496,6 +541,15 @@ internal static partial class Program
             window.Hide();
             trayMenu.IsOpen = true; Layout(window); trayMenu.UpdateLayout();
             Assert(trayMenu.IsVisible && trayMenu.Background is SolidColorBrush { Color.R: < 128 }, "Tray menu opens in the dark app theme while the main window is hidden.");
+            var menuOrigin = trayMenu.PointToScreen(new Point());
+            var menuEnd = trayMenu.PointToScreen(new Point(trayMenu.ActualWidth, trayMenu.ActualHeight));
+            var cursorPosition = System.Windows.Forms.Cursor.Position;
+            var menuArea = System.Windows.Forms.Screen.FromPoint(cursorPosition).WorkingArea;
+            Assert(menuOrigin.X >= menuArea.Left - 2 && menuOrigin.Y >= menuArea.Top - 2 && menuEnd.X <= menuArea.Right + 2 && menuEnd.Y <= menuArea.Bottom + 2,
+                "The tray menu stays inside the cursor monitor's work area.");
+            Assert(Math.Abs(menuOrigin.X - cursorPosition.X) <= menuEnd.X - menuOrigin.X + 16 &&
+                Math.Abs(menuOrigin.Y - cursorPosition.Y) <= menuEnd.Y - menuOrigin.Y + 64,
+                "The hidden-window tray menu opens beside the cursor, not at the screen origin.");
             Capture(trayMenu, Path.Combine(output, "tray-dark.png"));
             trayMenu.IsOpen = false;
             window.Show();
@@ -569,6 +623,8 @@ internal static partial class Program
             Assert(((StackPanel)window.FindName("SpeedPanel")).Visibility == Visibility.Collapsed, "Speed measurements stay locked until diagnostics succeed.");
             fixtureEngine.Start = token => Task.Delay(System.Threading.Timeout.Infinite, token);
             var pendingConnection = testConnection.ConnectAsync((Settings)settingsField.GetValue(window)!);
+            Assert(((System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!).Text ==
+                AppIdentity.DisplayName + " — " + Ui.T("Connecting…"), "The tray immediately shows connection progress instead of disconnected.");
             int blockedEntries = diagnosticEntries;
             sections.SelectedItem = diagnosticTab; Layout(window);
             Assert(diagnosticEntries == blockedEntries && testConnection.State == ConnectionState.Connecting, "Entering diagnostics during startup does not launch an automatic check.");
@@ -869,14 +925,20 @@ internal static partial class Program
             subscriptionWindow.Close();
             var removing = new TaskCompletionSource();
             bool subscriptionRemoved = false;
+            bool confirmRemoval = false;
             int restoredSubscriptions = 0;
             var removalForm = new SubscriptionForm(new Settings(), async definition =>
             {
                 if (definition is null) { await removing.Task; subscriptionRemoved = true; }
                 else restoredSubscriptions++;
-            }, () => Task.FromResult(new Settings()));
+            }, () => Task.FromResult(new Settings()), () => confirmRemoval);
             ((TextBox)typeof(SubscriptionForm).GetField("url", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(removalForm)!).Text = "https://feed.invalid/pending-removal";
-            ((StackPanel)removalForm.Content).Children.OfType<Button>().Single(button => Equals(button.Content, Ui.T("Remove subscription (keep profiles)"))).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var removeSubscription = ((StackPanel)removalForm.Content).Children.OfType<WrapPanel>().Single().Children.OfType<Button>()
+                .Single(button => Equals(button.Content, Ui.T("Remove subscription (keep profiles)")));
+            removeSubscription.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert(!subscriptionRemoved && restoredSubscriptions == 0, "Declining confirmation does not delete the subscription.");
+            confirmRemoval = true;
+            removeSubscription.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var removalFlush = removalForm.FlushAsync();
             Assert(!removalFlush.IsCompleted, "Leaving settings waits for an in-flight subscription removal.");
             removing.SetResult(); Wait(window, removalFlush);
@@ -902,8 +964,15 @@ internal static partial class Program
         var categories = (StackPanel)window.FindName("SettingsCategories");
         var navigate = typeof(MainWindow).GetMethod("NavigateSettingsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
         void Open(string? page) { Wait(window, (Task)navigate.Invoke(window, [page])!); Layout(window); }
-        Assert(categories.IsVisible && categories.Children.OfType<Button>().Count() == 7, "Settings starts with seven navigable categories.");
+        sections.SelectedIndex = 1;
+        ((System.Windows.Documents.Hyperlink)window.FindName("ProfileTransferLink")).RaiseEvent(new RoutedEventArgs(System.Windows.Documents.Hyperlink.ClickEvent));
+        Layout(window);
+        Assert(ReferenceEquals(sections.SelectedItem, window.FindName("SettingsTab")) && ((Button)window.FindName("ImportConfigurationButton")).IsVisible,
+            "The profiles link opens configuration transfer in settings.");
+        Open(null);
+        Assert(categories.IsVisible && categories.Children.OfType<Button>().Count() == 8, "Settings starts with eight navigable categories.");
         Assert(categories.Children.OfType<Button>().All(button => Math.Abs(button.ActualWidth - categories.ActualWidth) < 2), "Settings category rows stretch to the same full width.");
+        Assert(window.FindName("TestResultText") is TextBlock, "Test progress is explanatory text, not an input field.");
         var theme = (ComboBox)window.FindName("ThemeBox");
         var language = (ComboBox)window.FindName("LanguageBox");
         int previousTheme = theme.SelectedIndex, previousLanguage = language.SelectedIndex;
@@ -913,6 +982,7 @@ internal static partial class Program
             Capture((Visual)window.Content, Path.Combine(output, "settings-categories-" + choice.Name + ".png"));
             ((Button)window.FindName("AppearanceCategoryButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Layout(window);
+            Assert(((ComboBox)window.FindName("TrafficUnitsBox")).IsVisible, "Traffic units belong to appearance settings.");
             Assert(!categories.IsVisible && ((ComboBox)window.FindName("LanguageBox")).IsVisible &&
                 ((TextBlock)window.FindName("SettingsPageTitle")).Text == Ui.T("Appearance"), "A category opens its inline form with a localized breadcrumb.");
             Capture((Visual)window.Content, Path.Combine(output, "settings-appearance-" + choice.Name + ".png"));
@@ -921,9 +991,11 @@ internal static partial class Program
             Assert(categories.IsVisible && !((Button)window.FindName("SettingsBackButton")).IsEnabled, "The root breadcrumb returns to the category overview.");
             Assert(ReferenceEquals(Keyboard.FocusedElement, window.FindName("AppearanceCategoryButton")), "Returning to categories restores keyboard focus to the originating row.");
         }
-        foreach (string page in new[] { "startup", "connection", "log", "subscription", "failover", "updates" })
+        foreach (string page in new[] { "transfer", "startup", "connection", "log", "subscription", "failover", "updates" })
         {
             Open(page);
+            if (page == "transfer") Assert(((Button)window.FindName("ImportConfigurationButton")).IsVisible && ((Button)window.FindName("ExportConfigurationButton")).IsVisible,
+                "Configuration transfer commands share a settings page.");
             Assert(!categories.IsVisible && ((Button)window.FindName("SettingsBackButton")).IsEnabled, "Each settings form has a back action.");
             if (page == "connection") Assert(((ComboBox)window.FindName("TlsFingerprintBox")).IsVisible && ((ComboBox)window.FindName("BootstrapDnsBox")).IsVisible,
                 "Connection settings show TLS fingerprints and bootstrap DNS together.");

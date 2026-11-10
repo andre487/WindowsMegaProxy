@@ -20,19 +20,25 @@ public sealed class SubscriptionForm : UserControl
     private int revision, savedRevision;
     public event Action? Removed;
 
-    public SubscriptionForm(Settings settings, Func<SubscriptionDefinition?, Task> save, Func<Task<Settings>> refresh)
+    public SubscriptionForm(Settings settings, Func<SubscriptionDefinition?, Task> save, Func<Task<Settings>> refresh, Func<bool>? confirmRemoval = null)
     {
         this.save = save;
         var panel = new StackPanel();
         Content = panel;
         Add(panel, "HTTPS URL", url); Add(panel, "Backup HTTPS URLs (one per line, up to 7)", backups);
-        panel.Children.Add(new TextBlock { Text = Ui.T("Trust every source. All sources receive the same credentials and may update profiles, settings and source URLs. Redirects are rejected."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 12) });
+        var explanation = new TextBlock { Text = Ui.T("Trust every source. All sources receive the same credentials and may update profiles, settings and source URLs. Redirects are rejected."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 12) };
+        explanation.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorSecondaryBrush");
+        status.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorSecondaryBrush");
+        panel.Children.Add(explanation);
         panel.Children.Add(auth); Add(panel, "Username", username); Add(panel, "Password", password);
         Add(panel, "Update interval (minutes, 1–10080)", interval); panel.Children.Add(enabled); panel.Children.Add(status);
         var update = new Button { Content = Ui.T("Update now"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 8) };
-        panel.Children.Add(update);
+        var actions = new WrapPanel();
+        panel.Children.Add(actions);
+        update.Margin = new Thickness(0, 8, 8, 8);
+        actions.Children.Add(update);
         var remove = new Button { Content = Ui.T("Remove subscription (keep profiles)"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 8) };
-        panel.Children.Add(remove);
+        actions.Children.Add(remove);
         var definition = ConfigurationSubscription.Get(settings);
         if (definition is not null)
         {
@@ -58,6 +64,9 @@ public sealed class SubscriptionForm : UserControl
         };
         remove.Click += async (_, _) =>
         {
+            bool confirmed = confirmRemoval?.Invoke() ?? MessageDialog.Confirm(Window.GetWindow(this), Ui.T("Remove the subscription? Existing profiles will be kept."),
+                Ui.T("Configuration subscription"));
+            if (!confirmed) return;
             debounce.Stop();
             while (saving) await Task.Delay(20);
             saving = true;

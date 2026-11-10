@@ -5,6 +5,18 @@ namespace WindowsMegaProxy;
 
 public static class UiTheme
 {
+    public static Style ExplanationStyle { get; } = CreateExplanationStyle();
+
+    private static Style CreateExplanationStyle()
+    {
+        var style = new Style(typeof(TextBlock));
+        style.Setters.Add(new Setter(TextBlock.FontSizeProperty, 12d));
+        style.Setters.Add(new Setter(TextBlock.FontWeightProperty, FontWeights.Normal));
+        style.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
+        style.Setters.Add(new Setter(TextBlock.ForegroundProperty, new DynamicResourceExtension("TextFillColorSecondaryBrush")));
+        return style;
+    }
+
     private static string? appliedLanguage;
     private static ResourceDictionary? localizedResources;
     public static void Apply(string language, string theme, Window window)
