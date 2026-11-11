@@ -36,8 +36,8 @@ production signature checks.
 
 Run `scripts\tools.cmd scripts\core_smoke.py --signed` for lifecycle, local TCP
 forwarding and positive/negative signature checks. The signing tests do not modify
-Windows certificate stores. Set `MEGAPROXY_TEST_NATIVE=1` for the HTTP/3, SSH and IPv6
-integration suites after the smoke test prepares `.tools/dev-cores`.
+Windows certificate stores. All client integration tests use the DLL cores prepared
+by `setup.cmd` in `.tools/dev-cores`; upstream executables are test servers only.
 
 The DLLs are GPL-3.0-or-later. `Core-NOTICES.txt` includes licenses of the linked Go
 dependencies. Wintun's existing signed driver is used without rebuilding it.

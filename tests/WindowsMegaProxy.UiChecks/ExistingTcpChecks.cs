@@ -14,7 +14,8 @@ internal static class ExistingTcpChecks
         Require(!Match());
         settings.ResetExistingTcpConnections = true;
         Require(Match() && !Match(@"C:\AppsOther\app.exe") && !Match(ip: "127.0.0.1") && !Match(ip: "192.168.1.2"));
-        Require(!Match(@"C:\Apps\sing-box.exe"));
+        Require(!Match(@"C:\Apps\WindowsMegaProxy.Core.exe") && !Match(@"C:\Apps\WindowsMegaProxy.Dev.Core.exe"));
+        Require(Match(@"C:\Apps\sing-box.exe"));
         settings.Rules[0].Source = "exe"; settings.Rules[0].Path = @"C:\Apps\nested\app.exe";
         Require(Match() && !Match(@"C:\Apps\nested\other.exe"));
         settings.Rules[0].Source = "folder"; settings.Rules[0].Path = @"C:\Apps";

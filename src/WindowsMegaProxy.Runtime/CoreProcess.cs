@@ -108,37 +108,3 @@ internal sealed class ProcessJob : IDisposable
     [DllImport("kernel32.dll")] private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
 }
-
-internal static class CoreConsole
-{
-    private static readonly SemaphoreSlim Runtime = new(1, 1);
-    private static readonly ConsoleHandler Handler = signal => signal == 0;
-    private static readonly Lazy<bool> Initialized = new(() =>
-    {
-        // The console belongs to the application, never to an individual Engine instance.
-        FreeConsole();
-        if (!AllocConsole()) throw new IOException("Could not create the core control console.");
-        ShowWindow(GetConsoleWindow(), 0);
-        SetConsoleCtrlHandler(Handler, true);
-        return true;
-    });
-    public static async Task<IDisposable> AcquireAsync(CancellationToken token)
-    {
-        await Runtime.WaitAsync(token);
-        try { _ = Initialized.Value; return new Lease(); }
-        catch { Runtime.Release(); throw; }
-    }
-    private sealed class Lease : IDisposable
-    {
-        private bool disposed;
-        public void Dispose() { if (!disposed) { disposed = true; Runtime.Release(); } }
-    }
-    public static void Stop() => GenerateConsoleCtrlEvent(0, 0);
-    private delegate bool ConsoleHandler(uint signal);
-    [DllImport("kernel32.dll")] private static extern bool AllocConsole();
-    [DllImport("kernel32.dll")] private static extern bool FreeConsole();
-    [DllImport("kernel32.dll")] private static extern IntPtr GetConsoleWindow();
-    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
-    [DllImport("kernel32.dll")] private static extern bool SetConsoleCtrlHandler(ConsoleHandler handler, bool add);
-    [DllImport("kernel32.dll")] private static extern bool GenerateConsoleCtrlEvent(uint signal, uint group);
-}

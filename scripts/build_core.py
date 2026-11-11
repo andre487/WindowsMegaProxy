@@ -92,6 +92,8 @@ def install(destination, *, experimental=False, dev=False, publisher=None):
     for name in ("WindowsMegaProxy.Dev.Core.exe" if dev else "WindowsMegaProxy.Core.exe",
                  f"MegaProxy.Core.{'Experimental' if experimental else 'Stable'}.dll", "LICENSE.txt", "Core-NOTICES.txt"):
         shutil.copy2(output / name, destination / name)
+    for name in ("sing-box.exe", "sing-box-dev.exe", "libcronet.dll"):
+        (destination / name).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

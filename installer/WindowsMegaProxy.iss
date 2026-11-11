@@ -65,6 +65,14 @@ Source: "{#PayloadDirectory}\*"; DestDir: "{tmp}\reboot"; Excludes: "launcher\*"
 Source: "{#PayloadDirectory}\*"; DestDir: "{code:RuntimePath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: not IsBootUpdate
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsUserInstall
 
+[InstallDelete]
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box\sing-box.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box\sing-box-dev.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box\libcronet.dll"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box-h3\sing-box.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box-h3\sing-box-dev.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box-h3\libcronet.dll"; Check: not IsBootUpdate
+
 [Icons]
 Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"; AppUserModelID: "WindowsMegaProxy"
 Name: "{autodesktop}\MegaProxy"; Filename: "{code:LaunchPath}"; AppUserModelID: "WindowsMegaProxy"; Tasks: desktopicon

@@ -60,7 +60,7 @@ def main():
         worker.start()
         try:
             for core in ("sing-box", "sing-box-h3"):
-                executable = ROOT / f".tools/{core}/sing-box.exe"
+                executable = ROOT / f".tools/dev-cores/{core}/WindowsMegaProxy.Dev.Core.exe"
                 for name in ("plain", "scoped", "early", "global"):
                     with socket.socket() as reservation:
                         reservation.bind(("127.0.0.1", 0))
@@ -70,12 +70,13 @@ def main():
                     config.pop("experimental")
                     config["log"] = {"disabled": True}
                     with tempfile.TemporaryDirectory(dir=directory) as temporary:
-                        path = Path(temporary) / "config.json"
-                        path.write_text(json.dumps(config), encoding="utf-8")
                         with open(Path(temporary) / "stderr.log", "w+", encoding="utf-8") as errors:
-                            process = sp.Popen([str(executable), "run", "-c", str(path)], stdout=sp.DEVNULL,
+                            process = sp.Popen([str(executable), "experimental" if core == "sing-box-h3" else "stable"], stdin=sp.PIPE, stdout=sp.DEVNULL,
                                                stderr=errors, creationflags=sp.CREATE_NO_WINDOW)
                             try:
+                                data = json.dumps(config).encode("utf-8")
+                                process.stdin.write(struct.pack("<II", 1, len(data)) + data)
+                                process.stdin.flush()
                                 deadline = time.monotonic() + 10
                                 while True:
                                     if process.poll() is not None:
@@ -118,9 +119,12 @@ def main():
                                             samples.append((time.perf_counter() - start) * 1000)
                                     results.append(f"{core}/{name}/{kind}: passed, median {statistics.median(samples):.1f} ms")
                             finally:
-                                if process.poll() is None:
-                                    process.terminate()
-                                process.wait(timeout=10)
+                                process.stdin.close()
+                                try:
+                                    process.wait(timeout=10)
+                                except sp.TimeoutExpired:
+                                    process.kill()
+                                    process.wait(timeout=5)
         finally:
             stopping.set()
             worker.join(timeout=5)

@@ -18,9 +18,17 @@ from run import stop_workspace_app, user32, workspace_windows
 from service_control import running_images, service_state
 
 
+def seed_legacy_cores(directory):
+    for folder in ("sing-box", "sing-box-h3"):
+        for name in ("sing-box.exe", "sing-box-dev.exe", "libcronet.dll"):
+            (directory / "dependencies" / folder / name).write_bytes(b"obsolete core fixture")
+
+
 def check_downloaded_cores(version_directory):
     manifest = json.loads((ROOT / "artifacts/release-preview/update-manifest.json").read_text(encoding="utf-8"))
     for name in ("sing-box", "sing-box-h3"):
+        for legacy in ("sing-box.exe", "sing-box-dev.exe", "libcronet.dll"):
+            assert not (version_directory / "dependencies" / name / legacy).exists(), "Legacy core files must be removed."
         assert (version_directory / "dependencies" / name / "WindowsMegaProxy.Core.exe").is_file(), "Both pinned cores must be bundled."
         library = "MegaProxy.Core.Stable.dll" if name == "sing-box" else "MegaProxy.Core.Experimental.dll"
         assert (version_directory / "dependencies" / name / library).is_file()
@@ -67,6 +75,8 @@ def main():
 
     previous = None
     for attempt, mode in enumerate(("manual", "login", "service", "service", "manual"), 1):
+        if previous:
+            seed_legacy_cores(destination)
         arguments = [str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", f"/LOG={logs / f'install-{attempt}.log'}"]
         if attempt != 1:
             arguments.append("/MODE=" + mode)
@@ -256,6 +266,8 @@ def check_user_install(setup, logs, global_data):
         system_helper = winreg.QueryValueEx(key, "HelperPath")[0]
     previous = None
     for mode in ("manual", "login", "manual"):
+        if previous:
+            seed_legacy_cores(protected)
         sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=" + mode,
                 f"/LOG={logs / f'user-{mode}.log'}"], check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as key:

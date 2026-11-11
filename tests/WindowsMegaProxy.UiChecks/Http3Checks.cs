@@ -108,14 +108,7 @@ internal static class Http3Checks
                         using var client = engine.CreateProbeClient(true);
                         string body = await client.GetStringAsync(probeUri, token);
                         Assert(body == "fixture", "Proxy transfers actual target response bytes.");
-                        if (Environment.GetEnvironmentVariable("MEGAPROXY_TEST_NATIVE") == "1")
-                            Assert(Directory.GetFiles(directory, "test-runtime-*.json").Length == 0, "Native configuration must not write credentials to disk.");
-                        else
-                        {
-                            var current = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(directory, "test-runtime-*.json").Single()))!;
-                            Assert(current["inbounds"]!.AsArray().All(item => item!["type"]!.ToString() != "tun"), "The HTTP/3 test must not create TUN.");
-                            Assert(h3 ? current["outbounds"]![0]!["version"]!.GetValue<int>() == 3 : current["outbounds"]![0]!["version"]!.GetValue<int>() == 2 && current["outbounds"]![0]!["tls"]!["utls"]!["fingerprint"]!.ToString() == "chrome", "H3 fallback enables H2 and applies the configured TCP fingerprint.");
-                        }
+                        Assert(Directory.GetFiles(directory, "test-runtime-*.json").Length == 0, "Native configuration must not write credentials to disk.");
                         Assert(messages.Any(message => message.Contains("Starting " + Configuration.Http3CoreVersion)), "H3 and its H2/H1 fallback use the alpha core.");
                         if (h3)
                         {
