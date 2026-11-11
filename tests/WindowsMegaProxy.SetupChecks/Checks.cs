@@ -75,7 +75,9 @@ internal static class Checks
         Require(Program.UntrustedWrite(new FileSystemAccessRule(creator, FileSystemRights.FullControl, AccessControlType.Allow)), "A direct creator-owner grant must not bypass validation.");
         Require(!Program.UntrustedWrite(new FileSystemAccessRule(users, FileSystemRights.ReadAndExecute, AccessControlType.Allow)), "Read-only user access must be accepted.");
         Require(!Program.UntrustedWrite(new FileSystemAccessRule(new SecurityIdentifier("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"), FileSystemRights.FullControl, AccessControlType.Allow)), "Windows TrustedInstaller is a privileged service.");
-        Require(Program.UntrustedWrite(new FileSystemAccessRule(users, (FileSystemRights)0x10000000, InheritanceFlags.ObjectInherit, PropagationFlags.InheritOnly, AccessControlType.Allow)), "Generic write grants to unprivileged users must be rejected.");
+        var generic = new DirectorySecurity();
+        generic.SetSecurityDescriptorSddlForm("D:(A;OIIO;GA;;;BU)");
+        Require(Program.UntrustedWrite((FileSystemAccessRule)generic.GetAccessRules(true, false, typeof(SecurityIdentifier))[0]), "Generic write grants to unprivileged users must be rejected.");
     }
 
     private static void Archives(string root)
