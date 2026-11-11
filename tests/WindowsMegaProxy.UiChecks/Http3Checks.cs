@@ -31,8 +31,8 @@ internal static class Http3Checks
     private static async Task CheckAsync(string directory, bool network)
     {
         string alpha = Path.GetFullPath(".tools/sing-box-h3/sing-box.exe");
-        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", Path.GetFullPath(".tools/sing-box/sing-box.exe"));
-        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE", alpha);
+        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", NetworkCorePaths.Client());
+        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE", NetworkCorePaths.Client(true));
         using var stopping = new CancellationTokenSource();
         using var key = RSA.Create(2048);
         var certificateRequest = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -97,7 +97,7 @@ internal static class Http3Checks
                     profile.Proxy["allowInvalidProxyCertificate"] = true;
                     profile.Proxy["preferHttp3"] = true;
                     var settings = new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy", TlsFingerprint = "chrome" };
-                    using var engine = new Engine(directory, probeUri);
+                    using var engine = new Engine(directory, probeUri, allowEnvironmentOverrides: true);
                     var messages = new List<string>();
                     engine.Log += message => { lock (messages) messages.Add(message); };
                     try
@@ -108,13 +108,18 @@ internal static class Http3Checks
                         using var client = engine.CreateProbeClient(true);
                         string body = await client.GetStringAsync(probeUri, token);
                         Assert(body == "fixture", "Proxy transfers actual target response bytes.");
-                        var current = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(directory, "test-runtime-*.json").Single()))!;
-                        Assert(current["inbounds"]!.AsArray().All(item => item!["type"]!.ToString() != "tun"), "The HTTP/3 test must not create TUN.");
-                        Assert(h3 ? current["outbounds"]![0]!["version"]!.GetValue<int>() == 3 : current["outbounds"]![0]!["version"]!.GetValue<int>() == 2 && current["outbounds"]![0]!["tls"]!["utls"]!["fingerprint"]!.ToString() == "chrome", "H3 fallback enables H2 and applies the configured TCP fingerprint.");
+                        if (Environment.GetEnvironmentVariable("MEGAPROXY_TEST_NATIVE") == "1")
+                            Assert(Directory.GetFiles(directory, "test-runtime-*.json").Length == 0, "Native configuration must not write credentials to disk.");
+                        else
+                        {
+                            var current = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(directory, "test-runtime-*.json").Single()))!;
+                            Assert(current["inbounds"]!.AsArray().All(item => item!["type"]!.ToString() != "tun"), "The HTTP/3 test must not create TUN.");
+                            Assert(h3 ? current["outbounds"]![0]!["version"]!.GetValue<int>() == 3 : current["outbounds"]![0]!["version"]!.GetValue<int>() == 2 && current["outbounds"]![0]!["tls"]!["utls"]!["fingerprint"]!.ToString() == "chrome", "H3 fallback enables H2 and applies the configured TCP fingerprint.");
+                        }
                         Assert(messages.Any(message => message.Contains("Starting " + Configuration.Http3CoreVersion)), "H3 and its H2/H1 fallback use the alpha core.");
                         if (h3)
                         {
-                            await CheckUdpAsync(current, token);
+                            await CheckUdpAsync(engine.ProbeAccess, token);
                             if (network)
                             {
                                 string status = await engine.CheckHttp3Async(token);
@@ -130,7 +135,7 @@ internal static class Http3Checks
                     var h2Settings = settings.Copy();
                     h2Settings.ActiveProfile!.Proxy["preferHttp3"] = false;
                     h2Settings.ActiveProfile.Proxy["preferHttp2"] = true;
-                    using (var h2Engine = new Engine(directory, probeUri))
+                    using (var h2Engine = new Engine(directory, probeUri, allowEnvironmentOverrides: true))
                     {
                         try
                         {
@@ -151,7 +156,7 @@ internal static class Http3Checks
                         ["host"] = "127.0.0.1", ["port"] = port, ["sameAuthentication"] = false,
                         ["username"] = "test", ["password"] = "secret", ["allowInvalidProxyCertificate"] = true
                     };
-                    using (var jump = new Engine(directory, probeUri))
+                    using (var jump = new Engine(directory, probeUri, allowEnvironmentOverrides: true))
                     {
                         try
                         {
@@ -161,7 +166,7 @@ internal static class Http3Checks
                             Assert(jump.Http3Selected == h3 && jump.UsedHttp3Fallback == !h3, "Both Jump hops use H3 together or fall back together to H2/H1 on alpha.");
                             if (h3)
                             {
-                                await CheckUdpAsync(JsonNode.Parse(File.ReadAllText(Directory.GetFiles(directory, "test-runtime-*.json").Single()))!, token);
+                                await CheckUdpAsync(jump.ProbeAccess, token);
                                 if (network)
                                 {
                                     string status = await jump.CheckHttp3Async(token);
@@ -174,7 +179,7 @@ internal static class Http3Checks
                     }
                     chain.Proxy["preferHttp3"] = false;
                     chain.Proxy["jump"]!["password"] = "incorrect";
-                    using (var badJump = new Engine(directory, probeUri))
+                    using (var badJump = new Engine(directory, probeUri, allowEnvironmentOverrides: true))
                     {
                         try
                         {
@@ -191,7 +196,7 @@ internal static class Http3Checks
                     if (h3)
                     {
                         profile.Proxy["type"] = "MASQUE";
-                        using (var masque = new Engine(directory, probeUri))
+                        using (var masque = new Engine(directory, probeUri, allowEnvironmentOverrides: true))
                         {
                             try
                             {
@@ -203,14 +208,14 @@ internal static class Http3Checks
                         }
                         profile.Proxy["type"] = "HTTPS";
                         profile.Proxy["allowInvalidProxyCertificate"] = false;
-                        using var untrusted = new Engine(directory, probeUri);
+                        using var untrusted = new Engine(directory, probeUri, allowEnvironmentOverrides: true);
                         bool failed = false;
                         try { await untrusted.StartAsync(settings, true, token); }
                         catch (System.Net.Http.HttpRequestException) { failed = true; }
                         Assert(failed && !untrusted.Running && !untrusted.UsedHttp3Fallback, "Untrusted certificates never cause TCP fallback.");
                         profile.Proxy["allowInvalidProxyCertificate"] = true;
                         profile.Proxy["password"] = "wrong";
-                        using var unauthenticated = new Engine(directory, probeUri);
+                        using var unauthenticated = new Engine(directory, probeUri, allowEnvironmentOverrides: true);
                         failed = false;
                         try { await unauthenticated.StartAsync(settings, true, token); }
                         catch (System.Net.Http.HttpRequestException) { failed = true; }
@@ -296,7 +301,7 @@ internal static class Http3Checks
         var profile = ProxyProfile.Create("TCP-only SOCKS5 fixture");
         profile.Proxy["type"] = "SOCKS5"; profile.Proxy["host"] = "127.0.0.1";
         profile.Proxy["port"] = ((IPEndPoint)listener.LocalEndpoint).Port;
-        using var engine = new Engine(directory);
+        using var engine = new Engine(directory, allowEnvironmentOverrides: true);
         try
         {
             await engine.StartAsync(new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy" }, true, token);
@@ -308,13 +313,18 @@ internal static class Http3Checks
 
     internal static async Task CheckUdpAsync(JsonNode config, CancellationToken token, IPAddress? destination = null, bool allowed = true)
     {
+        var inbound = config["inbounds"]![0]!;
+        await CheckUdpAsync(new ProbeAccess(inbound["listen_port"]!.GetValue<int>(), inbound["users"]![0]!["password"]!.ToString()), token, destination, allowed);
+    }
+
+    internal static async Task CheckUdpAsync(ProbeAccess access, CancellationToken token, IPAddress? destination = null, bool allowed = true)
+    {
         destination ??= IPAddress.Loopback;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(8));
         using var echo = new UdpClient(new IPEndPoint(destination, 0));
-        var inbound = config["inbounds"]![0]!;
-        using var association = await SocksUdpAssociation.OpenAsync("127.0.0.1", inbound["listen_port"]!.GetValue<int>(),
-            "diagnostic", inbound["users"]![0]!["password"]!.ToString(), deadline.Token);
+        using var association = await SocksUdpAssociation.OpenAsync("127.0.0.1", access.Port,
+            "diagnostic", access.Secret, deadline.Token);
         Assert(association is not null, "Local SOCKS5 diagnostic relay supports UDP ASSOCIATE.");
         using var client = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         int port = ((IPEndPoint)echo.Client.LocalEndPoint!).Port;

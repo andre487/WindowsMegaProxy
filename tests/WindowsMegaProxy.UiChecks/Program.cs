@@ -95,6 +95,7 @@ internal static partial class Program
         InstallationChecks.Run();
         RebootFilesChecks.Run();
         ExistingTcpChecks.Run();
+        NativeCoreChecks.Run();
         if (args.Contains("--existing-tcp-check")) return;
         if (args.Contains("--reboot-files-check")) return;
         if (args.Length == 2 && args[0] == "--user-settings-check")
@@ -1195,7 +1196,7 @@ internal static partial class Program
         File.Delete(report);
         Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", Path.GetFullPath(".tools/sing-box/sing-box.exe"));
         var before = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces().Where(item => item.Name == "MegaProxy").Select(item => item.Id).ToArray();
-        using var engine = new Engine(directory);
+        using var engine = new Engine(directory, allowEnvironmentOverrides: true);
         var messages = new System.Collections.Generic.List<string>();
         engine.Log += message => { lock (messages) messages.Add(message); };
         try
@@ -1256,7 +1257,7 @@ internal static partial class Program
         profile.Proxy["type"] = "HTTP"; profile.Proxy["host"] = "127.0.0.1";
         profile.Proxy["username"] = ""; profile.Proxy["password"] = "secret";
         profile.Proxy["port"] = ((System.Net.IPEndPoint)rejector.LocalEndpoint).Port;
-        using var core = new Engine(directory);
+        using var core = new Engine(directory, allowEnvironmentOverrides: true);
         try
         {
             await core.StartAsync(new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy" }, true, timeout.Token);

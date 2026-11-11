@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding
 
 import build
 from authenticode import Signer
@@ -94,6 +95,8 @@ def compiler():
 
 
 def core_installer_definitions(payload):
+    if (payload / "dependencies/sing-box/MegaProxy.Core.Stable.dll").exists():
+        return {}
     definitions = {}
     for label, folder, http3 in (("StableCore", "sing-box", False), ("H3Core", "sing-box-h3", True)):
         core = core_package(http3=http3)
@@ -180,9 +183,16 @@ def main():
                 ("microsoft.windowsdesktop.app.runtime.win-x64", "LICENSE", "WindowsDesktop-LICENSE.txt"),
             ):
                 shutil.copy2(ROOT / ".tools/nuget" / package / runtime["version"] / filename, payload / "licenses" / output_name)
-        signer.sign_directory(payload)
+        publisher = staging / "core-publisher.pem"
+        publisher.write_bytes(signer.certificate.public_bytes(Encoding.PEM))
         for name, http3 in (("sing-box", False), ("sing-box-h3", True)):
-            install_core(payload / "dependencies" / name, cache, http3=http3)
+            if (ROOT / "native/core/go.mod").exists():
+                import build_core
+                build_core.install(payload / "dependencies" / name, experimental=http3, publisher=publisher)
+            else:
+                # Previous release tags still use the upstream executables during upgrade tests.
+                install_core(payload / "dependencies" / name, cache, http3=http3)
+        signer.sign_directory(payload)
         wintun = download("https://www.wintun.net/builds/wintun-0.14.1.zip", cache / "wintun-0.14.1.zip",
                           "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51")
         with zipfile.ZipFile(wintun) as upstream:

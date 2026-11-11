@@ -158,7 +158,7 @@ def check(setup, logs, destination, data, *, fresh=False):
     def verify_settings():
         dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", "--installed-settings-check", "verify")
         assert (data / "preservation-check.txt").read_text() == "preserved"
-        assert "sing-box.exe" not in running_images()
+        assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}
 
     def simulate_boot(expected_result, *, damage=False):
         sp.run(["sc.exe", "stop", "WindowsMegaProxy"], check=True, capture_output=True)
@@ -317,7 +317,7 @@ def check(setup, logs, destination, data, *, fresh=False):
                 pass
             else:
                 raise AssertionError("Successful personal installation must clear its HKCU update status.")
-        assert "sing-box.exe" not in running_images()
+        assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}
         print("Deferred next-start installation, SYSTEM boot installation, scheduling isolation and damaged-package service recovery passed; no reboot or TUN.")
     finally:
         for label, directory in (("machine", data / "logs"), ("client", known_folder(0x1c) / "WindowsMegaProxy/logs"),

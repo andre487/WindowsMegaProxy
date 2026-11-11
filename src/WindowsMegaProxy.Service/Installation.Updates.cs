@@ -61,6 +61,7 @@ public static partial class Installation
                 // The 0.0.4 update helper exits only after setup; wait for it to release the old EXE.
                 string legacy = Path.Combine(root, "versions");
                 if (Directory.Exists(legacy)) { CheckDirectory(legacy); Directory.Delete(legacy, true); }
+                RemoveLegacyCoreFiles(root);
                 log.Write("Installation cleanup completed; only the current application version is retained.");
                 // The old boot updater also calls this new helper after clearing its pending record.
                 if (!UserInstallation.IsUser && System.Diagnostics.Process.GetCurrentProcess().SessionId == 0 && StartupConfiguration.Mode == "service")
@@ -77,5 +78,18 @@ public static partial class Installation
             }
         }
         return 1;
+    }
+
+    private static void RemoveLegacyCoreFiles(string root)
+    {
+        foreach (string component in new[] { "sing-box", "sing-box-h3" })
+        {
+            string directory = Path.Combine(root, "dependencies", component);
+            string library = component == "sing-box" ? "MegaProxy.Core.Stable.dll" : "MegaProxy.Core.Experimental.dll";
+            if (!File.Exists(Path.Combine(directory, AppIdentity.CoreExecutable)) || !File.Exists(Path.Combine(directory, library))) continue;
+            CheckDirectory(Path.Combine(root, "dependencies"));
+            CheckDirectory(directory);
+            foreach (string name in new[] { "sing-box.exe", "sing-box-dev.exe", "libcronet.dll" }) File.Delete(Path.Combine(directory, name));
+        }
     }
 }

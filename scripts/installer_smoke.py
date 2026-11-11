@@ -21,8 +21,9 @@ from service_control import running_images, service_state
 def check_downloaded_cores(version_directory):
     manifest = json.loads((ROOT / "artifacts/release-preview/update-manifest.json").read_text(encoding="utf-8"))
     for name in ("sing-box", "sing-box-h3"):
-        assert (version_directory / "dependencies" / name / "sing-box.exe").is_file(), "Both pinned cores must be bundled."
-        assert (version_directory / "dependencies" / name / "libcronet.dll").is_file()
+        assert (version_directory / "dependencies" / name / "WindowsMegaProxy.Core.exe").is_file(), "Both pinned cores must be bundled."
+        library = "MegaProxy.Core.Stable.dll" if name == "sing-box" else "MegaProxy.Core.Experimental.dll"
+        assert (version_directory / "dependencies" / name / library).is_file()
         for entry in manifest["components"][name]["files"]:
             assert digest(version_directory / entry["path"], "sha256") == entry["sha256"], "Bundled core must match the pinned release files."
     assert not (version_directory / "WindowsMegaProxy.Http3Core.exe").exists(), "No on-demand installer is needed."
@@ -115,7 +116,7 @@ def main():
         else:
             (data / "preservation-check.txt").write_text("preserved")
         dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--no-build", "--", "--installed-settings-check", "seed" if attempt == 1 else "verify")
-        assert "sing-box.exe" not in running_images(), "An unconfigured installation must not activate TUN."
+        assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}, "An unconfigured installation must not activate TUN."
         assert service_state("WindowsMegaProxy.Dev") is None, "Installer must not register DEV."
         if attempt == 3:
             check_service_tray(destination)
@@ -170,7 +171,7 @@ def check_service_tray(destination):
         stop_workspace_app(dev=False, workspace_only=False)
         client.wait(timeout=30)
     assert service_state("WindowsMegaProxy") == 4, "Closing the tray client must leave the service running."
-    assert "sing-box.exe" not in running_images(), "The seeded tray client must not activate TUN."
+    assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}, "The seeded tray client must not activate TUN."
 
 
 def check_failed_update_helper(helper, logs):
@@ -235,7 +236,7 @@ def check_legacy_upgrade(setup, logs, destination, data):
     assert (data / "preservation-check.txt").read_text() == "preserved"
     check_downloaded_cores(destination)
     dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--no-build", "--", "--installed-settings-check", "verify")
-    assert "sing-box.exe" not in running_images()
+    assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}
     sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
             f"/LOG={logs / 'legacy-upgrade-uninstall.log'}"], check=True, timeout=120)
     assert service_state("WindowsMegaProxy") is None
@@ -298,7 +299,7 @@ def check_user_install(setup, logs, global_data):
             else:
                 raise RuntimeError("Changing the user operating mode did not relaunch the scheduled application.")
             stop_workspace_app(dev=False, workspace_only=False)
-            assert "sing-box.exe" not in running_images(), "The fixture must never activate TUN."
+            assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}, "The fixture must never activate TUN."
         previous = helper
     rejected = sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=service",
                        f"/LOG={logs / 'user-service-rejected.log'}"], timeout=120)

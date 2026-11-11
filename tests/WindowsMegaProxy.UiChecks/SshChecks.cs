@@ -17,7 +17,7 @@ internal static class SshChecks
         try
         {
             var fixture = JsonNode.Parse(File.ReadAllText(path))!;
-            Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", Path.GetFullPath(".tools/sing-box/sing-box.exe"));
+            Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", NetworkCorePaths.Client());
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
             var profile = ProxyProfile.Create("SSH fixture");
             profile.Proxy["type"] = "SSH"; profile.Proxy["host"] = "127.0.0.1";
@@ -36,7 +36,7 @@ internal static class SshChecks
                 if (mode is "accept-new" or "save-failure") profile.Proxy.Remove("trustedHostKey");
                 if (mode is "accept-new" or "missing-public-key" or "save-failure") profile.Data["windows"]!.AsObject().Remove("sshHostKey");
                 var settings = new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy" };
-                using var engine = new Engine(directory);
+                using var engine = new Engine(directory, allowEnvironmentOverrides: true);
                 int confirmations = 0, saves = 0;
                 SshHostKeyUpdate? savedKey = null;
                 engine.ConfirmSshHostKeyChange = update =>
@@ -79,7 +79,7 @@ internal static class SshChecks
                     ["username"] = "test", ["privateKey"] = separateKey ? fixture["privateKey"]!.ToString() : ""
                 };
                 var configured = new Settings { Profiles = [chained], ActiveProfileId = chained.Id, DefaultAction = "proxy" };
-                using var engine = new Engine(directory, otherRunning: () => false);
+                using var engine = new Engine(directory, allowEnvironmentOverrides: true, otherRunning: () => false);
                 var hops = new System.Collections.Generic.List<string>();
                 engine.SaveSshHostKey = update => { hops.Add(update.Hop); return Task.CompletedTask; };
                 try

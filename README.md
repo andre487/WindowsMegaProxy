@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/andre487/WindowsMegaProxy/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/andre487/WindowsMegaProxy/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Release](https://img.shields.io/github/v/release/andre487/WindowsMegaProxy)](https://github.com/andre487/WindowsMegaProxy/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-blue)](docs/en/installation.md)
 
 <p align="center">
@@ -82,6 +82,7 @@ Develop with VS Code, cmd scripts and uv; Visual Studio is not required.
 
 ## License
 
-The .NET application is [MIT](LICENSE). The standalone
-[HTTP/3 diagnostic helper](native/diagnostics/LICENSE) is GPL-3.0-or-later.
+MegaProxy for Windows is licensed under [GPL-3.0-or-later](LICENSE).
+Earlier MIT releases retain their original license; their
+[copyright and permission notice](installer/licenses/WindowsMegaProxy-MIT.txt) is preserved.
 Bundled components and [artwork](assets/branding/README.md) retain their respective licenses.

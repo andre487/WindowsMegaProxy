@@ -50,6 +50,7 @@ CodeCoverage/
 # MSBuild Binary and Structured Log
 *.binlog
 .tools/
+native/core/host_certificate.h
 __pycache__/
 tools/sing-box/
 .vs/

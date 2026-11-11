@@ -5,6 +5,7 @@
         <ImplicitUsings>disable</ImplicitUsings>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <Version>0.2.1</Version>
+        <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
         <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
         <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
         <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>

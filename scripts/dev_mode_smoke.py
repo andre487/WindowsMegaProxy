@@ -42,7 +42,7 @@ def main():
                     tray_startup = None
             assert tray_startup == (f'"{root / (NAME + ".exe")}" --tray' if mode == "service" else None)
             dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "-p:MegaProxyDev=true", "--no-build", "--", "--installed-settings-check", "seed" if mode == "manual" else "verify")
-            assert "sing-box-dev.exe" not in running_images(), "Unconfigured DEV must never start TUN."
+            assert not running_images() & {"sing-box-dev.exe", "WindowsMegaProxy.Dev.Core.exe"}, "Unconfigured DEV must never start TUN."
             if mode == "login":
                 sp.run([str(ROOT / "scripts/.venv/Scripts/python.exe"), str(ROOT / "scripts/run.py"), "--elevated"], check=True, timeout=600)
                 with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + NAME) as key:
@@ -53,7 +53,7 @@ def main():
                     time.sleep(0.25)
                 else:
                     raise RuntimeError("DEV did not reopen after configuring sign-in mode.")
-                assert "sing-box-dev.exe" not in running_images(), "Restarting the seeded UI must not start TUN."
+                assert not running_images() & {"sing-box-dev.exe", "WindowsMegaProxy.Dev.Core.exe"}, "Restarting the seeded UI must not start TUN."
                 stop_workspace_app(dev=True, workspace_only=False)
         check_channel_switch(root)
         sp.run([system_executable("schtasks.exe"), "/Create", "/TN", NAME + "-S-1-5-18", "/SC", "ONSTART", "/RU", "SYSTEM", "/TR", "cmd.exe /c exit 0", "/F"], check=True)
@@ -147,7 +147,7 @@ def check_channel_switch(dev_root):
             finally:
                 stop_workspace_app(dev=False, workspace_only=False)
                 original.wait(timeout=30)
-            assert not running_images() & {"sing-box.exe", "sing-box-dev.exe"}
+            assert not running_images() & {"sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.Core.exe", "WindowsMegaProxy.Dev.Core.exe"}
             print("Production/DEV channel switching, exit-current, graceful window close and idempotent target state passed; no TUN.")
         finally:
             if fixture.poll() is None:

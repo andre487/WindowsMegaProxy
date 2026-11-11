@@ -16,5 +16,5 @@ public static class AppIdentity
     public const string Executable = Name + ".exe";
     public const string ServiceExecutable = Name + ".Service.exe";
     public const string MutexName = @"Local\" + Name;
-    public static string CoreExecutable => IsDev ? "sing-box-dev.exe" : "sing-box.exe";
+    public static string CoreExecutable => IsDev ? "WindowsMegaProxy.Dev.Core.exe" : "WindowsMegaProxy.Core.exe";
 }

@@ -10,8 +10,10 @@ from contextlib import redirect_stderr, redirect_stdout
 from ctypes import wintypes as wt
 from pathlib import Path
 
+import build_core
+from authenticode import Signer
 from common import ROOT, app_name, artifact_root, cli
-from dependencies import install_core, install_openssh
+from dependencies import install_openssh
 from package import merge
 
 
@@ -140,7 +142,6 @@ def install_main():
     sources = (artifact_root(options.dev) / "app", artifact_root(options.dev) / "service")
     if not (sources[0] / (name + ".exe")).is_file() or not (sources[1] / (name + ".Service.exe")).is_file():
         raise RuntimeError("Run build.cmd before installation.")
-    cache = Path(tempfile.gettempdir()) / "WindowsMegaProxy-downloads"
     install_openssh()
     root = known_folder(0x26) / name
     target = root
@@ -167,11 +168,11 @@ def install_main():
             if any(entry.is_symlink() or entry.is_junction() for entry in source.rglob("*")):
                 raise RuntimeError("Application files cannot contain links.")
             merge(source, payload)
-        install_core(payload / "dependencies/sing-box", cache)
-        install_core(payload / "dependencies/sing-box-h3", cache, http3=True)
-        if options.dev:
-            for directory in ("sing-box", "sing-box-h3"):
-                (payload / "dependencies" / directory / "sing-box.exe").rename(payload / "dependencies" / directory / "sing-box-dev.exe")
+        build_core.install(payload / "dependencies/sing-box", dev=options.dev)
+        build_core.install(payload / "dependencies/sing-box-h3", experimental=True, dev=options.dev)
+        if not options.dev:
+            with Signer(preview=False) as signer:
+                signer.sign_directory(payload / "dependencies")
         stop_workspace_app(dev=options.dev, workspace_only=False)
         stop_service(name)
         for entry in root.iterdir():

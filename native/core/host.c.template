@@ -1,0 +1,72 @@
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <io.h>
+#include <fcntl.h>
+#include "host_trust.c"
+
+typedef char *(__cdecl *config_function)(char *);
+typedef char *(__cdecl *fetch_function)(char *, char *);
+typedef char *(__cdecl *stop_function)(void);
+typedef void (__cdecl *free_function)(char *);
+
+int wmain(int argc, wchar_t **argv) {
+    // Only an inherited input stream carries configuration; never read a public config path.
+    if (argc != 2 || (wcscmp(argv[1], L"stable") && wcscmp(argv[1], L"experimental"))) return 2;
+    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
+    WCHAR path[32768];
+    DWORD size = GetModuleFileNameW(NULL, path, ARRAYSIZE(path));
+    if (!size || size >= ARRAYSIZE(path)) return 2;
+    WCHAR *last = wcsrchr(path, L'\\');
+    if (!last) return 2;
+    *(last + 1) = 0;
+    const WCHAR *library = !wcscmp(argv[1], L"stable") ? L"MegaProxy.Core.Stable.dll" : L"MegaProxy.Core.Experimental.dll";
+    if (wcslen(path) + wcslen(library) >= ARRAYSIZE(path)) return 2;
+    wcscat(path, library);
+    HANDLE verified = megaproxy_verify_file(path);
+    if (verified == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "Network core signature verification failed: missing, damaged or wrong signing key.\n");
+        return 1;
+    }
+    HMODULE module = LoadLibraryExW(path, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!module) { fprintf(stderr, "Cannot load network core: %lu.\n", GetLastError()); return 1; }
+    config_function check = (config_function)GetProcAddress(module, "MegaProxyCheck");
+    config_function start = (config_function)GetProcAddress(module, "MegaProxyStart");
+    stop_function stop = (stop_function)GetProcAddress(module, "MegaProxyStop");
+    free_function release = (free_function)GetProcAddress(module, "MegaProxyFree");
+    fetch_function fetch = (fetch_function)GetProcAddress(module, "MegaProxyFetch");
+    if (!check || !start || !stop || !release || !fetch) return 1;
+    _setmode(_fileno(stdin), _O_BINARY);
+    uint32_t header[2];
+    if (fread(header, sizeof(header), 1, stdin) != 1 || header[0] > 2 || !header[1] || header[1] > 16 * 1024 * 1024) return 2;
+    char *config = malloc(header[1] + 1);
+    if (!config) return 1;
+    if (fread(config, header[1], 1, stdin) != 1) { free(config); return 2; }
+    config[header[1]] = 0;
+    if (memchr(config, 0, header[1])) { free(config); return 2; }
+    char *error;
+    if (header[0] == 2) {
+        uint32_t length;
+        char url[8193];
+        if (fread(&length, sizeof(length), 1, stdin) != 1 || !length || length > sizeof(url) - 1 ||
+            fread(url, length, 1, stdin) != 1 || memchr(url, 0, length)) { free(config); return 2; }
+        url[length] = 0;
+        error = fetch(config, url);
+    } else error = header[0] ? start(config) : check(config);
+    SecureZeroMemory(config, header[1]);
+    free(config);
+    if (error) { fprintf(stderr, "%s\n", error); release(error); return 1; }
+    if (header[0] != 1) return 0;
+    fprintf(stderr, "MegaProxy core started.\n");
+    fflush(stderr);
+    // Closing the owner's pipe stops the core, including when its parent crashes.
+    (void)getchar();
+    error = stop();
+    if (error) { fprintf(stderr, "%s\n", error); release(error); return 1; }
+    CloseHandle(verified);
+    // Go's runtime stays loaded until process exit; never call FreeLibrary.
+    return 0;
+}

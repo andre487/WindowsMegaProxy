@@ -83,7 +83,7 @@ internal static class FailoverChecks
         using var stopping = new CancellationTokenSource(TimeSpan.FromSeconds(50));
         using var origin = new TcpListener(IPAddress.Loopback, 0); origin.Start();
         var serving = ServeAsync(origin, stopping.Token);
-        using var engine = new Engine(directory, new Uri("http://127.0.0.1:" + ((IPEndPoint)origin.LocalEndpoint).Port + "/"), otherRunning: () => false);
+        using var engine = new Engine(directory, new Uri("http://127.0.0.1:" + ((IPEndPoint)origin.LocalEndpoint).Port + "/"), allowEnvironmentOverrides: true, otherRunning: () => false);
         try
         {
             var profiles = new[] { "unavailable.invalid", "backup.invalid", "last.invalid" }.Select(host =>

@@ -82,7 +82,7 @@ internal static class CoreProcessChecks
         try
         {
             using var cancellation = new CancellationTokenSource();
-            using var engine = new Engine(directory);
+            using var engine = new Engine(directory, allowEnvironmentOverrides: true);
             var startup = engine.StartAsync(new Settings(), testOnly: true, cancellation.Token);
             await WaitForMarkers(marker);
             cancellation.Cancel();

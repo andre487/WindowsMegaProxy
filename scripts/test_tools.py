@@ -66,7 +66,7 @@ class ToolsChecks(unittest.TestCase):
                      patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
                      patch("install.install_openssh") as dependencies, \
                      patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
-                     patch("install.install_core", side_effect=core), patch("install.run") as configure, patch("builtins.print"), \
+                     patch("install.build_core.install", side_effect=core), patch("install.Signer"), patch("install.run") as configure, patch("builtins.print"), \
                      patch("run.stop_workspace_app"), patch("service_control.stop_service"), patch("service_control.require_production_stopped"), patch("build.main"):
                     installer.install()
                 command = next(call.args for call in configure.call_args_list if call.args[1] == "--configure-mode")
@@ -96,7 +96,7 @@ class ToolsChecks(unittest.TestCase):
             with patch("sys.argv", ["install.py", "--mode", "service"]), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
                  patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
                  patch("install.winreg.OpenKey"), patch("install.winreg.QueryValueEx", side_effect=[(str(helper), 1), ("manual", 1)]), \
-                 patch("install.install_openssh"), patch("install.install_core"), \
+                 patch("install.install_openssh"), patch("install.build_core.install"), patch("install.Signer"), \
                  patch("install.secure_directory", side_effect=lambda path, **_: path.mkdir(parents=True, exist_ok=True)), \
                  patch("install.run", side_effect=configure) as commands, patch("run.stop_workspace_app"), patch("service_control.stop_service"):
                 with self.assertRaisesRegex(RuntimeError, "configuration failed"):
@@ -134,11 +134,13 @@ class ToolsChecks(unittest.TestCase):
 
     def test_dev_run_builds_only_ui_and_never_installs_service(self):
         with patch("run.configured_mode", return_value="manual"), patch("run.stop_workspace_app"), patch("run.stop_service") as stop, \
-             patch("run.build.main") as build, patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
+             patch("run.build.main") as build, patch("run.build_core.install") as cores, patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
             dev_runner.restart()
         stop.assert_called_once_with("WindowsMegaProxy.Dev")
         build.assert_called_once_with(dev=True, app_only=True)
         install.assert_not_called()
+        self.assertEqual(cores.call_count, 2)
+        self.assertTrue(all(call.kwargs["dev"] for call in cores.call_args_list))
         self.assertIn("artifacts", launch.call_args.args[0][0])
 
     def test_dev_run_preserves_login_and_service_modes(self):
@@ -190,7 +192,7 @@ class ToolsChecks(unittest.TestCase):
     def test_dev_run_defers_channel_choice_to_ui_without_stopping_production(self):
         with patch("service_control.service_state", return_value=4), patch("run.configured_mode", return_value="manual"), \
              patch("run.stop_workspace_app") as close, patch("run.stop_service") as stop, patch("run.build.main") as build, \
-             patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
+             patch("run.build_core.install"), patch("run.sp.run") as install, patch("run.sp.Popen") as launch:
             dev_runner.restart()
         close.assert_called_once_with(workspace_only=False)
         stop.assert_called_once_with("WindowsMegaProxy.Dev")
