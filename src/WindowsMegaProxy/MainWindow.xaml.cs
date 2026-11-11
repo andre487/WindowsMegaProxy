@@ -1206,6 +1206,15 @@ public partial class MainWindow : Window
             SpeedTrafficText.Text = Ui.F("Cloudflare: {0} MB download and upload per route, up to {1} MB of traffic.", size, int.Parse(size) * 4);
     }
 
+    private Task<bool> IsCheckedConnectionCurrentAsync()
+    {
+        var applied = engine?.Running == true ? engine.AppliedSettings : null;
+        var verified = checkedSettings;
+        // Failover keeps the requested signature, but diagnostics check the actual active profile.
+        return Task.Run(() => applied is null || verified is not null &&
+            Configuration.Signature(applied) == Configuration.Signature(verified));
+    }
+
     private async void SpeedTestClick(object sender, RoutedEventArgs e)
     {
         if (!canEdit) return;
@@ -1223,7 +1232,7 @@ public partial class MainWindow : Window
         }
         try
         {
-            if (engine?.Running == true && !ReferenceEquals(checkedSettings, engine.AppliedSettings) && engine.AppliedSignature != (await Task.Run(() => Configuration.Signature(checkedSettings))))
+            if (!await IsCheckedConnectionCurrentAsync())
                 throw new InvalidOperationException(Ui.T("The connection changed. Run diagnostics again before testing speed."));
             await connection.RunDiagnosticsAsync(checkedSettings, async (target, cancellation) =>
             {
@@ -1259,7 +1268,13 @@ public partial class MainWindow : Window
             });
         }
         catch (OperationCanceledException) { AppendDiagnosticEntry("Speed test stopped."); Update(false, direct with { Status = "Stopped" }); Update(true, profile with { Status = "Stopped" }); }
-        catch (Exception error) { AppendDiagnosticEntry("Diagnostic failed: " + error.GetType().Name); ShowError(error); }
+        catch (Exception error)
+        {
+            AppendDiagnosticEntry("Speed test failed: " + error.GetType().Name);
+            WriteLog("Speed test failed: " + error.GetType().Name);
+            ShowError(error);
+            if (!quitting) MessageDialog.ShowError(this, error.Message, Ui.T("Test speed"));
+        }
         finally
         {
             speedRunning = false;

@@ -237,6 +237,22 @@ internal static partial class Program
             {
                 var fakeEngine = fixtureEngine;
                 Wait(window, testConnection.ConnectAsync(runningSettings));
+                var checkedField = typeof(MainWindow).GetField("checkedSettings", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                var checkSpeedConnection = typeof(MainWindow).GetMethod("IsCheckedConnectionCurrentAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                string? requestedSignature = fakeEngine.AppliedSignature;
+                fakeEngine.AppliedSignature = "original-request-before-failover";
+                checkedField.SetValue(window, PortableConfiguration.Copy(fakeEngine.AppliedSettings!));
+                var currentCheck = (Task<bool>)checkSpeedConnection.Invoke(window, null)!;
+                Wait(window, currentCheck);
+                Assert(currentCheck.Result, "Speed diagnostics compare applied settings rather than the requested connection signature.");
+                var differentSettings = PortableConfiguration.Copy(fakeEngine.AppliedSettings!);
+                differentSettings.ActiveProfile!.Proxy["port"] = 8443;
+                checkedField.SetValue(window, differentSettings);
+                var changedCheck = (Task<bool>)checkSpeedConnection.Invoke(window, null)!;
+                Wait(window, changedCheck);
+                Assert(!changedCheck.Result, "A changed active proxy still requires diagnostics before speed testing.");
+                checkedField.SetValue(window, null);
+                fakeEngine.AppliedSignature = requestedSignature;
                 var initialTrayText = ((System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!).Text;
                 Assert(initialTrayText.Contains("Running H3 profile [") && initialTrayText.Contains("MASQUE"),
                     "The connection event updates tray profile and type immediately, before settings or statistics refresh.");
