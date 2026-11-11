@@ -38,6 +38,10 @@ To change scope, uninstall first; configuration is retained.
 
 ## First connection
 
+Uninstall offers two choices: keep profiles and settings (the default), or delete
+the selected installation's data as well. Full removal does not delete DEV data or
+other users' personal installations. Export configuration before full removal.
+
 When moving from the old Inno Setup installer, export your configuration first,
 uninstall the old version in Windows Settings, then install MegaProxy and import
 the configuration. Installing WiX/Burn over Inno is not supported. Subsequent

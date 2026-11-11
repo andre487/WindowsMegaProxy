@@ -732,7 +732,9 @@ internal static partial class Program
             Assert(((TextBox)window.FindName("TestLogText")).Text.Contains("Test stopped."), "Diagnostic log entries stay English under the Russian UI.");
             Capture((Visual)window.Content, Path.Combine(output, "diagnostics-log.png"));
             typeof(MainWindow).GetMethod("CompleteDiagnostics", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
-                [new DiagnosticResult("203.0.113.7", "DE", 32, ""), fixture]);
+                [new DiagnosticResult("203.0.113.7", "DE", 32, "", "VPN/proxy detected"), fixture]);
+            Assert(((TextBlock)window.FindName("DiagnosticReputationText")).Text == Ui.T("VPN/proxy detected"),
+                "Connection diagnostics show localized IP reputation before a speed test.");
             Assert(((TextBlock)window.FindName("DiagnosticHttp3Text")).Visibility == Visibility.Collapsed, "Hide HTTP/3 results when the applied transport has no confirmed UDP support.");
             Assert(((TextBlock)window.FindName("DiagnosticHttp3Label")).Visibility == Visibility.Collapsed, "Hide the HTTP/3 label along with unsupported results.");
             typeof(MainWindow).GetMethod("CompleteDiagnostics", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,

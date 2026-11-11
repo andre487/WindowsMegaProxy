@@ -24,6 +24,7 @@
         <Variable Name="DesktopShortcut" Type="numeric" Value="0" />
         <Variable Name="LaunchAfterSetup" Type="numeric" Value="0" />
         <Variable Name="IsUninstall" Type="numeric" Value="0" />
+        <Variable Name="RemovalAction" Type="string" Value="remove" />
         <Variable Name="OwnerSid" Type="string" Value="" Hidden="yes" />
         <Chain>
             <MsiPackage Id="RegistrationPackage" SourceFile="$(var.RegistrationPackage)" Compressed="yes" />
@@ -36,7 +37,7 @@
                 DetectCondition="WixBundleInstalled"
                 InstallArguments="[SetupAction] [WixBundlePlannedScope] &quot;[OwnerSid]&quot; [Mode] [AutomaticUpdates] 1 [DesktopShortcut] [IsUninstall] [LaunchAfterSetup] [StagedUpdate] &quot;[SetupPayloadPath]&quot;"
                 RepairArguments="[SetupAction] [WixBundlePlannedScope] &quot;[OwnerSid]&quot; [Mode] [AutomaticUpdates] 1 [DesktopShortcut] [IsUninstall] [LaunchAfterSetup] [StagedUpdate] &quot;[SetupPayloadPath]&quot;"
-                UninstallArguments="remove [WixBundlePlannedScope] &quot;[OwnerSid]&quot; preserve preserve 1 0 [IsUninstall] 0 0 &quot;[SetupPayloadPath]&quot;">
+                UninstallArguments="[RemovalAction] [WixBundlePlannedScope] &quot;[OwnerSid]&quot; preserve preserve 1 0 [IsUninstall] 0 0 &quot;[SetupPayloadPath]&quot;">
                 <Payload SourceFile="$(var.SetupDirectory)\WindowsMegaProxy.Setup.exe.config" />
             </ExePackage>
         </Chain>

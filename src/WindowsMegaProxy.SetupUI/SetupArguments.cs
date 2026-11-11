@@ -37,7 +37,7 @@ internal sealed class SetupArguments
         {
             "Mode" => value is "preserve" or "manual" or "login" or "service",
             "AutomaticUpdates" => value is "preserve" or "true" or "false",
-            "RegistrationOnly" or "DesktopShortcut" or "LaunchAfterSetup" or "StagedUpdate" or "BootUpdate" => value is "0" or "1",
+            "RemoveData" or "RegistrationOnly" or "DesktopShortcut" or "LaunchAfterSetup" or "StagedUpdate" or "BootUpdate" => value is "0" or "1",
             _ => false
         };
         if (!valid) throw new ArgumentException("Invalid setup option: " + name);

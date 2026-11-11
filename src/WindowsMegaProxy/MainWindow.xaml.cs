@@ -1221,6 +1221,7 @@ public partial class MainWindow : Window
         TestResultText.Visibility = Visibility.Collapsed;
         DiagnosticDetailsPanel.Visibility = Visibility.Visible;
         DiagnosticIpText.Text = details.ExitIp;
+        DiagnosticReputationText.Text = Ui.T(details.Reputation);
         DiagnosticLatencyText.Text = Ui.F("{0} ms", details.LatencyMs);
         DiagnosticHttp3Text.Text = string.Join(Environment.NewLine, details.Http3.Split(Environment.NewLine).Select(line =>
             Ui.T(line.Replace("HTTP/3 · ", "", StringComparison.Ordinal))

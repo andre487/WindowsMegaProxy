@@ -28,11 +28,18 @@ internal static class DiagnosticsChecks
             if (url.Contains("/__down?bytes=10000000")) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[10_000_000]), Version = HttpVersion.Version20 };
             if (url.Contains("/__down?bytes=0")) return Response("");
             if (request.RequestUri.Host == "example.com") return Response("ok");
+            if (request.RequestUri.Host == "proxycheck.io")
+                return Response("{\"status\":\"ok\",\"203.0.113.7\":{\"detections\":{\"proxy\":true}}}");
             return Response("ip=203.0.113.7\nloc=DE\ntls=TLSv1.3\n");
         });
         using var client = new HttpClient(handler);
         var result = await NetworkDiagnostics.CheckAsync(client, true, _ => { }, CancellationToken.None);
         Assert(result.ExitIp == "203.0.113.7" && result.Country == "DE", "IP and country use the same trace response.");
+        Assert(result.Reputation == "VPN/proxy detected" && calls.Exists(url => url.Contains("proxycheck.io/v3/203.0.113.7")),
+            "Connection checks include exit IP reputation through the supplied route client without a speed test.");
+        int beforeCachedCheck = calls.Count;
+        Assert(await IpReputation.CheckAsync(client, result.ExitIp, _ => { }, CancellationToken.None) == result.Reputation && calls.Count == beforeCachedCheck,
+            "The subsequent speed test reuses cached IP reputation.");
         Assert(!calls.Exists(url => url.Contains("quic.browserleaks")) && result.Http3 == "", "TCP diagnostics never bypass a profile or invent an HTTP/3 result.");
         SpeedResult? last = null;
         var speed = await NetworkDiagnostics.MeasureAsync(client, "test", 10, "h3", true, value => last = value, _ => { }, CancellationToken.None);
@@ -47,10 +54,12 @@ internal static class DiagnosticsChecks
             "speed.cloudflare.com" => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
             "ifconfig.me" => Response("203.0.113.9"),
             "ifconfig.co" => Response("nl"),
+            "proxycheck.io" => throw new HttpRequestException("Synthetic reputation outage"),
             _ => throw new Exception("Unexpected fallback provider.")
         })));
         var recovered = await NetworkDiagnostics.CheckAsync(fallback, true, _ => { }, CancellationToken.None);
         Assert(recovered.ExitIp == "203.0.113.9" && recovered.Country == "NL", "IP and country fallbacks match Android.");
+        Assert(recovered.Reputation == "Reputation request failed", "A ProxyCheck outage does not fail the connection check.");
         int certificateAttempts = 0;
         using var badCertificate = new HttpClient(new Handler((_, _) =>
         {

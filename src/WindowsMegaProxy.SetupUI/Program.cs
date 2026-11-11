@@ -125,12 +125,15 @@ public sealed class SetupApplication : BootstrapperApplication
             foreach (var item in window.Options())
             {
                 SetupArguments.Validate(item.Key, item.Value);
+                if (item.Key == "RemoveData") continue;
                 engine.SetVariableString(item.Key, item.Value, false);
             }
             engine.SetVariableNumeric("IsUninstall", action == LaunchAction.Uninstall ? 1 : 0);
+            engine.SetVariableString("RemovalAction", action == LaunchAction.Uninstall && window.Options()["RemoveData"] == "1" ? "remove-all" : "remove", false);
             busy = true;
             cancel = false;
             window.Begin();
+            window.FollowLog(engine.GetVariableString("WixBundleLog"));
             engine.SetVariableString("SetupAction", arguments.TryGetValue("RegistrationOnly", out string registration) && registration == "1" ? "register" : "install", false);
             engine.SetVariableString("SetupPayloadPath", Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "payload.zip"), false);
             engine.SetVariableString("StagedUpdate", arguments.TryGetValue("StagedUpdate", out string staged) ? staged : "0", false);
