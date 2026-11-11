@@ -44,4 +44,5 @@
     <String Id="PreserveUpdatesDescription" Value="Keep your existing preference. On a new installation, MegaProxy checks for updates once a day." />
     <String Id="EnableUpdatesDescription" Value="Check once a day and notify you when an update is available. You choose when to download and install it." />
     <String Id="DisableUpdatesDescription" Value="Do not check in the background. You can check for updates manually in Settings." />
+    <String Id="InnoInstallationDetected" Value="An older Inno Setup installation was found. Export your configuration, uninstall the old version in Windows Settings, then run this installer again." />
 </WixLocalization>

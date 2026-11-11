@@ -12,6 +12,7 @@
         <ApplicationManifest>app.manifest</ApplicationManifest>
     </PropertyGroup>
     <ItemGroup>
+        <Compile Include="../WindowsMegaProxy.Setup/InnoInstallation.cs" Link="InnoInstallation.cs" />
         <Reference Include="WindowsFormsIntegration" />
         <InternalsVisibleTo Include="WindowsMegaProxy.SetupChecks" />
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net462" Version="1.0.3" PrivateAssets="all" />

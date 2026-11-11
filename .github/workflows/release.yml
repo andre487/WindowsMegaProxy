@@ -105,7 +105,7 @@ jobs:
           WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
         run: uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/release_package.py
 
-      - name: Verify upgrade from the latest complete published release
+      - name: Verify upgrade from the latest complete compatible published release
         shell: cmd
         env:
           GH_TOKEN: ${{ github.token }}

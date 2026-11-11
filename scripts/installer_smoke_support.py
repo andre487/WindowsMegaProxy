@@ -1,4 +1,4 @@
-"""Shared cleanup for disposable installer fixtures, including pre-Burn releases."""
+"""Shared cleanup for disposable installer fixtures, using registered Burn bundles."""
 
 import os
 import re
@@ -12,11 +12,6 @@ from install import known_folder
 def uninstall(log, *, personal=False):
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted":
         raise RuntimeError("Uninstall fixtures require a disposable GitHub-hosted runner.")
-    root = known_folder(0x1c) / "Programs/WindowsMegaProxy" if personal else known_folder(0x26) / "WindowsMegaProxy"
-    legacy = root / "unins000.exe"
-    if legacy.is_file():
-        sp.run([str(legacy), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={log}"], check=True, timeout=600)
-        return
     hive = winreg.HKEY_CURRENT_USER if personal else winreg.HKEY_LOCAL_MACHINE
     try:
         uninstall_key = winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY)

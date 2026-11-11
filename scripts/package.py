@@ -295,6 +295,8 @@ def main():
                    env=signer.environment, check=True)
         setup = f"WindowsMegaProxy-{app_version}-win-x64-setup.exe"
         components["installer"] = {"version": app_version, "file": setup}
+        if wix_installer:
+            components["installer"]["format"] = "wix-burn"
         source = f"WindowsMegaProxy-{app_version}-source.zip"
         sp.run(["git", "archive", "--format=zip", f"--output={staging / source}", commit], cwd=ROOT, check=True)
         components["source"] = {"version": app_version, "file": source}

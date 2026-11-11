@@ -337,8 +337,8 @@ public static partial class Installation
                     CloseClients(root, currentSession: personal);
                     var current = new MachineSettingsStore(personal ? UserInstallation.DataDirectory : null, machine: !personal).Load();
                     var start = new ProcessStartInfo(target) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root };
-                    foreach (string argument in new[] { Process.GetCurrentProcess().SessionId == 0 ? "/VERYSILENT" : "/SILENT", "/NORESTART", "/SUPPRESSMSGBOXES", personal ? "/CURRENTUSER" : "/ALLUSERS",
-                        "/MODE=" + prepared.Mode, "/UPDATE=1", "/STAGEDUPDATE=1", "/REOPEN=0", "/MERGETASKS=" + (AppUpdatePolicy.Enabled(current) ? "automaticupdates" : "!automaticupdates") }) start.ArgumentList.Add(argument);
+                    foreach (string argument in new[] { Process.GetCurrentProcess().SessionId == 0 ? "-quiet" : "-passive", "-norestart", personal ? "Scope=PerUser" : "Scope=PerMachine",
+                        "Mode=" + prepared.Mode, "StagedUpdate=1", "LaunchAfterSetup=0", "AutomaticUpdates=" + (AppUpdatePolicy.Enabled(current) ? "true" : "false") }) start.ArgumentList.Add(argument);
                     using var setup = Process.Start(start) ?? throw new IOException("Could not start the staged installer.");
                     await setup.WaitForExitAsync();
                     if (setup.ExitCode != 0) throw new IOException("The staged installer failed with exit code " + setup.ExitCode + ". See the Windows setup log.");
