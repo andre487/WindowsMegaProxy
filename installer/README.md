@@ -164,10 +164,10 @@ verifies and stages the installer before elevation can execute it, preserves
 installation scope/mode and restarts the client. Old, partial and installed
 update downloads are removed. DEV checks can show releases but never install
 production updates over a development build. The installer also offers an
-automatic-update checkbox, selected by default.
+automatic-update selector; a new installation enables checks by default and an upgrade preserves the existing preference.
 
-Packaged MegaProxy EXE/DLL files and Inno Setup's installer, uninstaller and
-temporary Setup copies are Authenticode-signed. Release builds require the
+Packaged MegaProxy EXE/DLL files, the registration MSI, and both the Burn engine
+and final installer bundle are Authenticode-signed. Release builds require the
 permanent certificate pinned in `assets/authenticode-certificate.pem` and a
 SHA-256 timestamp; credentials are documented in [LOCAL-SECRETS.md](LOCAL-SECRETS.md).
 This certificate is self-signed, so Windows does not automatically trust its

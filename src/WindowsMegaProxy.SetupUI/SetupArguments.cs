@@ -19,6 +19,7 @@ internal sealed class SetupArguments
         {
             string[] pair = arg.Split(new[] { '=' }, 2);
             string name = pair[0], value = pair.Length == 2 ? pair[1] : "";
+            if (name.StartsWith("-", StringComparison.Ordinal)) name = "/" + name.Substring(1);
             if (!name.StartsWith("/", StringComparison.Ordinal))
             {
                 if (name == "Scope") Scope = value switch

@@ -44,6 +44,7 @@ internal static class Checks
 
     private static void Arguments()
     {
+        new SetupArguments(new[] { "-norestart", "RegistrationOnly=1", "Scope=PerMachine" });
         var parsed = new SetupArguments(new[] { "/ALLUSERS", "/VERYSILENT", "/MODE=service", "/BOOTUPDATE=1", "/REOPEN=0" });
         Require(parsed.Boot && parsed.Silent && parsed.Scope == BundleScope.PerMachine, "Released boot worker switches were not recognized.");
         parsed = new SetupArguments(new[] { "/CURRENTUSER", "/SILENT", "/MODE=login", "/STAGEDUPDATE=1", "/UPDATE=1", "/MERGETASKS=!automaticupdates" });
