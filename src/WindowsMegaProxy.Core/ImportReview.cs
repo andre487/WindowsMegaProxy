@@ -124,6 +124,8 @@ public sealed class ImportReview
         {
             result.DefaultAction = current.DefaultAction; result.BypassLan = current.BypassLan;
             result.AutoConnect = current.AutoConnect; result.LogSizeMb = current.LogSizeMb;
+            result.ReverseDnsCacheHours = current.ReverseDnsCacheHours;
+            result.ResolveConnectionHosts = current.ResolveConnectionHosts;
             result.ShowAllConnections = current.ShowAllConnections; result.Language = current.Language; result.Theme = current.Theme;
             result.AlwaysMinimizeToTray = current.AlwaysMinimizeToTray;
             result.TlsFingerprint = current.TlsFingerprint; result.LaunchAtSignIn = current.LaunchAtSignIn;

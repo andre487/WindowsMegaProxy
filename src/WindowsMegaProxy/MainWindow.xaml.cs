@@ -214,6 +214,9 @@ public partial class MainWindow : Window
         AlwaysMinimizeToTrayBox.Click += SettingsChanged;
         TlsFingerprintBox.SelectionChanged += PreferencesChanged;
         BootstrapDnsBox.SelectionChanged += PreferencesChanged;
+        ReverseDnsCacheBox.SelectionChanged += PreferencesChanged;
+        ResolveConnectionHostsBox.Checked += SettingsChanged;
+        ResolveConnectionHostsBox.Unchecked += SettingsChanged;
         rules.CollectionChanged += SettingsChanged;
         Sections.SelectionChanged += SectionsChanged;
         connection.Changed += () =>
@@ -495,6 +498,8 @@ public partial class MainWindow : Window
         updated.Theme = (string)((ComboBoxItem)ThemeBox.SelectedItem).Tag;
         updated.AlwaysMinimizeToTray = AlwaysMinimizeToTrayBox.IsChecked == true;
         updated.TlsFingerprint = (string)((ComboBoxItem)TlsFingerprintBox.SelectedItem).Tag;
+        updated.ReverseDnsCacheHours = int.Parse((string)((ComboBoxItem)ReverseDnsCacheBox.SelectedItem).Tag);
+        updated.ResolveConnectionHosts = ResolveConnectionHostsBox.IsChecked == true;
         updated.BootstrapDnsProvider = (string)((ComboBoxItem)BootstrapDnsBox.SelectedItem).Tag;
         if (!int.TryParse(MtuBox.Text, out int mtu) || mtu is < 1280 or > 65535)
             throw new ArgumentException(Ui.T("MTU must be between 1280 and 65535 bytes."));
@@ -599,6 +604,8 @@ public partial class MainWindow : Window
             DefaultFingerprintItem.Content = Ui.F("Default ({0})", TlsFingerprintBox.Items.Cast<ComboBoxItem>()
                 .First(item => (string)item.Tag == Configuration.DefaultTlsFingerprint).Content.ToString()!.Trim());
             SelectTag(TlsFingerprintBox, updated.TlsFingerprint);
+            SelectTag(ReverseDnsCacheBox, updated.ReverseDnsCacheHours.ToString());
+            ResolveConnectionHostsBox.IsChecked = updated.ResolveConnectionHosts;
             SelectTag(BootstrapDnsBox, updated.BootstrapDnsProvider);
             MtuBox.Text = updated.TunMtu.ToString();
             SelectTag(TrafficUnitsBox, updated.TrafficUnits);
@@ -865,7 +872,7 @@ public partial class MainWindow : Window
         RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, AlwaysMinimizeToTrayBox, TlsFingerprintBox, BootstrapDnsBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, AlwaysMinimizeToTrayBox, TlsFingerprintBox, BootstrapDnsBox, ResolveConnectionHostsBox, ReverseDnsCacheBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && scheduledAppUpdate?.FilesQueued != true && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         OperatingModeBox.ToolTip = scheduledAppUpdate?.FilesQueued == true ? Ui.T("Restart Windows to finish the update. File replacement has already been scheduled.") : null;
@@ -913,7 +920,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private bool CanPollConnections() => IsVisible && WindowState != WindowState.Minimized &&
+    private bool CanPollConnections() => IsActive && IsVisible && WindowState != WindowState.Minimized &&
         ((TabItem)Sections.Items[0]).IsSelected && connection.State == ConnectionState.Connected && engine?.Running == true;
 
     private DateTimeOffset nextConnectionsPoll;
@@ -934,6 +941,7 @@ public partial class MainWindow : Window
             UpdateConnections(snapshot.Rows.Select(row => new ConnectionRow(row.Process, row.Destination, row.Network, row.Route,
                 ConnectionSnapshot.Bytes(row.UploadedBytes, settings.TrafficUnits), ConnectionSnapshot.Bytes(row.DownloadedBytes, settings.TrafficUnits),
                 row.RouteGroup, row.UploadedBytes, row.DownloadedBytes, row.Id)).ToArray());
+            _ = ResolveConnectionRowsAsync();
             ConnectionsHint.Text = Ui.F("Shown: {0} of {1}.", snapshot.Rows.Count, snapshot.Total);
             var now = DateTimeOffset.UtcNow;
             nextConnectionsPoll = snapshot.Total >= 1000 ? now + ConnectionSnapshot.PollInterval(snapshot.Total) : default;
@@ -947,6 +955,40 @@ public partial class MainWindow : Window
         catch (Exception error) when (error is System.Net.Http.HttpRequestException or TaskCanceledException or ObjectDisposedException or System.Text.Json.JsonException or IOException or InvalidOperationException or FormatException)
         { ConnectionsHint.Text = Ui.T("Statistics are temporarily unavailable."); }
         finally { polling = false; }
+    }
+
+    private ReverseDns reverseDns = new();
+    private int reverseDnsCacheHours = 24;
+    private bool resolvingConnectionHosts;
+
+    private async Task ResolveConnectionRowsAsync()
+    {
+        if (resolvingConnectionHosts || !settings.ResolveConnectionHosts || !CanPollConnections()) return;
+        if (reverseDnsCacheHours != settings.ReverseDnsCacheHours)
+        { reverseDnsCacheHours = settings.ReverseDnsCacheHours; reverseDns = new(reverseDnsCacheHours); }
+        var resolver = reverseDns;
+        int cacheHours = reverseDnsCacheHours;
+        resolvingConnectionHosts = true;
+        try
+        {
+            var rows = connectionRows.Select(row => (Row: row, Destination: row.Destination)).ToArray();
+            await Parallel.ForEachAsync(rows, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (item, token) =>
+            {
+                bool active = await Dispatcher.InvokeAsync(() => settings.ResolveConnectionHosts && CanPollConnections());
+                if (!active) return;
+                string resolved = resolver.Resolve(item.Destination);
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    var row = item.Row;
+                    if (settings.ResolveConnectionHosts && settings.ReverseDnsCacheHours == cacheHours && CanPollConnections() && connectionRows.Contains(row) &&
+                        row.Destination == item.Destination && resolved != item.Destination)
+                        row.Update(new ConnectionRow(row.Process, resolved, row.Network, row.Route, row.Upload, row.Download,
+                            row.RouteGroup, row.UploadedBytes, row.DownloadedBytes, row.Id));
+                });
+            });
+        }
+        catch (Exception error) { WriteLog("Reverse DNS failed: " + error.GetType().Name); }
+        finally { resolvingConnectionHosts = false; }
     }
 
     private void UpdateConnections(System.Collections.Generic.IReadOnlyList<ConnectionRow> rows)

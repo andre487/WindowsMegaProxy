@@ -59,6 +59,8 @@ public static class ServiceView
             ActiveProfileId = source.ActiveProfileId, DefaultAction = source.DefaultAction, BypassLan = source.BypassLan,
             Language = source.Language, Theme = source.Theme, TlsFingerprint = source.TlsFingerprint,
             AutoConnect = source.AutoConnect, LaunchAtSignIn = source.LaunchAtSignIn, LogSizeMb = source.LogSizeMb,
+            ReverseDnsCacheHours = source.ReverseDnsCacheHours,
+            ResolveConnectionHosts = source.ResolveConnectionHosts,
             ShowAllConnections = source.ShowAllConnections,
             Rules = source.Rules.ConvertAll(rule => rule.Copy())
         };
