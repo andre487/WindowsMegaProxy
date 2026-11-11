@@ -482,6 +482,13 @@ internal static partial class Program
                 {
                     sections.SelectedIndex = i;
                     Layout(window);
+                    foreach (string tableName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
+                    {
+                        var table = (DataGrid)window.FindName(tableName);
+                        var themeBackground = (SolidColorBrush)table.FindResource("SolidBackgroundFillColorBaseBrush");
+                        Assert(table.Background is SolidColorBrush background && background.Color == themeBackground.Color && background.Color.A == 255,
+                            "Empty and inactive tables have an opaque theme background, including after theme changes.");
+                    }
                     if (i == 0)
                     {
                         var emptyTable = (DataGrid)window.FindName("ConnectionsGrid");
