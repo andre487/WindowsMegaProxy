@@ -17,9 +17,52 @@ using WindowsMegaProxy;
 
 internal static partial class Program
 {
+    private static void CheckReverseDns()
+    {
+        var resolver = new ReverseDns(0);
+        var now = DateTimeOffset.UtcNow;
+        int queries = 0;
+        (string?, uint) Lookup(System.Net.IPAddress ip) { queries++; return ("example.test", 60); }
+        Assert(resolver.Resolve("192.0.2.1:443", Lookup, now) == "example.test:443", "PTR replaces the IP with the domain and preserves the destination port.");
+        resolver.Resolve("192.0.2.1:80", Lookup, now.AddSeconds(59));
+        Assert(queries == 1, "PTR cache is shared across ports until DNS TTL expires.");
+        resolver.Resolve("192.0.2.1:443", Lookup, now.AddSeconds(60));
+        Assert(queries == 2, "PTR refreshes at TTL expiry.");
+        (string?, uint) Missing(System.Net.IPAddress ip) { queries++; return (null, 0); }
+        resolver.Resolve("[2001:db8::1]:443", Missing, now);
+        resolver.Resolve("[2001:db8::1]:80", Missing, now.AddSeconds(3599));
+        Assert(queries == 3, "Failed IPv6 PTR answers are cached for one hour.");
+        resolver.Resolve("[2001:db8::1]:80", Missing, now.AddHours(1));
+        Assert(queries == 4, "Negative cache expires after one hour.");
+        resolver.Resolve("known.example:443", Lookup, now);
+        Assert(queries == 4, "Known domain names do not issue PTR queries.");
+        Assert(ReverseDns.Question(System.Net.IPAddress.Parse("192.0.2.1")) == "1.2.0.192.in-addr.arpa", "IPv4 PTR question reverses octets.");
+        Assert(ReverseDns.Question(System.Net.IPAddress.IPv6Loopback).StartsWith("1.0.0.0.") &&
+            ReverseDns.Question(System.Net.IPAddress.IPv6Loopback).EndsWith(".ip6.arpa"), "IPv6 PTR question reverses nibbles.");
+        var fixedCache = new ReverseDns();
+        fixedCache.Resolve("192.0.2.2:443", Lookup, now);
+        fixedCache.Resolve("192.0.2.2:80", Lookup, now.AddHours(23));
+        Assert(queries == 5, "Default positive cache lasts 24 hours regardless of record TTL.");
+        fixedCache.Resolve("192.0.2.3:443", Missing, now);
+        fixedCache.Resolve("192.0.2.3:80", Missing, now.AddHours(23));
+        Assert(queries == 6, "Default negative cache also lasts 24 hours.");
+        fixedCache.Resolve("192.0.2.2:80", Lookup, now.AddHours(24));
+        fixedCache.Resolve("192.0.2.3:80", Missing, now.AddHours(24));
+        Assert(queries == 8, "Fixed cache entries expire after 24 hours.");
+        var settings = new Settings();
+        Assert(!settings.ResolveConnectionHosts, "Reverse DNS is opt-in.");
+        settings.ResolveConnectionHosts = true;
+        var dnsProfile = ProxyProfile.Create("DNS cache fixture");
+        dnsProfile.Proxy["host"] = "example.test";
+        settings.Profiles.Add(dnsProfile); settings.ActiveProfileId = dnsProfile.Id;
+        var document = PortableConfiguration.Export(settings);
+        Assert(PortableConfiguration.Import(document.ToJsonString(), new Settings()).ResolveConnectionHosts, "Reverse DNS preference survives config export/import.");
+    }
+
     [STAThread]
     private static void Main(string[] args)
     {
+        CheckReverseDns();
         if (args.Contains("--preview-notifications")) { PreviewNotifications(); return; }
         if (args.Contains("--preview-rule-dialog"))
         {
@@ -362,6 +405,12 @@ internal static partial class Program
             Assert(fixtureEngine.Polls == polls + 1, "Explicit refresh bypasses the polling delay.");
             fixtureEngine.Connections = null;
             polls = fixtureEngine.Polls;
+            var otherWindow = new Window { Width = 200, Height = 100, Owner = window };
+            otherWindow.Show(); otherWindow.Activate(); Layout(otherWindow);
+            Wait(window, (Task)refresh.Invoke(window, [false])!);
+            Assert(!window.IsActive && fixtureEngine.Polls == polls, "A visible unfocused window does not poll connections.");
+            otherWindow.Close(); window.Activate(); Layout(window);
+
             ((TabControl)window.FindName("Sections")).SelectedIndex = 3;
             Wait(window, (Task)refresh.Invoke(window, [false])!);
             Assert(fixtureEngine.Polls == polls, "An inactive connections page does not poll the core.");

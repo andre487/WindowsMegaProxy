@@ -1240,6 +1240,27 @@
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                             Margin="0,0,0,20" />
+                                        <CheckBox
+                                            x:Name="ResolveConnectionHostsBox"
+                                            Content="{DynamicResource &quot;Resolve unknown connection hosts using reverse DNS&quot;}"
+                                            Margin="0,0,0,12" />
+                                        <Label
+                                            Content="{DynamicResource &quot;Reverse DNS cache duration&quot;}"
+                                            Target="{Binding ElementName=ReverseDnsCacheBox}"
+                                            Padding="0"
+                                            Margin="0,0,0,4" />
+                                        <ComboBox
+                                            x:Name="ReverseDnsCacheBox"
+                                            HorizontalAlignment="Left"
+                                            Width="220"
+                                            Margin="0,0,0,16">
+                                            <ComboBoxItem Content="{DynamicResource &quot;1 hour&quot;}" Tag="1" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;6 hours&quot;}" Tag="6" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;12 hours&quot;}" Tag="12" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;24 hours&quot;}" Tag="24" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;72 hours&quot;}" Tag="72" />
+                                            <ComboBoxItem Content="{DynamicResource &quot;Use DNS record TTL&quot;}" Tag="0" />
+                                        </ComboBox>
                                         <Label
                                             Content="{DynamicResource &quot;Bootstrap DNS&quot;}"
                                             Target="{Binding ElementName=BootstrapDnsBox}"

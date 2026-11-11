@@ -89,6 +89,8 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("resetExistingTcpConnections")) candidate.ResetExistingTcpConnections = windows["resetExistingTcpConnections"]!.GetValue<bool>();
                     if (windows.ContainsKey("autoConnect")) candidate.AutoConnect = windows["autoConnect"]!.GetValue<bool>();
                     if (windows.ContainsKey("logSizeMb")) candidate.LogSizeMb = windows["logSizeMb"]!.GetValue<int>();
+                    if (windows.ContainsKey("reverseDnsCacheHours")) candidate.ReverseDnsCacheHours = windows["reverseDnsCacheHours"]!.GetValue<int>();
+                    if (windows.ContainsKey("resolveConnectionHosts")) candidate.ResolveConnectionHosts = windows["resolveConnectionHosts"]!.GetValue<bool>();
                     if (windows.ContainsKey("showAllConnections")) candidate.ShowAllConnections = windows["showAllConnections"]!.GetValue<bool>();
                     if (windows.ContainsKey("language")) candidate.Language = String(windows, "language");
                     if (windows.ContainsKey("theme")) candidate.Theme = String(windows, "theme");
@@ -148,6 +150,8 @@ public static class PortableConfiguration
             windows["autoConnect"] = settings.AutoConnect;
             windows["resetExistingTcpConnections"] = settings.ResetExistingTcpConnections;
             windows["logSizeMb"] = settings.LogSizeMb;
+            windows["reverseDnsCacheHours"] = settings.ReverseDnsCacheHours;
+            windows["resolveConnectionHosts"] = settings.ResolveConnectionHosts;
             windows["showAllConnections"] = settings.ShowAllConnections;
             windows["language"] = settings.Language;
             windows["theme"] = settings.Theme;
@@ -176,6 +180,7 @@ public static class PortableConfiguration
         if (settings.TrafficUnits is not ("IEC" or "SI")) throw Invalid("Invalid traffic units.");
         if (settings.Language is not ("en" or "ru") || settings.Theme is not ("auto" or "light" or "dark")) throw Invalid("Invalid language or theme.");
         if (!Configuration.TlsFingerprints.Contains(settings.TlsFingerprint)) throw Invalid("Unsupported TLS fingerprint.");
+        if (settings.ReverseDnsCacheHours is not (0 or 1 or 6 or 12 or 24 or 72)) throw Invalid("Unsupported reverse DNS cache duration.");
         _ = ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, false);
         _ = ConfigurationSubscription.Get(settings);
         _ = AppUpdatePolicy.Enabled(settings);

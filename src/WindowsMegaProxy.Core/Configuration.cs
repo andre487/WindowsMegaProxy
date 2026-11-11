@@ -25,6 +25,8 @@ public sealed class Settings
     public bool ResetExistingTcpConnections { get; set; }
     public bool? LaunchAtSignIn { get; set; }
     public int LogSizeMb { get; set; } = 5;
+    public int ReverseDnsCacheHours { get; set; } = 24;
+    public bool ResolveConnectionHosts { get; set; }
     public bool ShowAllConnections { get; set; }
     public string Language { get; set; } = Ui.DefaultLanguage(Ui.WindowsLanguage);
     public string Theme { get; set; } = "auto";
