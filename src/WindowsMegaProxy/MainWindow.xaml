@@ -400,7 +400,7 @@
                             <DataGridTemplateColumn
                                 ClipboardContentBinding="{Binding Process}"
                                 SortMemberPath="Process"
-                                Width="2*"
+                                Width="4*"
                                 MinWidth="160"
                                 Header="{Binding [Application], Source={x:Static core:Ui.Strings}}">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -416,8 +416,8 @@
                                 Header="{Binding [Destination], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Network}"
-                                Width="*"
-                                MinWidth="110"
+                                Width="SizeToHeader"
+                                MinWidth="80"
                                 Header="{Binding [Protocol], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Route}"
@@ -427,14 +427,14 @@
                             <DataGridTextColumn
                                 Binding="{Binding Upload}"
                                 SortMemberPath="UploadedBytes"
-                                Width="*"
-                                MinWidth="120"
+                                Width="SizeToHeader"
+                                MinWidth="80"
                                 Header="{Binding [Uploaded], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
                                 Binding="{Binding Download}"
                                 SortMemberPath="DownloadedBytes"
-                                Width="*"
-                                MinWidth="120"
+                                Width="SizeToHeader"
+                                MinWidth="80"
                                 Header="{Binding [Downloaded], Source={x:Static core:Ui.Strings}}" />
                         </DataGrid.Columns>
                     </DataGrid>
