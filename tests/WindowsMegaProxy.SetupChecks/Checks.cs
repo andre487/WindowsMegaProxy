@@ -27,6 +27,30 @@ internal static class Checks
             Arguments();
             Permissions();
             Archives(root);
+            string logFile = Path.Combine(root, "live.log");
+            using (var reader = new SetupLogReader())
+            {
+                Require(reader.Read(logFile) == "", "A not-yet-created log must be allowed.");
+                File.WriteAllText(logFile, "First error\r\n", new System.Text.UTF8Encoding(false));
+                Require(reader.Read(logFile).Contains("First error"), "Live log must read existing output.");
+                Require(reader.Read(logFile) == "", "Live log must not repeat old output.");
+                File.AppendAllText(logFile, "Rollback error\r\n");
+                Require(reader.Read(logFile).Contains("Rollback error"), "Live log must follow appended output.");
+            }
+            Program.DeleteInstalledFile(Path.Combine(root, "missing-launcher", "clretwrc.dll"));
+            string rollbackFile = Path.Combine(root, "rollback-file.dll");
+            File.WriteAllText(rollbackFile, "partial installation");
+            Program.DeleteInstalledFile(rollbackFile);
+            Require(!File.Exists(rollbackFile), "Rollback must delete a partially installed file.");
+            Program.DeleteInstalledFile(rollbackFile);
+            Reject<UnauthorizedAccessException>(() => Program.DeleteInstalledFile(root));
+            string data = Path.Combine(root, "personal-data");
+            Directory.CreateDirectory(Path.Combine(data, "cache"));
+            File.WriteAllText(Path.Combine(data, "settings.json"), "fixture");
+            File.WriteAllText(Path.Combine(data, "cache", "list.txt"), "fixture");
+            Program.DeleteDataTree(data);
+            Program.DeleteDataTree(data);
+            Require(!Directory.Exists(data) && Directory.Exists(root), "Full removal must delete only the selected data directory.");
             Runtime(root).GetAwaiter().GetResult();
             if (args.Length == 1) { Console.WriteLine("Checking setup wizard."); Windows(args[0]); }
             Console.WriteLine("Setup command compatibility, archive boundaries, runtime caching and UI checks passed; no installation performed.");
@@ -167,6 +191,9 @@ internal static class Checks
             System.Threading.Thread.CurrentThread.CurrentUICulture = new CultureInfo(language);
             Console.WriteLine("Creating wizard: " + language);
             using var window = new SetupWindow(null, "0.0.0");
+            window.Ready(false, BundleScope.PerUser, new Dictionary<string, string>());
+            Require(window.Options()["Mode"] == "manual" && window.Options()["AutomaticUpdates"] == "true", "Fresh installations must have concrete defaults.");
+            Require(window.Options()["RemoveData"] == "0", "Uninstall must keep data by default.");
             window.Ready(false, BundleScope.PerUser, new Dictionary<string, string> { ["Mode"] = "login" });
             Require(window.Scope == BundleScope.PerUser && window.Options()["Mode"] == "login", "Personal UI options were lost.");
             window.Show(); Application.DoEvents();
@@ -189,7 +216,7 @@ internal static class Checks
             window.Select(2, "false"); window.Previous(); window.Previous();
             Require(window.Step == 0 && window.Options()["Mode"] == "login" && window.Options()["AutomaticUpdates"] == "false", "Going back must preserve choices.");
             window.Select(0, "machine"); window.Select(1, "service"); window.Select(0, "user");
-            Require(window.Options()["Mode"] == "preserve", "Personal scope must clear a previously selected service mode.");
+            Require(window.Options()["Mode"] == "manual", "A fresh personal installation must clear service mode to manual.");
             Reject<ArgumentException>(() => window.Select(1, "service"));
             window.Ready(true, BundleScope.PerMachine, new Dictionary<string, string> { ["Mode"] = "service" });
             Require(window.Scope == BundleScope.PerMachine && window.Options()["Mode"] == "service", "Maintenance UI options were lost.");
@@ -216,6 +243,22 @@ internal static class Checks
             window.Size = large; window.Previous();
             Application.DoEvents(); window.ChoicesView.UpdateLayout();
             Require(window.ChoicesView.ScrollableHeight == 0 && window.ChoicesView.VerticalOffset == 0, "Returning to the first page must clear old scroll extent and offset.");
+            window.Removal();
+            window.Select(3, "1");
+            Require(window.Options()["RemoveData"] == "1", "Full removal must require an explicit selection.");
+            Application.DoEvents();
+            Capture(window, Path.Combine(directory, language + "-uninstall.png"));
+            window.Begin();
+            window.AppendLog("Preparing runtime.\r\nOriginal installation error.\r\nRollback completed.\r\n");
+            window.Progress(42);
+            Require(window.InstallProgress.Value == 42 && !window.InstallProgress.IsIndeterminate, "Progress must show the reported percentage.");
+            Require(window.InstallLog.IsReadOnly && window.InstallLog.Text.Contains("Original installation error"), "Installation log must remain selectable and read-only.");
+            Application.DoEvents();
+            Capture(window, Path.Combine(directory, language + "-progress.png"));
+            window.AppendLog(new string('x', 150000));
+            Require(window.InstallLog.Text.Length <= 131072, "Visible log must stay bounded.");
+            window.Complete(1, "unused.log");
+            Require(window.InstallProgress.Value == 42, "Failure must not reset progress and hide installation state.");
             window.Close();
         }
     }

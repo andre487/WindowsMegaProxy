@@ -72,11 +72,12 @@ internal static partial class Program
     {
         try
         {
-            if (args.Length is not (11 or 12) || args[0] is not ("install" or "remove" or "boot" or "register") ||
+            if (args.Length is not (11 or 12) || args[0] is not ("install" or "remove" or "remove-all" or "boot" or "register") ||
                 (args[0] == "boot") != (args.Length == 12) || args[1] is not ("1" or "2") ||
                 args[3] is not ("preserve" or "manual" or "login" or "service") ||
                 args[4] is not ("preserve" or "true" or "false") || args.Skip(5).Take(5).Any(value => value is not ("0" or "1")))
                 throw new ArgumentException("Invalid setup arguments.");
+            if (args[0] == "remove-all" && args[7] != "1") throw new ArgumentException("Data removal requires an explicit uninstall.");
             if (!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
                 throw new UnauthorizedAccessException("Administrator approval is required for the protected network runtime.");
             if (args[2] != Sid) throw new UnauthorizedAccessException("Approve setup with the account that started it.");
@@ -91,7 +92,7 @@ internal static partial class Program
             Console.SetError(log);
             try
             {
-                if (args[0] != "remove" && InnoInstallation.Exists()) throw new IOException(InnoInstallation.Message);
+                if (args[0] is not ("remove" or "remove-all") && InnoInstallation.Exists()) throw new IOException(InnoInstallation.Message);
                 Root = Path.Combine(ProgramFiles, Personal ? "WindowsMegaProxy.Users" : "WindowsMegaProxy");
                 Protect(Root);
                 if (Personal) { Root = Path.Combine(Root, Sid); Protect(Root); }
@@ -102,7 +103,7 @@ internal static partial class Program
                     var manifest = ReadResource<SetupManifest>("setup.json");
                     if (!Guid.TryParse(manifest.BuildId, out _)) throw new IOException("Invalid setup identity.");
                     Console.WriteLine($"Setup {manifest.Version}; scope {(Personal ? "user" : "system")}; action {args[0]}.");
-                    if (args[0] == "remove") removed = await Remove(manifest, rollback: args[7] != "1");
+                    if (args[0] is "remove" or "remove-all") removed = await Remove(manifest, rollback: args[7] != "1", deleteData: args[0] == "remove-all");
                     else if (args[0] == "register") RegisterBootInstallation(manifest);
                     else await Install(manifest, args[3], args[4], args[6] == "1", args[8] == "1", args[9] == "1", args[0] == "boot");
                 }
@@ -175,10 +176,18 @@ internal static partial class Program
                 foreach (string file in snapshot.PreviousFiles.Where(file => snapshot.ChangedFiles.Contains(file))) BackupInstalled(backup, file);
                 File.WriteAllText(Path.Combine(State, "rollback.json"), Json.Serialize(snapshot));
                 backedUp = true;
-                foreach (string file in snapshot.ChangedFiles) WriteInstalled(directory, file);
+                Console.WriteLine("Installing application and launcher files.");
+                foreach (string file in snapshot.ChangedFiles)
+                {
+                    try { WriteInstalled(directory, file); }
+                    catch (Exception error) { throw new IOException("Could not install file: " + file, error); }
+                }
+                Console.WriteLine("Checking installed dependencies.");
                 await Require(Helper, "--check-dependencies");
                 configuring = true;
+                Console.WriteLine("Configuring startup mode: " + mode);
                 await Configure(mode, updates);
+                Console.WriteLine("Creating application shortcuts.");
                 CreateShortcuts(Root, desktop);
                 File.WriteAllText(Path.Combine(State, "files.json"), Json.Serialize(files));
                 using var key = Hive.CreateSubKey(KeyPath);
@@ -187,10 +196,18 @@ internal static partial class Program
                 using var identity = Hive.CreateSubKey(@"Software\Classes\AppUserModelId\WindowsMegaProxy");
                 identity.SetValue("DisplayName", "MegaProxy");
             }
-            catch
+            catch (Exception error)
             {
-                if (backedUp) await Restore(snapshot, configuring);
-                else if (snapshot.Helper is not null) await Require(snapshot.Helper, Personal ? "--configure-user" : "--configure-mode", snapshot.Mode);
+                Console.Error.WriteLine("Installation failed before rollback: " + error);
+                try
+                {
+                    if (backedUp) await Restore(snapshot, configuring);
+                    else if (snapshot.Helper is not null) await Require(snapshot.Helper, Personal ? "--configure-user" : "--configure-mode", snapshot.Mode);
+                }
+                catch (Exception rollbackError)
+                {
+                    throw new AggregateException("Installation and rollback both failed.", error, rollbackError);
+                }
                 throw;
             }
             DeleteProtectedTree(Path.Combine(State, "registration"));
@@ -306,7 +323,7 @@ internal static partial class Program
         if (snapshot.BuildId is null) key.DeleteValue("SetupBuildId", false); else key.SetValue("SetupBuildId", snapshot.BuildId);
     }
 
-    private static async Task<bool> Remove(SetupManifest manifest, bool rollback)
+    private static async Task<bool> Remove(SetupManifest manifest, bool rollback, bool deleteData)
     {
         using var key = Hive.OpenSubKey(KeyPath);
         if (key?.GetValue("SetupBuildId") as string != manifest.BuildId) return false;
@@ -343,6 +360,29 @@ internal static partial class Program
             if (Personal) Unelevated(() => DeleteOwnedLauncher(repair));
             foreach (string file in Json.Deserialize<string[]>(File.ReadAllText(Path.Combine(State, "files.json")))) DeleteInstalled(file);
             File.Delete(Path.Combine(Root, "user-installation.sid"));
+            if (deleteData)
+            {
+                Console.WriteLine("Deleting data for the selected installation scope.");
+                string data = Path.GetDirectoryName(SettingsFile)!;
+                if (Personal) Unelevated(() => DeleteDataTree(data));
+                else if (Directory.Exists(data)) { CheckProtected(data); DeleteDataTree(data); }
+                Unelevated(() =>
+                {
+                    string local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WindowsMegaProxy");
+                    if (Personal)
+                    {
+                        foreach (string folder in new[] { "Updates", "logs" }) DeleteDataTree(Path.Combine(local, folder));
+                    }
+                    else if (Directory.Exists(local))
+                    {
+                        RejectReparseChain(local);
+                        foreach (string folder in Directory.GetDirectories(local))
+                            if (!Path.GetFileName(folder).Equals("Personal", StringComparison.OrdinalIgnoreCase)) DeleteDataTree(folder);
+                        foreach (string file in Directory.GetFiles(local)) DeleteInstalledFile(file);
+                        if (!Directory.EnumerateFileSystemEntries(local).Any()) Directory.Delete(local);
+                    }
+                });
+            }
             Hive.DeleteSubKeyTree(KeyPath, false);
             Hive.DeleteSubKeyTree(@"Software\Classes\AppUserModelId\WindowsMegaProxy", false);
             DeleteProtectedTree(Path.Combine(State, "backup"));
@@ -373,8 +413,27 @@ internal static partial class Program
         {
             string target = Path.Combine(LauncherDirectory, file.Substring(Path.Combine(source, "launcher").Length + 1));
             RejectReparseChain(target);
-            File.Delete(target);
+            DeleteInstalledFile(target);
         }
+    }
+
+    internal static void DeleteDataTree(string directory)
+    {
+        if (!Path.IsPathRooted(directory) || Path.GetFullPath(directory) == Path.GetPathRoot(directory))
+            throw new IOException("Invalid application data directory.");
+        // Validate the entire tree before deletion; never follow a user-created junction.
+        void Validate(string path)
+        {
+            RejectReparseChain(path);
+            if (!Directory.Exists(path)) return;
+            foreach (string entry in Directory.GetFileSystemEntries(path))
+            {
+                RejectReparseChain(entry);
+                if (Directory.Exists(entry)) Validate(entry);
+            }
+        }
+        Validate(directory);
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
     }
 
     private static void StopService()
@@ -429,8 +488,16 @@ internal static partial class Program
 
     private static void DeleteInstalled(string relative)
     {
-        void Delete() { string path = InstalledPath(relative); RejectReparseChain(path); File.Delete(path); }
+        void Delete() { DeleteInstalledFile(InstalledPath(relative)); }
         if (IsLauncher(relative)) Unelevated(Delete); else Delete();
+    }
+
+    internal static void DeleteInstalledFile(string path)
+    {
+        RejectReparseChain(path);
+        try { File.Delete(path); }
+        // A failed fresh installation may never have created the launcher directory.
+        catch (DirectoryNotFoundException) { }
     }
 
     private static void CopyFile(string source, string destination, string relative)

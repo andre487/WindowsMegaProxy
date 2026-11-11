@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace WindowsMegaProxy;
 
-public sealed record DiagnosticResult(string ExitIp, string? Country, int LatencyMs, string Http3);
+public sealed record DiagnosticResult(string ExitIp, string? Country, int LatencyMs, string Http3, string Reputation = "—");
 public sealed record SpeedResult(string Route, string Ip = "—", string Country = "—", string Protocol = "—",
     string Latency = "—", string Download = "—", string Upload = "—", string Status = "Waiting", string Reputation = "—");
 
@@ -88,7 +88,8 @@ public static class NetworkDiagnostics
             }
         log("Public IP determined; " + (country is null ? "country unavailable." : "country determined."));
         token = callerToken;
-        if (throughProfile) return new(ip, country, latency, "");
+        string reputation = await IpReputation.CheckAsync(client, ip, log, token);
+        if (throughProfile) return new(ip, country, latency, "", reputation);
         var h3 = new List<string>();
         foreach (var url in new[] { "https://www.cloudflare.com/cdn-cgi/trace", "https://quic.browserleaks.com/" })
         {
@@ -111,7 +112,7 @@ public static class NetworkDiagnostics
         }
         string http3 = string.Join(Environment.NewLine, h3);
         log(http3);
-        return new(ip, country, latency, http3);
+        return new(ip, country, latency, http3, reputation);
     }
 
     private static bool Recoverable(Exception error, CancellationToken token) => !token.IsCancellationRequested &&

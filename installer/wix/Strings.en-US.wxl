@@ -45,4 +45,8 @@
     <String Id="EnableUpdatesDescription" Value="Check once a day and notify you when an update is available. You choose when to download and install it." />
     <String Id="DisableUpdatesDescription" Value="Do not check in the background. You can check for updates manually in Settings." />
     <String Id="InnoInstallationDetected" Value="An older Inno Setup installation was found. Export your configuration, uninstall the old version in Windows Settings, then run this installer again." />
+    <String Id="KeepData" Value="Uninstall and keep data" />
+    <String Id="KeepDataDescription" Value="Remove the application and its startup entries. Keep profiles, rules and settings for a later installation." />
+    <String Id="RemoveData" Value="Uninstall and delete data" />
+    <String Id="RemoveDataDescription" Value="Also permanently delete profiles, rules, settings, logs and caches for this installation scope. Export your configuration first if you need it. Other users' personal installations and DEV data are not removed." />
 </WixLocalization>

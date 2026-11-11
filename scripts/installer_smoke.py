@@ -154,7 +154,7 @@ def main():
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     check_user_install(setups[0], logs, data)
     if suite == "all":
-        check_deferred_updates(setups[0], logs, destination, data)
+        check_deferred_updates(setups[0], logs, destination, data, fresh=True)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
 
 
@@ -300,6 +300,15 @@ def check_user_install(setup, logs, global_data):
     assert (local / "WindowsMegaProxy/Personal/settings.json").is_file(), "Personal settings must survive uninstall."
     assert not list(protected.rglob("user-installation.sid")), "Uninstall must remove markers from every installed version."
     assert (global_data / "preservation-check.txt").read_text() == "preserved"
+    sp.run([str(setup), "Scope=PerUser", "-quiet", "-norestart", "Mode=manual"], check=True, timeout=600)
+    uninstall(logs / "user-full-uninstall.log", personal=True, remove_data=True)
+    assert not (local / "WindowsMegaProxy/Personal").exists(), "Full personal removal must delete personal data."
+    assert (global_data / "preservation-check.txt").read_text() == "preserved", "Personal removal must preserve global settings."
+    assert not destination.exists() and not protected.exists(), "Uninstall must remove launcher and protected runtime folders."
+    sp.run([str(setup), "Scope=PerMachine", "-quiet", "-norestart", "Mode=manual"], check=True, timeout=600)
+    uninstall(logs / "system-full-uninstall.log", remove_data=True)
+    assert not global_data.exists(), "Full system removal must delete shared application data."
+    assert not (known_folder(0x26) / "WindowsMegaProxy").exists(), "Uninstall must remove the system runtime."
     print("Current-user install/repair, protected highest-privilege tasks, personal DPAPI settings and uninstall passed.")
 
 

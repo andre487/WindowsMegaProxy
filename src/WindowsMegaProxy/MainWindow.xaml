@@ -1527,6 +1527,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock
                                         Text="{DynamicResource &quot;Public IP&quot;}"
@@ -1572,6 +1573,19 @@
                                         Grid.Row="2"
                                         Grid.Column="1"
                                         Margin="0,0,0,8" />
+                                    <TextBlock
+                                        Grid.Row="4"
+                                        Text="{DynamicResource &quot;IP reputation (ProxyCheck)&quot;}"
+                                        TextWrapping="Wrap"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Margin="0,8,16,0" />
+                                    <TextBlock
+                                        x:Name="DiagnosticReputationText"
+                                        Grid.Row="4"
+                                        Grid.Column="1"
+                                        TextWrapping="Wrap"
+                                        Margin="0,8,0,0" />
                                     <TextBlock
                                         x:Name="DiagnosticHttp3Label"
                                         Grid.Row="3"

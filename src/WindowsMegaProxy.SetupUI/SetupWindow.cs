@@ -25,8 +25,9 @@ internal sealed class SetupWindow : Form
         PanningMode = Wpf.PanningMode.VerticalOnly,
         FontFamily = new System.Windows.Media.FontFamily("Segoe UI"), FontSize = 14
     };
-    private readonly Wpf.StackPanel[] pages = new Wpf.StackPanel[3];
-    private readonly Dictionary<string, Wpf.RadioButton>[] choices = new Dictionary<string, Wpf.RadioButton>[3];
+    private readonly Wpf.StackPanel[] pages = new Wpf.StackPanel[4];
+    private readonly Dictionary<string, Wpf.RadioButton>[] choices = new Dictionary<string, Wpf.RadioButton>[4];
+    private bool removing;
     private readonly Label heading = new() { AutoSize = true, Margin = new Padding(0, 12, 0, 12) };
     private readonly Label status = new() { AutoSize = true, MaximumSize = new Size(570, 0), Tag = "Explanation" };
     internal readonly WpfPrimitives.ToggleButton DesktopSwitch = new();
@@ -35,7 +36,16 @@ internal sealed class SetupWindow : Form
     private readonly Button back = Button();
     private readonly Button remove = Button();
     private readonly Button close = Button();
-    private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 18, Visible = false };
+    internal readonly Wpf.ProgressBar InstallProgress = new() { Height = 6, Maximum = 100, Margin = new System.Windows.Thickness(0, 16, 0, 8) };
+    internal readonly Wpf.TextBox InstallLog = new() { IsReadOnly = true, TextWrapping = System.Windows.TextWrapping.Wrap,
+        VerticalScrollBarVisibility = Wpf.ScrollBarVisibility.Auto, FontSize = 12, Padding = new System.Windows.Thickness(12) };
+    private readonly Wpf.DockPanel installation = new();
+    private readonly Timer logTimer = new() { Interval = 500 };
+    private readonly SetupLogReader logReader = new();
+    private bool readingLog;
+    private bool logDirectoryWarning;
+    private string? burnLog;
+    private DateTime logStart;
     private readonly LinkLabel log = new() { AutoSize = true, Visible = false };
     private bool installed, locked;
     internal int Step { get; private set; }
@@ -90,13 +100,16 @@ internal sealed class SetupWindow : Form
         AddChoice(2, "preserve", "PreserveUpdates", "PreserveUpdatesDescription", "\uE713");
         AddChoice(2, "true", "EnableUpdates", "EnableUpdatesDescription", "\uE895");
         AddChoice(2, "false", "DisableUpdates", "DisableUpdatesDescription", "\uE711");
+        AddChoice(3, "0", "KeepData", "KeepDataDescription", "\uE74E");
+        AddChoice(3, "1", "RemoveData", "RemoveDataDescription", "\uE74D");
+        Select(3, "0");
         choices[0]["user"].Checked += (_, _) => UpdateServiceChoice();
         choices[0]["machine"].Checked += (_, _) => UpdateServiceChoice();
         void UpdateServiceChoice()
         {
             bool personal = Scope == BundleScope.PerUser;
             choices[1]["service"].Visibility = personal ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
-            if (personal && choices[1]["service"].IsChecked == true) Select(1, "preserve");
+            if (personal && choices[1]["service"].IsChecked == true) Select(1, locked ? "preserve" : "manual");
         }
         void AddSwitch(WpfPrimitives.ToggleButton toggle, string label)
         {
@@ -109,7 +122,34 @@ internal sealed class SetupWindow : Form
         var footer = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Dock = DockStyle.Bottom };
         footer.SizeChanged += (_, _) => status.MaximumSize = new Size(Math.Max(100, footer.ClientSize.Width), 0);
         footer.Controls.Add(status);
-        footer.Controls.Add(progress);
+        installation.Resources = ChoicesView.Resources;
+        Wpf.DockPanel.SetDock(InstallProgress, System.Windows.Controls.Dock.Bottom);
+        installation.Children.Add(InstallProgress);
+        installation.Children.Add(InstallLog);
+        InstallLog.SetResourceReference(Wpf.Control.BackgroundProperty, "CardBackground");
+        InstallLog.SetResourceReference(Wpf.Control.ForegroundProperty, "Foreground");
+        InstallLog.SetResourceReference(Wpf.Control.BorderBrushProperty, "Border");
+        InstallLog.PreviewMouseWheel += (_, args) =>
+        {
+            InstallLog.ScrollToVerticalOffset(InstallLog.VerticalOffset + WheelDistance(args.Delta,
+                System.Windows.SystemParameters.WheelScrollLines, InstallLog.FontSize * InstallLog.FontFamily.LineSpacing, InstallLog.ViewportHeight));
+            args.Handled = true;
+        };
+        System.Windows.Automation.AutomationProperties.SetName(InstallLog, T("SetupLog"));
+        System.Windows.Automation.AutomationProperties.SetName(InstallProgress, T("ProgressHeader"));
+        logTimer.Tick += async (_, _) =>
+        {
+            if (readingLog || burnLog is null) return;
+            readingLog = true;
+            try
+            {
+                string prefix = Scope == BundleScope.PerUser ? System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value : "machine";
+                string batch = await System.Threading.Tasks.Task.Run(() => ReadLogs(prefix));
+                if (!IsDisposed) AppendLog(batch);
+            }
+            finally { readingLog = false; if (IsDisposed) logReader.Dispose(); }
+        };
+        Disposed += (_, _) => { logTimer.Dispose(); if (!readingLog) logReader.Dispose(); };
         log.Text = T("SetupLog"); footer.Controls.Add(log);
         var license = new LinkLabel { Text = T("LicenseLink"), AutoSize = true, Margin = new Padding(0, 10, 0, 4) };
         license.LinkClicked += (_, _) => System.Diagnostics.Process.Start("https://github.com/andre487/WindowsMegaProxy/blob/main/LICENSE")?.Dispose();
@@ -118,7 +158,7 @@ internal sealed class SetupWindow : Form
         close.Text = T("InstallCancelButton"); back.Text = T("BackButton"); remove.Text = T("ModifyUninstallButton");
         next.Enabled = false; back.Visible = false; remove.Visible = false;
         next.Click += (_, _) => Advance(); back.Click += (_, _) => Previous();
-        remove.Click += (_, _) => application?.Uninstall(); close.Click += (_, _) => Close();
+        remove.Click += (_, _) => { if (removing) application?.Uninstall(); else Removal(); }; close.Click += (_, _) => Close();
         buttons.Controls.AddRange(new Control[] { close, next, back, remove }); footer.Controls.Add(buttons);
         Controls.Add(content); Controls.Add(header); Controls.Add(footer);
         AcceptButton = next; CancelButton = close;
@@ -188,10 +228,12 @@ internal sealed class SetupWindow : Form
     internal void Ready(bool installed, BundleScope selectedScope, Dictionary<string, string> arguments, bool scopeLocked = false)
     {
         this.installed = installed; locked = installed || scopeLocked;
+        choices[1]["preserve"].Visibility = choices[2]["preserve"].Visibility = locked ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         Select(0, selectedScope == BundleScope.PerUser ? "user" : "machine");
         pages[0].IsEnabled = !locked;
-        Select(1, arguments.TryGetValue("Mode", out var mode) ? mode : "preserve");
-        Select(2, arguments.TryGetValue("AutomaticUpdates", out var updates) ? updates : "preserve");
+        Select(1, arguments.TryGetValue("Mode", out var mode) && (locked || mode != "preserve") ? mode : locked ? "preserve" : "manual");
+        Select(2, arguments.TryGetValue("AutomaticUpdates", out var updates) && (locked || updates != "preserve") ? updates : locked ? "preserve" : "true");
+        Select(3, arguments.TryGetValue("RemoveData", out var removal) ? removal : "0");
         DesktopSwitch.IsChecked = arguments.TryGetValue("DesktopShortcut", out var shortcut) && shortcut == "1";
         LaunchSwitch.IsChecked = arguments.TryGetValue("LaunchAfterSetup", out var launchValue) && launchValue == "1";
         next.Enabled = true; remove.Visible = installed;
@@ -215,26 +257,59 @@ internal sealed class SetupWindow : Form
     internal void Previous() { if (Step > 0) ShowStep(Step - 1); }
     internal Dictionary<string, string> Options() => new()
     {
-        ["Mode"] = Selected(1), ["AutomaticUpdates"] = Selected(2),
+        ["Mode"] = Selected(1), ["AutomaticUpdates"] = Selected(2), ["RemoveData"] = Selected(3),
         ["DesktopShortcut"] = DesktopSwitch.IsChecked == true ? "1" : "0", ["LaunchAfterSetup"] = LaunchSwitch.IsChecked == true ? "1" : "0"
     };
     internal void Removal()
     {
-        content.Visible = false; heading.Visible = false; next.Visible = false; back.Visible = false; remove.Visible = true;
+        removing = true;
+        content.Visible = true; content.Child = ChoicesView; ChoicesView.Content = pages[3]; ChoicesView.ScrollToTop();
+        heading.Visible = true; heading.Text = T("ModifyUninstallButton").Replace("&", "");
+        next.Visible = false; back.Visible = false; remove.Visible = true;
         AcceptButton = remove; status.Text = T("UninstallPrompt");
     }
     internal void Begin()
     {
-        content.Visible = false; heading.Visible = false; next.Enabled = false; back.Enabled = false; remove.Enabled = false;
-        status.Text = T("ProgressHeader"); progress.Visible = true; progress.Style = ProgressBarStyle.Marquee;
+        content.Child = installation; content.Visible = true; heading.Visible = true; heading.Text = T("ProgressHeader");
+        next.Enabled = false; back.Enabled = false; remove.Enabled = false;
+        status.Text = ""; InstallProgress.IsIndeterminate = true;
     }
-    internal void Progress(int value) { progress.Style = value == 0 ? ProgressBarStyle.Marquee : ProgressBarStyle.Continuous; progress.Value = Math.Max(0, Math.Min(100, value)); }
+    internal void FollowLog(string path) { burnLog = path; logStart = DateTime.UtcNow; logTimer.Start(); }
+    private string ReadLogs(string prefix)
+    {
+        string result = logReader.Read(burnLog!);
+        try
+        {
+            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MegaProxy.Setup");
+            if (Directory.Exists(directory))
+                foreach (var file in new DirectoryInfo(directory).GetFiles(prefix + "-*.log").Where(file => file.LastWriteTimeUtc >= logStart).OrderBy(file => file.Name))
+                    result += logReader.Read(file.FullName);
+        }
+        catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+        {
+            if (!logDirectoryWarning) result += "Setup engine log is unavailable: " + error.Message + "\r\n";
+            logDirectoryWarning = true;
+        }
+        return result;
+    }
+    internal void AppendLog(string text)
+    {
+        if (text.Length == 0) return;
+        bool follow = InstallLog.VerticalOffset >= InstallLog.ExtentHeight - InstallLog.ViewportHeight - 1;
+        if (text.Length > 131072) text = text.Substring(text.Length - 131072);
+        int excess = InstallLog.Text.Length + text.Length - 131072;
+        if (excess > 0) InstallLog.Text = InstallLog.Text.Substring(excess);
+        InstallLog.AppendText(text);
+        if (follow) InstallLog.ScrollToEnd();
+    }
+    internal void Progress(int value) { InstallProgress.IsIndeterminate = false; InstallProgress.Value = Math.Max(0, Math.Min(100, value)); }
     internal void CancelPending() { close.Enabled = false; status.Text = T("ConfirmCancelMessage"); }
     internal void LegacyInstallation() { status.Text = T("InnoInstallationDetected"); }
     internal void Help() { status.Text = T("HelpText"); }
     internal void Complete(int code, string path)
     {
-        progress.Style = ProgressBarStyle.Continuous; progress.Value = code == 0 ? 100 : 0;
+        InstallProgress.IsIndeterminate = false;
+        if (code == 0 || code == 3010) InstallProgress.Value = 100;
         status.Text = code == 0 ? T("SuccessHeader") : code == 3010 ? T("SuccessRestartText") : T("FailureHeader") + " (0x" + code.ToString("X8", CultureInfo.InvariantCulture) + ")";
         close.Enabled = true; close.Text = T("SuccessCloseButton"); next.Enabled = false; back.Enabled = false; remove.Enabled = false;
         log.Visible = true;

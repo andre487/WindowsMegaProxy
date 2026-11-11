@@ -9,7 +9,7 @@ from pathlib import Path
 from install import known_folder
 
 
-def uninstall(log, *, personal=False):
+def uninstall(log, *, personal=False, remove_data=False):
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted":
         raise RuntimeError("Uninstall fixtures require a disposable GitHub-hosted runner.")
     hive = winreg.HKEY_CURRENT_USER if personal else winreg.HKEY_LOCAL_MACHINE
@@ -40,4 +40,4 @@ def uninstall(log, *, personal=False):
     if not any(executable.is_relative_to(cache.resolve()) for cache in caches):
         raise RuntimeError("Registered bundle is outside the Windows installer cache.")
     # CreateProcess receives the registry command directly; no command shell interprets it.
-    sp.run(command + " " + sp.list2cmdline(["-log", str(log), "-norestart"]), check=True, timeout=600)
+    sp.run(command + " " + sp.list2cmdline(["-log", str(log), "-norestart", "RemoveData=1" if remove_data else "RemoveData=0"]), check=True, timeout=600)
