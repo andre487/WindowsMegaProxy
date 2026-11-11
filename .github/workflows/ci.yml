@@ -254,6 +254,7 @@ jobs:
             artifacts/**/result.txt
             artifacts/**/failure.txt
             artifacts/installer-checks/*.log
+            C:/ProgramData/MegaProxy.Setup/*.log
           if-no-files-found: warn
           retention-days: 7
 

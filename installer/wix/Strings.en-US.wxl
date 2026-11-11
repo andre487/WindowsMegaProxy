@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adapted WiX strings: .NET Foundation and contributors, MS-RL. -->
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-us" Language="1033">
+    <String Id="UninstallPrompt" Value="Remove MegaProxy from this computer? Your configuration will be retained." />
+    <String Id="InstallHeader" Value="Welcome" />
+    <String Id="ConfirmCancelMessage" Value="Cancelling; waiting for the current operation to finish..." />
+    <String Id="HelpText" Value="/install | /repair | /uninstall | /layout [directory] - installs, repairs, uninstalls or&#10;   creates a complete local copy of the bundle in directory. Install is the default. Scope=PerMachine|PerUser selects the installation scope.&#10;&#10;/passive | /quiet -  displays minimal UI with no prompts or displays no UI and&#10;   no prompts. By default UI and all prompts are displayed.&#10;&#10;/norestart   - suppress any attempts to restart. By default UI will prompt before restart.&#10;/log log.txt - logs to a specific file. By default a log file is created in %TEMP%." />
+    <String Id="InstallInstallButton" Value="&amp;Install" />
+    <String Id="InstallCancelButton" Value="&amp;Cancel" />
+    <String Id="ProgressHeader" Value="Setup Progress" />
+    <String Id="OverallProgressPackageText" Value="Initializing..." />
+    <String Id="ModifyRepairButton" Value="&amp;Repair" />
+    <String Id="ModifyUninstallButton" Value="&amp;Uninstall" />
+    <String Id="SuccessHeader" Value="Setup Successful" />
+    <String Id="SuccessRestartText" Value="You must restart your computer before you can use the software." />
+    <String Id="SuccessCloseButton" Value="&amp;Close" />
+    <String Id="FailureHeader" Value="Setup Failed" />
+    <String Id="SetupOptions" Value="Installation options" />
+    <String Id="ScopeLocked" Value="To change installation scope, uninstall MegaProxy first. Configuration is retained." />
+    <String Id="LicenseLink" Value="License" />
+    <String Id="SetupLog" Value="Setup log" />
+    <String Id="SystemScope" Value="All users: shared configuration and Windows service support" />
+    <String Id="PersonalScope" Value="Current user: personal configuration, no Windows service" />
+    <String Id="OperatingMode" Value="Operating mode" />
+    <String Id="PreserveMode" Value="Keep current mode (manual for a new installation)" />
+    <String Id="ManualMode" Value="Manual launch" />
+    <String Id="LoginMode" Value="At Windows sign-in (administrator)" />
+    <String Id="ServiceMode" Value="Windows service" />
+    <String Id="AutomaticUpdates" Value="Automatic application updates" />
+    <String Id="PreserveUpdates" Value="Keep current preference (enabled for a new installation)" />
+    <String Id="EnableUpdates" Value="Check automatically" />
+    <String Id="DisableUpdates" Value="Disable automatic updates" />
+    <String Id="DesktopShortcut" Value="Create a desktop shortcut" />
+    <String Id="LaunchAfterSetup" Value="Launch MegaProxy after installation" />
+</WixLocalization>

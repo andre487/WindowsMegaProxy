@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adapted WiX strings: .NET Foundation and contributors, MS-RL. -->
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="ru-ru" Language="1049">
+    <String Id="UninstallPrompt" Value="Удалить MegaProxy с этого компьютера? Ваша конфигурация сохранится." />
+    <String Id="InstallHeader" Value="Добро пожаловать" />
+    <String Id="ConfirmCancelMessage" Value="Отмена: дождитесь завершения текущей операции..." />
+    <String Id="HelpText" Value="/install | /repair | /uninstall — установка, восстановление или удаление.&#10;Scope=PerMachine | Scope=PerUser — для всех пользователей или текущего пользователя.&#10;/passive | /quiet — минимальный интерфейс или установка без интерфейса.&#10;/norestart — без перезагрузки.&#10;/log файл.log — сохранить журнал.&#10;Mode=manual|login|service — режим работы.&#10;InstallSSH=0 — не устанавливать OpenSSH.&#10;AutomaticUpdates=false — отключить автоматические обновления." />
+    <String Id="InstallInstallButton" Value="Установить" />
+    <String Id="InstallCancelButton" Value="Отмена" />
+    <String Id="ProgressHeader" Value="Ход установки" />
+    <String Id="OverallProgressPackageText" Value="Подготовка…" />
+    <String Id="ModifyRepairButton" Value="Восстановить" />
+    <String Id="ModifyUninstallButton" Value="Удалить" />
+    <String Id="SuccessHeader" Value="Готово" />
+    <String Id="SuccessRestartText" Value="Перед использованием приложения необходимо перезагрузить компьютер." />
+    <String Id="SuccessCloseButton" Value="Закрыть" />
+    <String Id="FailureHeader" Value="Ошибка установки" />
+    <String Id="SetupOptions" Value="Параметры установки" />
+    <String Id="ScopeLocked" Value="Чтобы изменить область установки, сначала удалите MegaProxy. Конфигурация сохраняется." />
+    <String Id="LicenseLink" Value="Лицензия" />
+    <String Id="SetupLog" Value="Журнал установки" />
+    <String Id="SystemScope" Value="Все пользователи: общая конфигурация, доступен режим службы" />
+    <String Id="PersonalScope" Value="Текущий пользователь: личная конфигурация, без режима службы" />
+    <String Id="OperatingMode" Value="Режим работы" />
+    <String Id="PreserveMode" Value="Сохранить текущий режим (ручной при первой установке)" />
+    <String Id="ManualMode" Value="Ручной запуск" />
+    <String Id="LoginMode" Value="При входе в Windows (администратор)" />
+    <String Id="ServiceMode" Value="Служба Windows" />
+    <String Id="AutomaticUpdates" Value="Автоматическое обновление приложения" />
+    <String Id="PreserveUpdates" Value="Сохранить настройку (включено при первой установке)" />
+    <String Id="EnableUpdates" Value="Проверять автоматически" />
+    <String Id="DisableUpdates" Value="Отключить автоматические обновления" />
+    <String Id="DesktopShortcut" Value="Создать ярлык на рабочем столе" />
+    <String Id="LaunchAfterSetup" Value="Запустить MegaProxy после установки" />
+</WixLocalization>

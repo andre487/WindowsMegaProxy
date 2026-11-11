@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Package
+        Name="MegaProxy installation registration"
+        Manufacturer="MegaProxy"
+        Version="$(var.AppVersion)"
+        UpgradeCode="EBD6B435-1308-4B52-B6D0-495CD7FA49EC"
+        Scope="perMachineOrUser">
+        <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer MegaProxy version is installed." />
+        <MediaTemplate EmbedCab="yes" />
+        <StandardDirectory Id="ProgramFiles64Folder">
+            <Directory Id="RegistrationDirectory" Name="WindowsMegaProxy">
+                <Component Id="Registration" Guid="B7D141DF-E18F-4F07-A4BC-B836A79CA516">
+                    <RegistryValue
+                        Root="HKMU"
+                        Key="SOFTWARE\WindowsMegaProxy\InstallerRegistration"
+                        Name="Version"
+                        Type="string"
+                        Value="$(var.AppVersion)"
+                        KeyPath="yes" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+        <Feature Id="RegistrationFeature" Title="MegaProxy">
+            <ComponentRef Id="Registration" />
+        </Feature>
+    </Package>
+</Wix>

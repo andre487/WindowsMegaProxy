@@ -144,7 +144,8 @@ def main():
     output = ROOT / "artifacts" / ("release-preview" if args.preview else "release")
     output.mkdir(parents=True, exist_ok=True)
     cache = ROOT / ".tools/downloads"
-    installer_source = (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
+    wix_installer = (ROOT / "installer/wix/Bundle.wxs").exists()
+    installer_source = "" if wix_installer else (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
     # Only release_package.py rebuilding a separate historical checkout may package pre-DLL cores.
     legacy_core = ROOT.resolve() != Path(__file__).resolve().parents[1] and not (ROOT / "native/core/go.mod").exists()
     legacy_runtime = ET.parse(ROOT / "Directory.Build.props").findtext("PropertyGroup/RuntimeFrameworkVersion") is None
@@ -208,9 +209,9 @@ def main():
             validate_native_payload(payload)
         signer.sign_directory(payload)
         runtime_files = []
-        if '#include "Runtime.iss"' in installer_source:
+        if wix_installer or '#include "Runtime.iss"' in installer_source:
             import runtime_payload
-            runtime_files, runtime = runtime_payload.detach(payload, staging, ROOT / ".tools/nuget", runtime["version"])
+            runtime_files, runtime = runtime_payload.detach(payload, staging, ROOT / ".tools/nuget", runtime["version"], legacy=not wix_installer)
         wintun = download("https://www.wintun.net/builds/wintun-0.14.1.zip", cache / "wintun-0.14.1.zip",
                           "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51")
         with zipfile.ZipFile(wintun) as upstream:
@@ -236,58 +237,62 @@ def main():
             "H3CoreVersion": H3_CORE_VERSION,
         }
         definitions.update(core_installer_definitions(payload, legacy=legacy_core))
-        (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
-        script = (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
-        script = script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\nSignedUninstaller=yes\n", 1)
-        helper = Path(__file__).resolve().parent.parent / "installer/Downloads.iss"
-        shutil.copy2(helper, staging / "Downloads.iss")
-        if '#include "Runtime.iss"' in script:
-            shutil.copy2(ROOT / "installer/Runtime.iss", staging / "Runtime.iss")
-        if '#include "Winget.iss"' in script:
-            shutil.copy2(ROOT / "installer/Winget.iss", staging / "Winget.iss")
-            h3_script = (ROOT / "installer/Http3Core.iss").read_text(encoding="utf-8-sig")
-            h3_script = h3_script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\n", 1)
-            (staging / "Http3Core.iss").write_text(h3_script, encoding="utf-8-sig")
-            sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "Http3Core.iss")], env=signer.environment, check=True)
-            app = components["app"]
-            app["files"] = archive(payload, staging / app["file"], exclude=("dependencies",))
-        if "{#StableCoreURL}" in script and '#include "Downloads.iss"' not in script:
-            script = script.replace("[Code]\n", '[Code]\n#include "Downloads.iss"\n', 1)
-            legacy = ("      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
-                      "      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');\n"
-                      "      Download.Show;\n      Download.Download;")
-            script = script.replace(legacy, "      Download.Show;\n"
-                "      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', '{#StableCoreMirrors}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
-                "      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', '{#H3CoreMirrors}', 'sing-box-h3.zip', '{#H3CoreSHA256}');")
-        (staging / "WindowsMegaProxy.iss").write_text(script, encoding="utf-8-sig")
-        checks = ROOT / "artifacts/installer-checks/download-rules"
-        checks.mkdir(parents=True, exist_ok=True)
-        (checks / "result.txt").unlink(missing_ok=True)
-        source_root = Path(__file__).resolve().parent.parent
-        shutil.copy2(source_root / "tests/InstallerDownloads.iss", staging / "InstallerDownloads.iss")
-        (staging / "check-config.iss").write_text(f'#define CheckOutputDirectory "{checks}"\n', encoding="utf-8-sig")
-        sp.run([str(compiler()), "/Qp", str(staging / "InstallerDownloads.iss")], check=True)
-        result = sp.run([str(checks / "installer-download-checks.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES",
-                         f"/LOG={checks.parent / 'download-rules.log'}"], timeout=30)
-        # InitializeSetup returns False after the checks, so Inno exits before installation with code 1.
-        if result.returncode != 1 or (checks / "result.txt").read_text() != "passed":
-            raise RuntimeError("Installer download checks failed; no installation was attempted.")
-        if runtime_files:
-            runtime_checks = staging / "runtime-checks"
-            runtime_checks.mkdir()
-            for name in ("Downloads.iss", "Runtime.iss", "check-config.iss"):
-                shutil.copy2(staging / name, runtime_checks / name)
-            (runtime_checks / "runtime-files.iss").write_text("procedure InitializeRuntimeFiles; begin end;\n", encoding="ascii")
-            with zipfile.ZipFile(runtime_checks / "runtime-fixture.zip", "w") as fixture:
-                fixture.writestr("runtimes/win-x64/native/coreclr.dll", b"runtime fixture")
-            shutil.copy2(source_root / "tests/InstallerRuntime.iss", runtime_checks)
-            (checks / "runtime-result.txt").unlink(missing_ok=True)
-            sp.run([str(compiler()), "/Qp", str(runtime_checks / "InstallerRuntime.iss")], check=True)
-            result = sp.run([str(checks / "installer-runtime-checks.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], timeout=30)
-            if result.returncode != 1 or (checks / "runtime-result.txt").read_text() != "passed":
-                raise RuntimeError("Installer runtime preparation checks failed; no installation was attempted.")
-        sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "WindowsMegaProxy.iss")],
-               env=signer.environment, check=True)
+        if wix_installer:
+            import wix_package
+            wix_package.build_installer(staging, payload, definitions, runtime, signer)
+        else:
+            (staging / "package-config.iss").write_text("\n".join(f'#define {name} "{value}"' for name, value in definitions.items()) + "\n", encoding="utf-8-sig")
+            script = (ROOT / "installer/WindowsMegaProxy.iss").read_text(encoding="utf-8-sig")
+            script = script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\nSignedUninstaller=yes\n", 1)
+            helper = Path(__file__).resolve().parent.parent / "installer/legacy/Downloads.iss"
+            shutil.copy2(helper, staging / "Downloads.iss")
+            if '#include "Runtime.iss"' in script:
+                shutil.copy2(ROOT / "installer/Runtime.iss", staging / "Runtime.iss")
+            if '#include "Winget.iss"' in script:
+                shutil.copy2(ROOT / "installer/Winget.iss", staging / "Winget.iss")
+                h3_script = (ROOT / "installer/Http3Core.iss").read_text(encoding="utf-8-sig")
+                h3_script = h3_script.replace("[Setup]\n", "[Setup]\nSignTool=megaproxy\n", 1)
+                (staging / "Http3Core.iss").write_text(h3_script, encoding="utf-8-sig")
+                sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "Http3Core.iss")], env=signer.environment, check=True)
+                app = components["app"]
+                app["files"] = archive(payload, staging / app["file"], exclude=("dependencies",))
+            if "{#StableCoreURL}" in script and '#include "Downloads.iss"' not in script:
+                script = script.replace("[Code]\n", '[Code]\n#include "Downloads.iss"\n', 1)
+                legacy = ("      Download.Add('{#StableCoreURL}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
+                          "      Download.Add('{#H3CoreURL}', 'sing-box-h3.zip', '{#H3CoreSHA256}');\n"
+                          "      Download.Show;\n      Download.Download;")
+                script = script.replace(legacy, "      Download.Show;\n"
+                    "      DownloadCore(Download, '{#StableCoreURL}', '{#StableCoreApiURL}', '{#StableCoreMirrors}', 'sing-box-stable.zip', '{#StableCoreSHA256}');\n"
+                    "      DownloadCore(Download, '{#H3CoreURL}', '{#H3CoreApiURL}', '{#H3CoreMirrors}', 'sing-box-h3.zip', '{#H3CoreSHA256}');")
+            (staging / "WindowsMegaProxy.iss").write_text(script, encoding="utf-8-sig")
+            checks = ROOT / "artifacts/installer-checks/download-rules"
+            checks.mkdir(parents=True, exist_ok=True)
+            (checks / "result.txt").unlink(missing_ok=True)
+            source_root = Path(__file__).resolve().parent.parent
+            shutil.copy2(source_root / "installer/legacy/InstallerDownloads.iss", staging / "InstallerDownloads.iss")
+            (staging / "check-config.iss").write_text(f'#define CheckOutputDirectory "{checks}"\n', encoding="utf-8-sig")
+            sp.run([str(compiler()), "/Qp", str(staging / "InstallerDownloads.iss")], check=True)
+            result = sp.run([str(checks / "installer-download-checks.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES",
+                             f"/LOG={checks.parent / 'download-rules.log'}"], timeout=30)
+            # InitializeSetup returns False after the checks, so Inno exits before installation with code 1.
+            if result.returncode != 1 or (checks / "result.txt").read_text() != "passed":
+                raise RuntimeError("Installer download checks failed; no installation was attempted.")
+            if runtime_files:
+                runtime_checks = staging / "runtime-checks"
+                runtime_checks.mkdir()
+                for name in ("Downloads.iss", "Runtime.iss", "check-config.iss"):
+                    shutil.copy2(staging / name, runtime_checks / name)
+                (runtime_checks / "runtime-files.iss").write_text("procedure InitializeRuntimeFiles; begin end;\n", encoding="ascii")
+                with zipfile.ZipFile(runtime_checks / "runtime-fixture.zip", "w") as fixture:
+                    fixture.writestr("runtimes/win-x64/native/coreclr.dll", b"runtime fixture")
+                shutil.copy2(source_root / "installer/legacy/InstallerRuntime.iss", runtime_checks)
+                (checks / "runtime-result.txt").unlink(missing_ok=True)
+                sp.run([str(compiler()), "/Qp", str(runtime_checks / "InstallerRuntime.iss")], check=True)
+                result = sp.run([str(checks / "installer-runtime-checks.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], timeout=30)
+                if result.returncode != 1 or (checks / "runtime-result.txt").read_text() != "passed":
+                    raise RuntimeError("Installer runtime preparation checks failed; no installation was attempted.")
+            sp.run([str(compiler()), "/Qp", "/S" + signer.inno_tool(), str(staging / "WindowsMegaProxy.iss")],
+                   env=signer.environment, check=True)
         setup = f"WindowsMegaProxy-{app_version}-win-x64-setup.exe"
         components["installer"] = {"version": app_version, "file": setup}
         source = f"WindowsMegaProxy-{app_version}-source.zip"
