@@ -56,7 +56,6 @@ def main():
         return
     logs = ROOT / "artifacts/update-checks"
     logs.mkdir(parents=True, exist_ok=True)
-    dotnet("build", "tests/WindowsMegaProxy.UiChecks", "-c", "Release")
 
     def check(*arguments):
         dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", *arguments)
@@ -67,11 +66,15 @@ def main():
        "--pattern", "update-manifest.json", "--pattern", "update-manifest.sig", "--clobber")
 
     previous_item = signed_installer(metadata, baseline[1:])
+    if not supports_upgrade(previous_item):
+        print(f"{baseline} predates WiX/Burn; a clean installation is required. Inno upgrade check is not applicable.")
+        return
+    dotnet("build", "tests/WindowsMegaProxy.UiChecks", "-c", "Release")
     previous = download(f"https://github.com/andre487/WindowsMegaProxy/releases/download/{baseline}/{previous_item['file']}",
                         ROOT / ".tools/downloads" / previous_item["file"], previous_item["sha256"])
     try:
-        sp.run([str(previous), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual",
-                "/MERGETASKS=automaticupdates", f"/LOG={logs / 'previous-install.log'}"], check=True, timeout=600)
+        sp.run([str(previous), "Scope=PerMachine", "-quiet", "-norestart", "Mode=manual",
+                "AutomaticUpdates=true", "-log", f"{logs / 'previous-install.log'}"], check=True, timeout=600)
         check("--update-preservation-check", "seed")
         sp.run([str(destination / "WindowsMegaProxy.Service.exe"), "--configure-mode", "service"], check=True, timeout=60)
         if args.candidate:
@@ -115,6 +118,10 @@ def main():
         for log in temporary.glob("Setup Log*.txt"):
             shutil.copy2(log, logs / log.name)
         uninstall(logs / "uninstall.log")
+
+
+def supports_upgrade(installer):
+    return installer.get("format") == "wix-burn"
 
 
 if __name__ == "__main__":

@@ -50,7 +50,6 @@ internal sealed class Snapshot
 internal static partial class Program
 {
     private const string Registration = @"SOFTWARE\WindowsMegaProxy";
-    private const string LegacyUninstall = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{1D673B75-6671-42B4-97AC-99A85041D6C3}_is1";
     private static readonly JavaScriptSerializer Json = new() { MaxJsonLength = 64 * 1024 * 1024 };
     private static readonly SecurityIdentifier Administrators = new(WellKnownSidType.BuiltinAdministratorsSid, null);
     private static readonly SecurityIdentifier SystemAccount = new(WellKnownSidType.LocalSystemSid, null);
@@ -92,6 +91,7 @@ internal static partial class Program
             Console.SetError(log);
             try
             {
+                if (args[0] != "remove" && InnoInstallation.Exists()) throw new IOException(InnoInstallation.Message);
                 Root = Path.Combine(ProgramFiles, Personal ? "WindowsMegaProxy.Users" : "WindowsMegaProxy");
                 Protect(Root);
                 if (Personal) { Root = Path.Combine(Root, Sid); Protect(Root); }
@@ -149,7 +149,6 @@ internal static partial class Program
                     "/English", "/Online", "/Add-Capability", "/CapabilityName:OpenSSH.Client~~~~0.0.1.0", "/NoRestart");
                 if (result != 0 || !File.Exists(ssh)) throw new IOException("OpenSSH Client installation failed; check Windows Update access, restart if required and retry. Exit code: " + result);
             }
-            ValidateLegacyRegistration();
             string[] files = Directory.GetFiles(directory, "*", SearchOption.AllDirectories)
                 .Select(path => path.Substring(directory.Length + 1).Replace('\\', '/'))
                 .Where(path => Personal || !path.StartsWith("launcher/", StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -187,7 +186,6 @@ internal static partial class Program
                 key.SetValue("SetupDirectory", Root);
                 using var identity = Hive.CreateSubKey(@"Software\Classes\AppUserModelId\WindowsMegaProxy");
                 identity.SetValue("DisplayName", "MegaProxy");
-                Hive.DeleteSubKeyTree(LegacyUninstall, false);
             }
             catch
             {
@@ -195,13 +193,6 @@ internal static partial class Program
                 else if (snapshot.Helper is not null) await Require(snapshot.Helper, Personal ? "--configure-user" : "--configure-mode", snapshot.Mode);
                 throw;
             }
-            foreach (string folder in new[] { "sing-box", "sing-box-h3" })
-                foreach (string name in new[] { "sing-box.exe", "sing-box-dev.exe", "libcronet.dll" })
-                    File.Delete(EntryPath(Root, "dependencies/" + folder + "/" + name));
-            // Superseded Inno uninstallers must not be able to remove the new installation.
-            string legacyRoot = Personal ? LauncherDirectory : Root;
-            void DeleteLegacy() { foreach (string name in new[] { "unins000.exe", "unins000.dat", "unins000.msg" }) { RejectReparseChain(Path.Combine(legacyRoot, name)); File.Delete(Path.Combine(legacyRoot, name)); } }
-            if (Personal) Unelevated(DeleteLegacy); else DeleteLegacy();
             DeleteProtectedTree(Path.Combine(State, "registration"));
             StartHelper("--cleanup-installation");
             if (launch)
@@ -220,14 +211,6 @@ internal static partial class Program
             }
         }
         finally { DeleteProtectedTree(directory); }
-    }
-
-    private static void ValidateLegacyRegistration()
-    {
-        using (var legacy = Hive.OpenSubKey(LegacyUninstall))
-            if (legacy is not null && !string.Equals((legacy.GetValue("InstallLocation") as string)?.TrimEnd(Path.DirectorySeparatorChar),
-                Personal ? LauncherDirectory : Root, StringComparison.OrdinalIgnoreCase))
-                throw new IOException("An unrelated legacy uninstall registration was found.");
     }
 
     private static void SaveBootRegistration()
@@ -249,13 +232,10 @@ internal static partial class Program
     {
         if (Personal) throw new IOException("Early-boot registration requires a system installation.");
         var files = VerifyInstalledInventory(manifest, Root);
-        ValidateLegacyRegistration();
         File.WriteAllText(Path.Combine(State, "files.json"), Json.Serialize(files.Select(file => file.Path).ToArray()));
         using var key = Hive.CreateSubKey(KeyPath);
         key.SetValue("SetupDirectory", Root);
         key.SetValue("SetupBuildId", manifest.BuildId);
-        Hive.DeleteSubKeyTree(LegacyUninstall, false);
-        foreach (string name in new[] { "unins000.exe", "unins000.dat", "unins000.msg" }) File.Delete(Path.Combine(Root, name));
         Console.WriteLine("Boot installation registered without restarting the service.");
     }
 

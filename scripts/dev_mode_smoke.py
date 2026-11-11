@@ -114,7 +114,7 @@ def check_channel_switch(dev_root):
 
         fixture = start_window("WindowsMegaProxy")
         try:
-            sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=service", "/TASKS="], check=True, timeout=600)
+            sp.run([str(setup), "Scope=PerMachine", "-quiet", "-norestart", "Mode=service", "AutomaticUpdates=false", "DesktopShortcut=0"], check=True, timeout=600)
             dev_ui = dev_root / "WindowsMegaProxy.Dev.exe"
             prod_ui = production / "WindowsMegaProxy.exe"
             sp.run([str(dev_ui), "--resolve-channel-conflict", "exit-current"], check=True, timeout=60)

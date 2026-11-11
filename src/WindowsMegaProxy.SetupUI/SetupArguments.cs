@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using WixToolset.BootstrapperApplicationApi;
@@ -9,61 +8,25 @@ internal sealed class SetupArguments
 {
     internal readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
     internal BundleScope Scope;
-    internal bool Silent, Boot;
-    internal string? LogPath, Directory;
+    internal bool Boot => Values.TryGetValue("BootUpdate", out var value) && value == "1";
 
     internal SetupArguments(IEnumerable<string> args)
     {
-        bool update = false;
         foreach (string arg in args)
         {
+            // Burn may forward its restart policy to the bootstrapper application.
+            if (arg.Equals("-norestart", StringComparison.OrdinalIgnoreCase)) continue;
             string[] pair = arg.Split(new[] { '=' }, 2);
-            string name = pair[0], value = pair.Length == 2 ? pair[1] : "";
-            if (name.StartsWith("-", StringComparison.Ordinal)) name = "/" + name.Substring(1);
-            if (!name.StartsWith("/", StringComparison.Ordinal))
+            if (pair.Length != 2) throw new ArgumentException("Unknown setup argument: " + arg);
+            string name = pair[0], value = pair[1];
+            if (name == "Scope") Scope = value switch
             {
-                if (name == "Scope") Scope = value switch
-                {
-                    "PerUser" => BundleScope.PerUser,
-                    "PerMachine" => BundleScope.PerMachine,
-                    _ => throw new ArgumentException("Invalid installation scope.")
-                };
-                else { Validate(name, value); Values[name] = value; }
-                continue;
-            }
-            // Released Inno clients pass these switches to the downloaded replacement installer.
-            switch (name.ToUpperInvariant())
-            {
-                case "/VERYSILENT": case "/SILENT": Silent = true; break;
-                case "/SUPPRESSMSGBOXES": case "/NORESTART": break;
-                case "/ALLUSERS": Scope = BundleScope.PerMachine; break;
-                case "/CURRENTUSER": Scope = BundleScope.PerUser; break;
-                case "/MODE": Validate("Mode", value); Values["Mode"] = value; break;
-                case "/STAGEDUPDATE": Validate("StagedUpdate", value); Values["StagedUpdate"] = value; break;
-                case "/BOOTUPDATE": Validate("BootUpdate", value); Boot = value == "1"; break;
-                case "/UPDATE": Validate("Update", value); update = value == "1"; break;
-                case "/REOPEN": Validate("LaunchAfterSetup", value); Values["LaunchAfterSetup"] = value; break;
-                case "/TASKS": case "/MERGETASKS":
-                    if (name.Equals("/TASKS", StringComparison.OrdinalIgnoreCase))
-                    { Values["AutomaticUpdates"] = "false"; Values["DesktopShortcut"] = "0"; }
-                    foreach (string task in value.Split(',').Where(task => task.Length != 0))
-                    {
-                        switch (task.ToLowerInvariant())
-                        {
-                            case "automaticupdates": Values["AutomaticUpdates"] = "true"; break;
-                            case "!automaticupdates": Values["AutomaticUpdates"] = "false"; break;
-                            case "desktopicon": Values["DesktopShortcut"] = "1"; break;
-                            case "!desktopicon": Values["DesktopShortcut"] = "0"; break;
-                            default: throw new ArgumentException("Unknown setup task.");
-                        }
-                    }
-                    break;
-                case "/LOG": LogPath = Path.GetFullPath(value); break;
-                case "/DIR": Directory = Path.GetFullPath(value); break;
-                default: throw new ArgumentException("Unknown setup argument: " + name);
-            }
+                "PerUser" => BundleScope.PerUser,
+                "PerMachine" => BundleScope.PerMachine,
+                _ => throw new ArgumentException("Invalid installation scope.")
+            };
+            else { Validate(name, value); Values[name] = value; }
         }
-        if (update && !Values.ContainsKey("LaunchAfterSetup")) Values["LaunchAfterSetup"] = "1";
         if (Boot && (Scope == BundleScope.PerUser || !Values.TryGetValue("Mode", out string mode) || mode != "service"))
             throw new ArgumentException("Boot updates require system service mode.");
     }
@@ -74,7 +37,7 @@ internal sealed class SetupArguments
         {
             "Mode" => value is "preserve" or "manual" or "login" or "service",
             "AutomaticUpdates" => value is "preserve" or "true" or "false",
-            "RegistrationOnly" or "DesktopShortcut" or "LaunchAfterSetup" or "StagedUpdate" or "BootUpdate" or "Update" => value is "0" or "1",
+            "RegistrationOnly" or "DesktopShortcut" or "LaunchAfterSetup" or "StagedUpdate" or "BootUpdate" => value is "0" or "1",
             _ => false
         };
         if (!valid) throw new ArgumentException("Invalid setup option: " + name);

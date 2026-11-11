@@ -130,8 +130,8 @@ def check(setup, logs, destination, data, *, fresh=False):
         sp.run([str(helper), *arguments], check=True, timeout=180)
 
     def prepare(mode, index):
-        sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
-                f"/LOG={logs / f'deferred-{index}-install.log'}"], check=True, timeout=600)
+        sp.run([str(setup), "Scope=PerMachine", "-quiet", "-norestart", "Mode=manual", "AutomaticUpdates=false", "DesktopShortcut=0",
+                "-log", f"{logs / f'deferred-{index}-install.log'}"], check=True, timeout=600)
         wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "The installer cleanup helper has not released its runtime.", 30)
         shutil.copytree(payload, destination, dirs_exist_ok=True)
         assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == "0.0.0"
@@ -294,13 +294,13 @@ def check(setup, logs, destination, data, *, fresh=False):
         wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "Recovery helpers did not exit.", 30)
         helper.unlink()
         (destination / "WindowsMegaProxy.Runtime.dll").unlink()
-        sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
-                f"/LOG={logs / 'repair-missing-helper.log'}"], check=True, timeout=600)
+        sp.run([str(setup), "Scope=PerMachine", "-quiet", "-norestart", "Mode=manual", "AutomaticUpdates=false", "DesktopShortcut=0",
+                "-log", f"{logs / 'repair-missing-helper.log'}"], check=True, timeout=600)
         assert pending() is None and helper.exists(), "The new installer must repair missing old helper/runtime files."
         verify_settings()
         uninstall(logs / "before-personal-uninstall.log")
-        sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
-                f"/LOG={logs / 'deferred-personal-install.log'}"], check=True, timeout=600)
+        sp.run([str(setup), "Scope=PerUser", "-quiet", "-norestart", "Mode=manual", "AutomaticUpdates=false", "DesktopShortcut=0",
+                "-log", f"{logs / 'deferred-personal-install.log'}"], check=True, timeout=600)
         if fresh:
             dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", "--user-settings-check", "seed")
         wait_until(lambda: "windowsmegaproxy.service.exe" not in running_images(), "The personal cleanup helper has not released its runtime.", 30)

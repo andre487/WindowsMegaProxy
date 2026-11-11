@@ -51,18 +51,14 @@ internal static class Checks
     private static void Arguments()
     {
         new SetupArguments(new[] { "-norestart", "RegistrationOnly=1", "Scope=PerMachine" });
-        var parsed = new SetupArguments(new[] { "/ALLUSERS", "/VERYSILENT", "/MODE=service", "/BOOTUPDATE=1", "/REOPEN=0" });
-        Require(parsed.Boot && parsed.Silent && parsed.Scope == BundleScope.PerMachine, "Released boot worker switches were not recognized.");
-        parsed = new SetupArguments(new[] { "/CURRENTUSER", "/SILENT", "/MODE=login", "/STAGEDUPDATE=1", "/UPDATE=1", "/MERGETASKS=!automaticupdates" });
-        Require(parsed.Scope == BundleScope.PerUser && parsed.Values["StagedUpdate"] == "1" && parsed.Values["AutomaticUpdates"] == "false", "Released personal update switches were not recognized.");
-        parsed = new SetupArguments(new[] { "Scope=PerUser", "Mode=manual", "AutomaticUpdates=true", "/TASKS=" });
-        Require(parsed.Values["AutomaticUpdates"] == "false", "Explicit task clearing was lost.");
-        Reject<ArgumentException>(() => new SetupArguments(new[] { "/CURRENTUSER", "/MODE=service", "/BOOTUPDATE=1" }));
-        Reject<ArgumentException>(() => new SetupArguments(new[] { "Mode=unknown" }));
-        Reject<ArgumentException>(() => new SetupArguments(new[] { "InstallSSH=0" }));
-        Reject<ArgumentException>(() => new SetupArguments(new[] { "/TASKS=unknown" }));
-        Require(new SetupArguments(new[] { "/UPDATE=1" }).Values["LaunchAfterSetup"] == "1", "Legacy updates must reopen the application by default.");
-        Require(new SetupArguments(new[] { "/REOPEN=0", "/UPDATE=1" }).Values["LaunchAfterSetup"] == "0", "Explicit reopen suppression must survive argument ordering.");
+        var parsed = new SetupArguments(new[] { "Scope=PerMachine", "Mode=service", "BootUpdate=1", "LaunchAfterSetup=0" });
+        Require(parsed.Boot && parsed.Scope == BundleScope.PerMachine, "Boot update options were not recognized.");
+        parsed = new SetupArguments(new[] { "Scope=PerUser", "Mode=login", "StagedUpdate=1", "AutomaticUpdates=false" });
+        Require(parsed.Scope == BundleScope.PerUser && parsed.Values["StagedUpdate"] == "1" && parsed.Values["AutomaticUpdates"] == "false", "Personal update options were lost.");
+        Reject<ArgumentException>(() => new SetupArguments(new[] { "Scope=PerUser", "Mode=service", "BootUpdate=1" }));
+        foreach (string argument in new[] { "Mode=unknown", "InstallSSH=0", "/TASKS=", "/MODE=service", "/BOOTUPDATE=1", "/UPDATE=1", "/CURRENTUSER", "/VERYSILENT" })
+            Reject<ArgumentException>(() => new SetupArguments(new[] { argument }));
+        Require(new SetupArguments(Array.Empty<string>()).Values.Count == 0, "Omitted preferences must remain unspecified.");
         foreach (string value in new[] { "", "a", @"C:\path with spaces\", @"C:\path\file.dll", "[value]" })
             Require(SetupArguments.Split(Program.Quote(value))[0] == value, "Windows argument quoting failed.");
         Reject<ArgumentException>(() => Program.Quote("a\"b"));

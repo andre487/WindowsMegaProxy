@@ -11,18 +11,12 @@ import winreg
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from common import ROOT, cli, digest, dotnet, download
+from common import ROOT, cli, digest, dotnet
 from deferred_update_smoke import check as check_deferred_updates
 from install import known_folder
 from installer_smoke_support import uninstall
 from run import stop_workspace_app, user32, workspace_windows
 from service_control import running_images, service_state
-
-
-def seed_legacy_cores(directory):
-    for folder in ("sing-box", "sing-box-h3"):
-        for name in ("sing-box.exe", "sing-box-dev.exe", "libcronet.dll"):
-            (directory / "dependencies" / folder / name).write_bytes(b"obsolete core fixture")
 
 
 def check_downloaded_cores(version_directory):
@@ -72,6 +66,7 @@ def main():
     if suite == "updates":
         check_deferred_updates(setups[0], logs, destination, data, fresh=True)
         return
+    check_inno_rejected(setups[0], logs)
 
     def service_path():
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\WindowsMegaProxy") as key:
@@ -79,13 +74,11 @@ def main():
 
     previous = None
     for attempt, mode in enumerate(("manual", "login", "service", "service", "manual"), 1):
-        if previous:
-            seed_legacy_cores(destination)
         if attempt == 4:
             (destination / "createdump.exe").write_bytes(b"damaged runtime fixture")
-        arguments = [str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", f"/LOG={logs / f'install-{attempt}.log'}"]
+        arguments = [str(setups[0]), "-quiet", "-norestart", "AutomaticUpdates=false", "DesktopShortcut=0", "-log", f"{logs / f'install-{attempt}.log'}"]
         if attempt != 1:
-            arguments.append("/MODE=" + mode)
+            arguments.append("Mode=" + mode)
         sp.run(arguments, check=True, timeout=600)
         latest_log = max((known_folder(0x23) / "MegaProxy.Setup").glob("machine-*.log"), key=lambda path: path.stat().st_mtime)
         shutil.copy2(latest_log, logs / f"install-engine-{attempt}.log")
@@ -147,7 +140,7 @@ def main():
             denied = original[:first_entry] + "(D;;WP;;;BA)" + original[first_entry:]
             sp.run(["sc.exe", "sdset", "WindowsMegaProxy", denied], check=True, capture_output=True)
             try:
-                failure = sp.run([str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=manual", f"/LOG={logs / 'mode-change-failed.log'}"], timeout=120)
+                failure = sp.run([str(setups[0]), "-quiet", "-norestart", "AutomaticUpdates=false", "DesktopShortcut=0", "Mode=manual", "-log", f"{logs / 'mode-change-failed.log'}"], timeout=120)
                 assert failure.returncode != 0, "A failed mode configuration must fail the installer."
                 assert service_state("WindowsMegaProxy") == 4, "A denied mode change must preserve the running service."
                 with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
@@ -160,7 +153,6 @@ def main():
     assert sp.run(["schtasks.exe", "/Query", "/TN", "WindowsMegaProxy.Tray"], capture_output=True).returncode != 0
     assert (data / "preservation-check.txt").read_text() == "preserved", "Uninstall must preserve global data."
     check_user_install(setups[0], logs, data)
-    check_legacy_upgrade(setups[0], logs, destination, data)
     if suite == "all":
         check_deferred_updates(setups[0], logs, destination, data)
     print("Manual/login/service mode transitions, encrypted settings preservation, repair and uninstall passed; TUN was not started.")
@@ -214,52 +206,35 @@ def check_failed_update_helper(helper, logs):
         target.unlink(missing_ok=True)
 
 
-def check_legacy_upgrade(setup, logs, destination, data):
-    previous = download("https://github.com/andre487/WindowsMegaProxy/releases/download/v0.0.4/WindowsMegaProxy-0.0.4-win-x64-setup.exe",
-                        ROOT / ".tools/downloads/WindowsMegaProxy-0.0.4-win-x64-setup.exe",
-                        "3e1651d131b6f64d996533fc26d6018ad44f5e6df3202d66ff37c8a39b0bee13")
-    sp.run([str(previous), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=service",
-            f"/LOG={logs / 'legacy-install.log'}"], check=True, timeout=600)
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
-        helper = winreg.QueryValueEx(key, "HelperPath")[0]
-    assert Path(helper).parent.parent == destination / "versions"
-    kernel = ct.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateFileW.argtypes = [ct.c_wchar_p, ct.c_ulong, ct.c_ulong, ct.c_void_p, ct.c_ulong, ct.c_ulong, ct.c_void_p]
-    kernel.CreateFileW.restype = ct.c_void_p
-    kernel.CloseHandle.argtypes = [ct.c_void_p]
-    # Emulate 0.0.4's updater keeping the old service EXE locked until setup exits.
-    locked = kernel.CreateFileW(helper, 0x80000000, 1, None, 3, 0, None)
-    if locked == ct.c_void_p(-1).value:
-        raise ct.WinError(ct.get_last_error())
-    try:
-        sp.run([str(setup), "/ALLUSERS", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/UPDATE=1",
-                f"/LOG={logs / 'legacy-upgrade.log'}"], check=True, timeout=600)
-    finally:
-        kernel.CloseHandle(locked)
-    for _ in range(120):
-        if not (destination / "versions").exists():
-            break
-        time.sleep(0.5)
-    client_log = known_folder(0x1c) / "WindowsMegaProxy/logs/current.log"
-    if client_log.is_file():
-        shutil.copy2(client_log, logs / "legacy-upgrade-client.log")
-    assert not (destination / "versions").exists(), "Upgrade must remove legacy versions after the old updater exits."
-    for _ in range(120):
-        if workspace_windows("MegaProxy"):
-            break
-        time.sleep(0.25)
-    assert workspace_windows("MegaProxy"), "Automatic updates must reopen the new application."
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
-        assert Path(winreg.QueryValueEx(key, "HelperPath")[0]).parent == destination
-        assert winreg.QueryValueEx(key, "Mode")[0] == "service"
-    assert service_state("WindowsMegaProxy") == 4
-    assert (data / "preservation-check.txt").read_text() == "preserved"
-    check_downloaded_cores(destination)
-    dotnet("run", "--project", str(ROOT / "tests/WindowsMegaProxy.UiChecks"), "-c", "Release", "--no-build", "--", "--installed-settings-check", "verify")
-    assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}
-    uninstall(logs / "legacy-upgrade-uninstall.log")
-    assert service_state("WindowsMegaProxy") is None
-    print("Official 0.0.4 upgrade, locked old updater, fixed paths, settings preservation and legacy cleanup passed; no TUN.")
+def check_inno_rejected(setup, logs):
+    key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{1D673B75-6671-42B4-97AC-99A85041D6C3}_is1"
+    for personal in (False, True):
+        hive = winreg.HKEY_CURRENT_USER if personal else winreg.HKEY_LOCAL_MACHINE
+        scope = "user" if personal else "system"
+        for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+            with winreg.CreateKeyEx(hive, key_path, 0, winreg.KEY_WRITE | view) as key:
+                winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, "old installation fixture")
+            try:
+                log = logs / f"inno-{scope}-{view}-rejected.log"
+                result = sp.run([str(setup), "-quiet", "-norestart", "Scope=PerMachine", "-log", str(log)], timeout=120)
+                assert result.returncode != 0, "Installing over either Inno scope must fail."
+                assert "Export your configuration" in log.read_text(encoding="utf-8-sig"), "The setup log must explain the required clean installation."
+                with winreg.OpenKey(hive, key_path, 0, winreg.KEY_READ | view) as key:
+                    assert winreg.QueryValueEx(key, "InstallLocation")[0] == "old installation fixture"
+            finally:
+                winreg.DeleteKeyEx(hive, key_path, view)
+        directory = known_folder(0x1c) / "Programs/WindowsMegaProxy" if personal else known_folder(0x26) / "WindowsMegaProxy"
+        directory.mkdir(parents=True)
+        marker = directory / "unins000.dat"
+        marker.write_bytes(b"old uninstaller")
+        try:
+            result = sp.run([str(setup), "-quiet", "-norestart", "Scope=PerUser", "-log", str(logs / f"inno-{scope}-files-rejected.log")], timeout=120)
+            assert result.returncode != 0 and marker.read_bytes() == b"old uninstaller"
+            assert sorted(path.name for path in directory.iterdir()) == [marker.name], "Rejection must not modify the old installation."
+        finally:
+            marker.unlink()
+            directory.rmdir()
+    print("Inno registry/file detection rejects both scopes without modifying the old installation.")
 
 
 def check_user_install(setup, logs, global_data):
@@ -273,10 +248,8 @@ def check_user_install(setup, logs, global_data):
     name = "WindowsMegaProxy.User." + sid
     previous = None
     for mode in ("manual", "login", "manual"):
-        if previous:
-            seed_legacy_cores(protected)
-        sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=" + mode,
-                f"/LOG={logs / f'user-{mode}.log'}"], check=True, timeout=600)
+        sp.run([str(setup), "Scope=PerUser", "-quiet", "-norestart", "AutomaticUpdates=false", "DesktopShortcut=0", "Mode=" + mode,
+                "-log", f"{logs / f'user-{mode}.log'}"], check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             helper = winreg.QueryValueEx(key, "HelperPath")[0]
@@ -318,8 +291,8 @@ def check_user_install(setup, logs, global_data):
             stop_workspace_app(dev=False, workspace_only=False)
             assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}, "The fixture must never activate TUN."
         previous = helper
-    rejected = sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=service",
-                       f"/LOG={logs / 'user-service-rejected.log'}"], timeout=120)
+    rejected = sp.run([str(setup), "Scope=PerUser", "-quiet", "-norestart", "AutomaticUpdates=false", "DesktopShortcut=0", "Mode=service",
+                       "-log", f"{logs / 'user-service-rejected.log'}"], timeout=120)
     assert rejected.returncode != 0, "A current-user install must reject service mode."
     uninstall(logs / "user-uninstall.log", personal=True)
     for task_name in (name, name + ".Login"):

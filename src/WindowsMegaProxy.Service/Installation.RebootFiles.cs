@@ -172,7 +172,7 @@ public static partial class Installation
     private static async Task PrepareRebootFilesAsync(string root)
     {
         var start = new ProcessStartInfo(Path.Combine(UpdateDirectory(root), "setup.exe")) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root };
-        foreach (string argument in new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/ALLUSERS", "/MODE=service", "/BOOTUPDATE=1", "/REOPEN=0" }) start.ArgumentList.Add(argument);
+        foreach (string argument in new[] { "-quiet", "-norestart", "Scope=PerMachine", "Mode=service", "BootUpdate=1", "LaunchAfterSetup=0" }) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new IOException("Could not stage reboot update files.");
         await process.WaitForExitAsync();
         if (process.ExitCode != 0 || !File.Exists(RebootReceipt(root)) || !HasQueuedRebootFiles(root))

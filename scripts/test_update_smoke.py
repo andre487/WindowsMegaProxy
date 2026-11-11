@@ -57,3 +57,24 @@ class UpdateSmokeSafetyTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "existing"):
                     update_smoke.main()
                 download.assert_not_called()
+
+    def test_only_explicit_wix_baselines_support_in_place_updates(self):
+        self.assertTrue(update_smoke.supports_upgrade({"format": "wix-burn"}))
+        for installer in ({}, {"format": "inno"}, {"format": "unknown"}):
+            self.assertFalse(update_smoke.supports_upgrade(installer))
+
+    def test_inno_baseline_is_not_downloaded_or_installed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch("sys.argv", ["update_smoke.py", "0.3.0"]), patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+                    patch.object(update_smoke.ct.windll.shell32, "IsUserAnAdmin", return_value=True), \
+                    patch.object(update_smoke, "ROOT", root), patch.object(update_smoke, "known_folder", return_value=root), \
+                    patch.object(update_smoke, "service_state", return_value=None), \
+                    patch.object(update_smoke, "previous_release", return_value="v0.2.1"), \
+                    patch.object(update_smoke, "gh"), patch.object(update_smoke, "signed_installer", return_value={}), \
+                    patch.object(update_smoke, "download") as download, patch.object(update_smoke, "dotnet") as dotnet, \
+                    patch.object(update_smoke.sp, "run") as run:
+                update_smoke.main()
+                download.assert_not_called()
+                dotnet.assert_not_called()
+                run.assert_not_called()

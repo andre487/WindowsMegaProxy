@@ -230,6 +230,7 @@ internal sealed class SetupWindow : Form
     }
     internal void Progress(int value) { progress.Style = value == 0 ? ProgressBarStyle.Marquee : ProgressBarStyle.Continuous; progress.Value = Math.Max(0, Math.Min(100, value)); }
     internal void CancelPending() { close.Enabled = false; status.Text = T("ConfirmCancelMessage"); }
+    internal void LegacyInstallation() { status.Text = T("InnoInstallationDetected"); }
     internal void Help() { status.Text = T("HelpText"); }
     internal void Complete(int code, string path)
     {

@@ -35,5 +35,8 @@ Auto-update manifests continue to refer to versioned assets. The permanent-name
 copy has the same SHA-256 as the versioned Setup entry in `SHA256SUMS`; it is not
 a second build. Retrying publication does not replace published installer bytes.
 
-If in-app updating is unavailable, download Setup and install over the existing
-installation with the same scope. Existing profiles and settings are preserved.
+If in-app updating is unavailable, download Setup and install over an existing
+WiX/Burn installation with the same scope. Existing profiles and settings are preserved.
+For the transition from Inno Setup, export configuration, uninstall the old version,
+then install the new version and import configuration. This one-time transition
+requires a clean installation; later WiX/Burn updates work normally.

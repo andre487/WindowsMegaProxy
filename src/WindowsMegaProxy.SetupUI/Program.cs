@@ -30,7 +30,7 @@ public sealed class SetupApplication : BootstrapperApplication
     private int exitCode;
     private SetupArguments parsed = null!;
     private Dictionary<string, string> arguments => parsed.Values;
-    private bool Silent => parsed.Silent || command.Display != Display.Full;
+    private bool Silent => command.Display != Display.Full;
     internal string Version => engine.GetVariableString("WixBundleVersion");
 
     protected override void OnCreate(CreateEventArgs args)
@@ -113,6 +113,13 @@ public sealed class SetupApplication : BootstrapperApplication
     {
         try
         {
+            if (action != LaunchAction.Uninstall && action != LaunchAction.Layout && InnoInstallation.Exists())
+            {
+                engine.Log(LogLevel.Error, InnoInstallation.Message);
+                Complete(unchecked((int)0x80070666));
+                window.LegacyInstallation();
+                return;
+            }
             if (downgrade && action != LaunchAction.Uninstall) throw new InvalidOperationException("A newer MegaProxy version is installed.");
             if (engine.GetVariableNumeric("WindowsBuildNumber") < 17763) throw new InvalidOperationException("Windows 10 version 1809 or later is required.");
             foreach (var item in window.Options())
@@ -127,14 +134,6 @@ public sealed class SetupApplication : BootstrapperApplication
             engine.SetVariableString("SetupAction", arguments.TryGetValue("RegistrationOnly", out string registration) && registration == "1" ? "register" : "install", false);
             engine.SetVariableString("SetupPayloadPath", Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "payload.zip"), false);
             engine.SetVariableString("StagedUpdate", arguments.TryGetValue("StagedUpdate", out string staged) ? staged : "0", false);
-            if (parsed.Directory is not null)
-            {
-                string expected = window.Scope == BundleScope.PerUser
-                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "WindowsMegaProxy")
-                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsMegaProxy");
-                if (!string.Equals(parsed.Directory.TrimEnd(Path.DirectorySeparatorChar), expected, StringComparison.OrdinalIgnoreCase))
-                    throw new ArgumentException("MegaProxy requires its fixed installation directory.");
-            }
             if (parsed.Boot)
             {
                 string hash = engine.GetVariableString("SetupEngineSha256");
@@ -191,11 +190,6 @@ public sealed class SetupApplication : BootstrapperApplication
         busy = false;
         exitCode = code;
         string logPath = engine.GetVariableString("WixBundleLog");
-        if (parsed.LogPath is not null)
-        {
-            try { using var input = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); using var output = File.Create(parsed.LogPath); input.CopyTo(output); }
-            catch (Exception error) { engine.Log(LogLevel.Error, "Could not copy setup log: " + error.Message); }
-        }
         window.Complete(code, logPath);
         if (Silent) { window.Close(); Application.ExitThread(); }
     }

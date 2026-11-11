@@ -38,6 +38,11 @@ To change scope, uninstall first; configuration is retained.
 
 ## First connection
 
+When moving from the old Inno Setup installer, export your configuration first,
+uninstall the old version in Windows Settings, then install MegaProxy and import
+the configuration. Installing WiX/Burn over Inno is not supported. Subsequent
+WiX/Burn releases support normal updates and repair.
+
 1. Add a profile or use the configuration import section in Settings.
 2. Select a default route. System mode is the default; rules add exceptions.
 3. Select the active profile and connect.

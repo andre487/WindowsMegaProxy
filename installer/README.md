@@ -27,11 +27,12 @@ WiX 7 OSMF terms. No Visual Studio IDE is required.
 
 Only one installation scope is registered for the current user at a time. Uninstall
 before changing between system and personal installation; settings are retained.
-Burn's cached bundle provides Repair and Uninstall in Windows Settings. Existing
-Inno installations are migrated without calling their destructive uninstaller.
-The new bundle accepts released clients' Inno-style update switches, including
-`/BOOTUPDATE=1`; this path stages files without installing or registering the bundle.
-The normal post-reboot recovery step completes registration.
+Burn's cached bundle provides Repair and Uninstall in Windows Settings.
+Transitioning from Inno Setup requires a clean installation: export configuration,
+uninstall the old application, then run the new installer and import configuration.
+Setup refuses an existing Inno registration or uninstaller files without modifying
+them. In-place updates and repair remain supported between WiX/Burn releases.
+Old Inno command-line switches are no longer accepted.
 
 Silent setup supports `-quiet Scope=PerMachine Mode=service` or
 `-quiet Scope=PerUser Mode=login AutomaticUpdates=false`. Omitting mode or update
@@ -66,7 +67,7 @@ boot-time replacement does not require a network connection.
 The installer defaults to manual launch on a new installation and offers three
 operating modes: manual, elevated sign-in startup, or a Windows service. It
 preserves the chosen mode on upgrade. Silent installations can select
-`/MODE=manual`, `/MODE=login` or `/MODE=service`. Manual and login modes register
+`Mode=manual`, `Mode=login` or `Mode=service`. Manual and login modes register
 no Windows service; login mode uses a highest-privilege interactive logon task
 for the administrator who selected it, without storing a password. The settings
 page can change the mode with administrator approval and restarts the interface.
@@ -76,8 +77,7 @@ the shared core continues running.
 System installations always use `Program Files/WindowsMegaProxy`; protected
 personal runtimes use `Program Files/WindowsMegaProxy.Users/<SID>`. Setup stops
 the service and closes clients before replacing files. Interrupted preparation
-restores the previous operating mode. Successful upgrades remove legacy
-`versions` directories after the old update helper releases them. Global and
+restores the previous operating mode. Global and
 personal configuration and the shared Wintun driver survive uninstall. DEV
 uses its separate fixed directory and registrations.
 
@@ -90,8 +90,9 @@ replacement. Queued replacements require a restart before another update,
 mode change, repair or uninstall. Normal and current-user updates retain the
 installer-based workflow. A client waiting for an active installer displays
 “Update in progress” and reconnects automatically.
-The first upgrade from a client without this mechanism still uses its legacy
-updater; subsequent restart updates use early-boot replacement.
+The signed manifest marks WiX/Burn installers with `format: wix-burn`. Release
+checks skip an incompatible Inno baseline; CI still tests clean installation,
+repair and deferred updates between Burn installations.
 
 Global settings use machine-scope DPAPI and a directory restricted to SYSTEM
 and administrators so either elevated desktop hosts or the service can use
