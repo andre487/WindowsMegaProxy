@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Reflection;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
@@ -17,15 +18,17 @@ internal static class Checks
     [STAThread]
     private static int Main(string[] args)
     {
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         string root = Path.Combine(Path.GetTempPath(), "MegaProxy.Setup.Check-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
         {
+            Console.WriteLine("Checking setup commands, permissions, archives and runtime caching.");
             Arguments();
             Permissions();
             Archives(root);
             Runtime(root).GetAwaiter().GetResult();
-            if (args.Length == 1) Windows(args[0]);
+            if (args.Length == 1) { Console.WriteLine("Checking setup wizard."); Windows(args[0]); }
             Console.WriteLine("Setup command compatibility, archive boundaries, runtime caching and UI checks passed; no installation performed.");
             return 0;
         }
@@ -134,22 +137,89 @@ internal static class Checks
         Require(!File.Exists(Path.Combine(staging, "coreclr.dll")), "Damaged runtime was copied into installation staging.");
     }
 
+    private static void Capture(SetupWindow window, string path)
+    {
+        window.ChoicesView.UpdateLayout();
+        using var bitmap = new Bitmap(window.Width, window.Height);
+        window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.Size));
+        // WM_PRINT does not render the WPF child of ElementHost.
+        var host = window.Controls.OfType<System.Windows.Forms.Integration.ElementHost>().Single();
+        var visual = (System.Windows.FrameworkElement)host.Child;
+        var rendered = new System.Windows.Media.Imaging.RenderTargetBitmap(host.Width, host.Height,
+            96 * host.Width / visual.ActualWidth, 96 * host.Height / visual.ActualHeight, System.Windows.Media.PixelFormats.Pbgra32);
+        rendered.Render(visual);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rendered));
+        using var memory = new MemoryStream(); encoder.Save(memory); memory.Position = 0;
+        using var content = Image.FromStream(memory);
+        using var graphics = Graphics.FromImage(bitmap);
+        var position = host.PointToScreen(Point.Empty);
+        graphics.DrawImage(content, position.X - window.Left, position.Y - window.Top, host.Width, host.Height);
+        bitmap.Save(path);
+    }
+
     private static void Windows(string directory)
     {
+        Require(SetupWindow.WheelDistance(-120, 3, 16, 400) == 48, "Wheel scrolling must honor Windows line count.");
+        Require(SetupWindow.WheelDistance(30, 3, 16, 400) == -12, "High-resolution wheel deltas must retain their proportion and direction.");
+        Require(SetupWindow.WheelDistance(-120, 0, 16, 400) == 0, "Disabled wheel scrolling must not move content.");
+        Require(SetupWindow.WheelDistance(-120, -1, 16, 400) == 400, "Windows page scrolling must use the viewport height.");
         Directory.CreateDirectory(directory);
         Application.EnableVisualStyles();
         foreach (string language in new[] { "en", "ru" })
         {
             System.Threading.Thread.CurrentThread.CurrentUICulture = new CultureInfo(language);
+            Console.WriteLine("Creating wizard: " + language);
             using var window = new SetupWindow(null, "0.0.0");
             window.Ready(false, BundleScope.PerUser, new Dictionary<string, string> { ["Mode"] = "login" });
             Require(window.Scope == BundleScope.PerUser && window.Options()["Mode"] == "login", "Personal UI options were lost.");
             window.Show(); Application.DoEvents();
-            using var bitmap = new Bitmap(window.Width, window.Height);
-            window.DrawToBitmap(bitmap, window.ClientRectangle);
-            bitmap.Save(Path.Combine(directory, language + ".png"));
+            window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.ScrollableHeight == 0, "The first wizard page must not scroll when its content fits.");
+            for (int step = 0; step < 3; step++)
+            {
+                Require(window.Step == step, "Wizard navigation skipped a step.");
+                Application.DoEvents();
+                Capture(window, Path.Combine(directory, language + "-step-" + (step + 1) + ".png"));
+                if (step < 2) window.Advance();
+            }
+            foreach (var toggle in new[] { window.DesktopSwitch, window.LaunchSwitch })
+            {
+                var peer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer(toggle);
+                Require(!string.IsNullOrWhiteSpace(peer.GetName()), "Switches need accessible names.");
+                ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle)).Toggle();
+            }
+            Require(window.Options()["DesktopShortcut"] == "1" && window.Options()["LaunchAfterSetup"] == "1", "Switches must update installation options.");
+            window.Select(2, "false"); window.Previous(); window.Previous();
+            Require(window.Step == 0 && window.Options()["Mode"] == "login" && window.Options()["AutomaticUpdates"] == "false", "Going back must preserve choices.");
+            window.Select(0, "machine"); window.Select(1, "service"); window.Select(0, "user");
+            Require(window.Options()["Mode"] == "preserve", "Personal scope must clear a previously selected service mode.");
+            Reject<ArgumentException>(() => window.Select(1, "service"));
             window.Ready(true, BundleScope.PerMachine, new Dictionary<string, string> { ["Mode"] = "service" });
             Require(window.Scope == BundleScope.PerMachine && window.Options()["Mode"] == "service", "Maintenance UI options were lost.");
+            window.Advance(); Application.DoEvents();
+            Capture(window, Path.Combine(directory, language + "-system-mode.png"));
+            var large = window.Size;
+            window.Size = window.MinimumSize;
+            Application.DoEvents(); window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.ScrollableHeight > 0, "A short window must allow access to all choices.");
+            var wheel = new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, -30)
+            {
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseWheelEvent
+            };
+            window.ChoicesView.RaiseEvent(wheel);
+            window.ChoicesView.UpdateLayout();
+            double expected = Math.Min(window.ChoicesView.ScrollableHeight, SetupWindow.WheelDistance(-30,
+                System.Windows.SystemParameters.WheelScrollLines,
+                window.ChoicesView.FontSize * window.ChoicesView.FontFamily.LineSpacing, window.ChoicesView.ViewportHeight));
+            Require(wheel.Handled && Math.Abs(window.ChoicesView.VerticalOffset - expected) < 0.01,
+                "Wizard wheel input must apply the system setting once, without WPF acceleration.");
+            window.ChoicesView.ScrollToEnd(); window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.VerticalOffset > 0, "The narrow scrollbar must support scrolling.");
+            Capture(window, Path.Combine(directory, language + "-compact.png"));
+            window.Size = large; window.Previous();
+            Application.DoEvents(); window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.ScrollableHeight == 0 && window.ChoicesView.VerticalOffset == 0, "Returning to the first page must clear old scroll extent and offset.");
             window.Close();
         }
     }

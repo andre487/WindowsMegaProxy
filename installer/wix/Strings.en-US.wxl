@@ -15,21 +15,33 @@
     <String Id="SuccessRestartText" Value="You must restart your computer before you can use the software." />
     <String Id="SuccessCloseButton" Value="&amp;Close" />
     <String Id="FailureHeader" Value="Setup Failed" />
-    <String Id="SetupOptions" Value="Installation options" />
+    <String Id="SetupOptions" Value="Installation scope" />
     <String Id="ScopeLocked" Value="To change installation scope, uninstall MegaProxy first. Configuration is retained." />
     <String Id="LicenseLink" Value="License" />
     <String Id="SetupLog" Value="Setup log" />
-    <String Id="SystemScope" Value="All users: shared configuration and Windows service support" />
-    <String Id="PersonalScope" Value="Current user: personal configuration, no Windows service" />
+    <String Id="SystemScope" Value="All users" />
+    <String Id="PersonalScope" Value="Only me" />
     <String Id="OperatingMode" Value="Operating mode" />
-    <String Id="PreserveMode" Value="Keep current mode (manual for a new installation)" />
+    <String Id="PreserveMode" Value="Keep current mode" />
     <String Id="ManualMode" Value="Manual launch" />
     <String Id="LoginMode" Value="At Windows sign-in (administrator)" />
     <String Id="ServiceMode" Value="Windows service" />
     <String Id="AutomaticUpdates" Value="Automatic application updates" />
-    <String Id="PreserveUpdates" Value="Keep current preference (enabled for a new installation)" />
+    <String Id="PreserveUpdates" Value="Keep current preference" />
     <String Id="EnableUpdates" Value="Check automatically" />
     <String Id="DisableUpdates" Value="Disable automatic updates" />
     <String Id="DesktopShortcut" Value="Create a desktop shortcut" />
     <String Id="LaunchAfterSetup" Value="Launch MegaProxy after installation" />
+    <String Id="StepTitle" Value="Step {0} of 3 — {1}" />
+    <String Id="NextButton" Value="&amp;Next" />
+    <String Id="BackButton" Value="&amp;Back" />
+    <String Id="SystemScopeDescription" Value="One shared configuration for this computer. Administrators can change settings. Supports running as a Windows service." />
+    <String Id="PersonalScopeDescription" Value="Your own configuration and shortcuts. An administrator approves setup once. Windows service mode is unavailable." />
+    <String Id="PreserveModeDescription" Value="An existing installation keeps its startup mode. A new installation uses manual launch." />
+    <String Id="ManualModeDescription" Value="Start MegaProxy when you need it. Traffic is redirected only while the application is connected." />
+    <String Id="LoginModeDescription" Value="MegaProxy starts in the tray when you sign in to Windows. Setup prepares the required elevated launch." />
+    <String Id="ServiceModeDescription" Value="The network service starts with Windows, before sign-in, and works independently of the window. The tray client opens at sign-in." />
+    <String Id="PreserveUpdatesDescription" Value="Keep your existing preference. On a new installation, MegaProxy checks for updates once a day." />
+    <String Id="EnableUpdatesDescription" Value="Check once a day and notify you when an update is available. You choose when to download and install it." />
+    <String Id="DisableUpdatesDescription" Value="Do not check in the background. You can check for updates manually in Settings." />
 </WixLocalization>

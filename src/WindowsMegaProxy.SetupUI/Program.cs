@@ -1,14 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Windows.Forms;
-using System.Xml.Linq;
 using WixToolset.BootstrapperApplicationApi;
 
 internal static class BootstrapEntry
@@ -215,138 +211,4 @@ public sealed class SetupApplication : BootstrapperApplication
     }
     internal void Install() => Start(command.Action == LaunchAction.Layout ? LaunchAction.Layout : installed ? LaunchAction.Repair : LaunchAction.Install);
     internal void Uninstall() => Start(LaunchAction.Uninstall);
-}
-
-internal sealed partial class SetupWindow : Form
-{
-    private readonly Dictionary<string, string> text;
-    private readonly ComboBox scope = Choice();
-    private readonly ComboBox mode = Choice();
-    private readonly ComboBox updates = Choice();
-    private readonly CheckBox desktop = new() { AutoSize = true };
-    private readonly CheckBox launch = new() { AutoSize = true };
-    private readonly Button install = new() { AutoSize = true, Enabled = false, Padding = new Padding(12, 4, 12, 4) };
-    private readonly Button remove = new() { AutoSize = true, Visible = false, Padding = new Padding(12, 4, 12, 4) };
-    private readonly Button close = new() { AutoSize = true, Padding = new Padding(12, 4, 12, 4) };
-    private readonly Label status = new() { AutoSize = true, MaximumSize = new Size(570, 0), Padding = new Padding(0, 8, 0, 8) };
-    private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 18, Visible = false };
-    private readonly TableLayoutPanel options = new() { AutoSize = true, ColumnCount = 1, Dock = DockStyle.Top, Padding = new Padding(0, 12, 0, 8) };
-    private LinkLabel log = null!;
-    private static readonly string[] Modes = { "preserve", "manual", "login", "service" };
-    private static readonly string[] Updates = { "preserve", "true", "false" };
-    internal BundleScope Scope => scope.SelectedIndex == 1 ? BundleScope.PerUser : BundleScope.PerMachine;
-
-    internal SetupWindow(SetupApplication? application, string version)
-    {
-        bool russian = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ru";
-        using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(russian ? "ru.wxl" : "en.wxl"))
-            text = XDocument.Load(stream!).Root!.Elements().ToDictionary(e => (string)e.Attribute("Id")!, e => (string)e.Attribute("Value")!);
-        Text = "MegaProxy";
-        Icon = Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location);
-        Font = new Font("Segoe UI", 10F);
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoSize = true;
-        AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen;
-        Padding = new Padding(24);
-        var layout = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Dock = DockStyle.Fill, Width = 590 };
-        layout.Controls.Add(new Label { Text = "MegaProxy", Font = new Font(Font.FontFamily, 18F), AutoSize = true });
-        layout.Controls.Add(new Label { Text = version, AutoSize = true, ForeColor = SystemColors.GrayText });
-        scope.Items.AddRange(new object[] { T("SystemScope"), T("PersonalScope") });
-        mode.Items.AddRange(new object[] { T("PreserveMode"), T("ManualMode"), T("LoginMode"), T("ServiceMode") });
-        updates.Items.AddRange(new object[] { T("PreserveUpdates"), T("EnableUpdates"), T("DisableUpdates") });
-        AddOption(T("SetupOptions"), scope);
-        AddOption(T("OperatingMode"), mode);
-        AddOption(T("AutomaticUpdates"), updates);
-        desktop.Text = T("DesktopShortcut"); launch.Text = T("LaunchAfterSetup");
-        foreach (var check in new[] { desktop, launch }) { check.Margin = new Padding(0, 7, 0, 0); options.Controls.Add(check); }
-        scope.SelectedIndexChanged += (_, _) =>
-        {
-            if (Scope == BundleScope.PerUser && mode.Items.Count == 4)
-            {
-                if (mode.SelectedIndex == 3) mode.SelectedIndex = 0;
-                mode.Items.RemoveAt(3);
-            }
-            else if (Scope == BundleScope.PerMachine && mode.Items.Count == 3) mode.Items.Add(T("ServiceMode"));
-        };
-        layout.Controls.Add(options);
-        var license = new LinkLabel { Text = T("LicenseLink"), AutoSize = true, Margin = new Padding(0, 10, 0, 4) };
-        license.LinkClicked += (_, _) => System.Diagnostics.Process.Start("https://github.com/andre487/WindowsMegaProxy/blob/main/LICENSE")?.Dispose();
-        layout.Controls.Add(license);
-        layout.Controls.Add(status);
-        layout.Controls.Add(progress);
-        log = new LinkLabel { Text = T("SetupLog"), AutoSize = true, Visible = false };
-        layout.Controls.Add(log);
-        var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, Padding = new Padding(0, 16, 0, 0) };
-        install.Text = T("InstallInstallButton"); remove.Text = T("ModifyUninstallButton"); close.Text = T("InstallCancelButton");
-        install.Click += (_, _) => application?.Install(); remove.Click += (_, _) => application?.Uninstall(); close.Click += (_, _) => Close();
-        buttons.Controls.AddRange(new Control[] { close, install, remove });
-        layout.Controls.Add(buttons);
-        Controls.Add(layout);
-        AcceptButton = install;
-        CancelButton = close;
-        status.Text = T("OverallProgressPackageText");
-        SetupTheme.Apply(this);
-    }
-
-    private string T(string key) => text[key];
-    private static ComboBox Choice() => new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 570, Margin = new Padding(0, 3, 0, 10) };
-    private void AddOption(string label, Control control)
-    {
-        options.Controls.Add(new Label { Text = label, AutoSize = true });
-        options.Controls.Add(control);
-    }
-
-    internal void Ready(bool installed, BundleScope selectedScope, Dictionary<string, string> arguments, bool scopeLocked = false)
-    {
-        scope.SelectedIndex = selectedScope == BundleScope.PerUser ? 1 : 0;
-        scope.Enabled = !installed && !scopeLocked;
-        mode.SelectedIndex = 0;
-        updates.SelectedIndex = 0;
-        foreach (var item in arguments)
-        {
-            switch (item.Key)
-            {
-                case "Mode": mode.SelectedIndex = Array.IndexOf(Modes, item.Value); break;
-                case "AutomaticUpdates": updates.SelectedIndex = Array.IndexOf(Updates, item.Value); break;
-                case "DesktopShortcut": desktop.Checked = item.Value == "1"; break;
-                case "LaunchAfterSetup": launch.Checked = item.Value == "1"; break;
-            }
-        }
-        install.Enabled = true;
-        install.Text = T(installed ? "ModifyRepairButton" : "InstallInstallButton");
-        remove.Visible = installed;
-        status.Text = T(installed ? "ScopeLocked" : "InstallHeader");
-    }
-
-    internal Dictionary<string, string> Options() => new()
-    {
-        ["Mode"] = mode.SelectedIndex < 0 ? "invalid" : Modes[mode.SelectedIndex],
-        ["AutomaticUpdates"] = updates.SelectedIndex < 0 ? "invalid" : Updates[updates.SelectedIndex],
-        ["DesktopShortcut"] = desktop.Checked ? "1" : "0", ["LaunchAfterSetup"] = launch.Checked ? "1" : "0"
-    };
-
-    internal void Removal()
-    {
-        options.Visible = false; install.Visible = false; remove.Visible = true;
-        AcceptButton = remove; status.Text = T("UninstallPrompt");
-    }
-
-    internal void Begin() { options.Enabled = false; install.Enabled = false; remove.Enabled = false; status.Text = T("ProgressHeader"); progress.Visible = true; progress.Style = ProgressBarStyle.Marquee; }
-    internal void Progress(int value) { progress.Style = value == 0 ? ProgressBarStyle.Marquee : ProgressBarStyle.Continuous; progress.Value = Math.Max(0, Math.Min(100, value)); }
-    internal void CancelPending() { close.Enabled = false; status.Text = T("ConfirmCancelMessage"); }
-    internal void Help() { status.Text = T("HelpText"); }
-    internal void Complete(int code, string path)
-    {
-        progress.Style = ProgressBarStyle.Continuous;
-        progress.Value = code == 0 ? 100 : 0;
-        status.Text = code == 0 ? T("SuccessHeader") : code == 3010 ? T("SuccessRestartText") : T("FailureHeader") + " (0x" + code.ToString("X8", CultureInfo.InvariantCulture) + ")";
-        close.Enabled = true; close.Text = T("SuccessCloseButton"); install.Enabled = false; remove.Enabled = false;
-        log.Visible = true;
-        log.LinkClicked += (_, _) => System.Diagnostics.Process.Start(Path.Combine(Environment.SystemDirectory, "notepad.exe"), "\"" + path + "\"")?.Dispose();
-    }
-
 }

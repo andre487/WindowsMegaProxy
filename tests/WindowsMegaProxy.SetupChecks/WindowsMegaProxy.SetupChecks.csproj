@@ -6,8 +6,10 @@
         <PlatformTarget>x64</PlatformTarget>
         <OutputType>Exe</OutputType>
         <UseWindowsForms>true</UseWindowsForms>
+        <UseWPF>true</UseWPF>
     </PropertyGroup>
     <ItemGroup>
+        <Reference Include="WindowsFormsIntegration" />
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net462" Version="1.0.3" PrivateAssets="all" />
         <ProjectReference Include="../../src/WindowsMegaProxy.Setup/WindowsMegaProxy.Setup.csproj" />
         <ProjectReference Include="../../src/WindowsMegaProxy.SetupUI/WindowsMegaProxy.SetupUI.csproj" />

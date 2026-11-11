@@ -18,19 +18,8 @@ internal static class SetupTheme
             control.BackColor = background;
             control.ForeColor = foreground;
             if (control is LinkLabel link) link.LinkColor = link.ActiveLinkColor = dark ? Color.FromArgb(153, 204, 255) : Color.FromArgb(0, 95, 184);
-            if (control is ComboBox combo)
-            {
-                combo.FlatStyle = FlatStyle.Flat;
-                combo.DrawMode = DrawMode.OwnerDrawFixed;
-                combo.DrawItem += (_, args) =>
-                {
-                    using var brush = new SolidBrush(background);
-                    args.Graphics.FillRectangle(brush, args.Bounds);
-                    if (args.Index >= 0) TextRenderer.DrawText(args.Graphics, combo.Items[args.Index].ToString(), combo.Font,
-                        args.Bounds, foreground, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-                    args.DrawFocusRectangle();
-                };
-            }
+            if (control.Tag as string == "Explanation")
+                control.ForeColor = dark ? Color.FromArgb(180, 180, 180) : Color.FromArgb(95, 95, 95);
             if (control is Button button)
             {
                 button.FlatStyle = FlatStyle.Flat;
@@ -40,12 +29,31 @@ internal static class SetupTheme
             foreach (Control child in control.Controls) Visit(child);
         }
         Visit(window);
-        window.HandleCreated += (_, _) =>
-        {
-            int enabled = dark ? 1 : 0;
-            // Unsupported DWM attributes are harmless on older supported Windows versions.
-            DwmSetWindowAttribute(window.Handle, 20, ref enabled, sizeof(int));
-        };
+        int enabled = dark ? 1 : 0;
+        // Unsupported DWM attributes are harmless on older supported Windows versions.
+        DwmSetWindowAttribute(window.Handle, 20, ref enabled, sizeof(int));
+    }
+
+    internal static void ApplyChoices(System.Windows.ResourceDictionary resources)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        bool dark = key?.GetValue("AppsUseLightTheme") is 0;
+        void Set(string name, string light, string night) => resources[name] =
+            new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(dark ? night : light));
+        Set("Background", "#F3F3F3", "#202020");
+        Set("Foreground", "#1A1A1A", "#F2F2F2");
+        Set("Secondary", "#5F5F5F", "#B4B4B4");
+        Set("Border", "#D0D0D0", "#505050");
+        Set("CardBackground", "#FFFFFF", "#2D2D2D");
+        Set("HoverBackground", "#F9F9F9", "#383838");
+        Set("SelectedBackground", "#EDF4FA", "#273847");
+        Set("Accent", "#005FB8", "#99CCFF");
+        Set("AccentForeground", "#FFFFFF", "#202020");
+        if (!SystemInformation.HighContrast) return;
+        resources["Background"] = resources["CardBackground"] = resources["HoverBackground"] = resources["SelectedBackground"] = System.Windows.SystemColors.WindowBrush;
+        resources["Foreground"] = resources["Secondary"] = resources["Border"] = System.Windows.SystemColors.WindowTextBrush;
+        resources["Accent"] = System.Windows.SystemColors.HighlightBrush;
+        resources["AccentForeground"] = System.Windows.SystemColors.HighlightTextBrush;
     }
 
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);

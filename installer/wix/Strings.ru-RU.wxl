@@ -15,21 +15,33 @@
     <String Id="SuccessRestartText" Value="Перед использованием приложения необходимо перезагрузить компьютер." />
     <String Id="SuccessCloseButton" Value="Закрыть" />
     <String Id="FailureHeader" Value="Ошибка установки" />
-    <String Id="SetupOptions" Value="Параметры установки" />
+    <String Id="SetupOptions" Value="Область установки" />
     <String Id="ScopeLocked" Value="Чтобы изменить область установки, сначала удалите MegaProxy. Конфигурация сохраняется." />
     <String Id="LicenseLink" Value="Лицензия" />
     <String Id="SetupLog" Value="Журнал установки" />
-    <String Id="SystemScope" Value="Все пользователи: общая конфигурация, доступен режим службы" />
-    <String Id="PersonalScope" Value="Текущий пользователь: личная конфигурация, без режима службы" />
+    <String Id="SystemScope" Value="Для всех пользователей" />
+    <String Id="PersonalScope" Value="Только для меня" />
     <String Id="OperatingMode" Value="Режим работы" />
-    <String Id="PreserveMode" Value="Сохранить текущий режим (ручной при первой установке)" />
+    <String Id="PreserveMode" Value="Оставить текущий режим" />
     <String Id="ManualMode" Value="Ручной запуск" />
     <String Id="LoginMode" Value="При входе в Windows (администратор)" />
     <String Id="ServiceMode" Value="Служба Windows" />
     <String Id="AutomaticUpdates" Value="Автоматическое обновление приложения" />
-    <String Id="PreserveUpdates" Value="Сохранить настройку (включено при первой установке)" />
+    <String Id="PreserveUpdates" Value="Оставить текущую настройку" />
     <String Id="EnableUpdates" Value="Проверять автоматически" />
     <String Id="DisableUpdates" Value="Отключить автоматические обновления" />
     <String Id="DesktopShortcut" Value="Создать ярлык на рабочем столе" />
     <String Id="LaunchAfterSetup" Value="Запустить MegaProxy после установки" />
+    <String Id="StepTitle" Value="Шаг {0} из 3 — {1}" />
+    <String Id="NextButton" Value="&amp;Далее" />
+    <String Id="BackButton" Value="&amp;Назад" />
+    <String Id="SystemScopeDescription" Value="Общая конфигурация для этого компьютера. Менять настройки могут администраторы. Доступен запуск в виде службы Windows." />
+    <String Id="PersonalScopeDescription" Value="Личная конфигурация и ярлыки. При установке потребуется подтверждение администратора. Режим службы Windows недоступен." />
+    <String Id="PreserveModeDescription" Value="Существующая установка сохранит режим запуска. При первой установке будет выбран ручной запуск." />
+    <String Id="ManualModeDescription" Value="Запускайте MegaProxy, когда он нужен. Трафик перенаправляется только при активном подключении приложения." />
+    <String Id="LoginModeDescription" Value="MegaProxy запускается в трее при входе в Windows. Установщик подготовит запуск с необходимыми повышенными правами." />
+    <String Id="ServiceModeDescription" Value="Сетевая служба запускается вместе с Windows, до входа пользователя, и работает независимо от окна. Клиент в трее запускается при входе." />
+    <String Id="PreserveUpdatesDescription" Value="Сохранить существующую настройку. При первой установке MegaProxy будет проверять обновления раз в день." />
+    <String Id="EnableUpdatesDescription" Value="Проверять раз в день и уведомлять о новой версии. Время скачивания и установки выбираете вы." />
+    <String Id="DisableUpdatesDescription" Value="Не проверять обновления в фоне. Проверку можно запустить вручную в настройках." />
 </WixLocalization>
