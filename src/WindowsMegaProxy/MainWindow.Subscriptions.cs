@@ -59,7 +59,7 @@ public partial class MainWindow
             }
             else
             {
-                var updated = await TrackFileAsync(Task.Run(() => SubscriptionRefresh.RunAsync(snapshot, manual, subscriptionStopping.Token), subscriptionStopping.Token));
+                var updated = await TrackFileAsync(Task.Run(() => SubscriptionRefresh.RunAsync(snapshot, manual, subscriptionStopping.Token, log: WriteLog), subscriptionStopping.Token));
                 if (updated is not null && !quitting && expected == settingsRevision)
                 {
                     await CommitSettingsAsync(updated);

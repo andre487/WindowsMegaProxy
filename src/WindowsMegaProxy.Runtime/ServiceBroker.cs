@@ -310,7 +310,7 @@ public sealed class ServiceBroker : IAsyncDisposable
                 snapshot = settings.Copy(); expected = revision;
             }
             finally { configuration.Release(); }
-            var updated = await SubscriptionRefresh.RunAsync(snapshot, manual, token).ConfigureAwait(false);
+            var updated = await SubscriptionRefresh.RunAsync(snapshot, manual, token, log: log.Write).ConfigureAwait(false);
             if (updated is null) return;
             await configuration.WaitAsync(token).ConfigureAwait(false);
             try

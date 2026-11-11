@@ -19,6 +19,7 @@
             Margin="0,0,0,16" />
         <CheckBox
             x:Name="PasswordsBox"
+            IsChecked="True"
             Content="{DynamicResource &quot;Include passwords&quot;}"
             Margin="0,0,0,16" />
         <Label
@@ -38,6 +39,7 @@
         </ComboBox>
         <CheckBox
             x:Name="PrivateKeysBox"
+            IsChecked="True"
             Content="{DynamicResource &quot;Include private SSH keys&quot;}"
             Margin="0,0,0,16" />
         <TextBlock

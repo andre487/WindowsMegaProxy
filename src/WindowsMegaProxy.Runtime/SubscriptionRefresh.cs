@@ -13,7 +13,7 @@ namespace WindowsMegaProxy;
 public static class SubscriptionRefresh
 {
     public static async Task<Settings?> RunAsync(Settings snapshot, bool manual, CancellationToken token,
-        Func<SubscriptionDefinition, string, CancellationToken, Task<string>>? download = null)
+        Func<SubscriptionDefinition, string, CancellationToken, Task<string>>? download = null, Action<string>? log = null)
     {
         var definition = ConfigurationSubscription.Get(snapshot);
         if (definition is null || !manual && !ConfigurationSubscription.Due(snapshot, DateTimeOffset.UtcNow)) return null;
@@ -21,15 +21,28 @@ public static class SubscriptionRefresh
         foreach (string url in definition.Sources)
         {
             token.ThrowIfCancellationRequested();
+            string stage = "download";
             try
             {
                 string text = await (download ?? DownloadAsync)(definition, url, token).ConfigureAwait(false);
+                stage = "parse";
                 var import = ProfileTransfer.Parse(text);
+                stage = "apply";
                 return ConfigurationSubscription.ApplySnapshot(snapshot, import, source, DateTimeOffset.UtcNow);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or OperationCanceledException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException or FormatException or OverflowException)
-            { /* A failed source must not expose URLs, credentials or response bodies. */ }
+            {
+                string reason = error switch
+                {
+                    HttpRequestException { StatusCode: { } code } => "HTTP " + (int)code,
+                    HttpRequestException http => "HTTP transport " + http.HttpRequestError,
+                    OperationCanceledException => "timeout",
+                    _ => error.GetType().Name
+                };
+                // Exception messages may contain credentials, source URLs or configuration contents.
+                log?.Invoke($"Configuration subscription source {source + 1} failed during {stage}: {reason}.");
+            }
             source++;
         }
         return ConfigurationSubscription.Failed(snapshot, DateTimeOffset.UtcNow);
@@ -59,7 +72,7 @@ public static class SubscriptionRefresh
         using var connect = CancellationTokenSource.CreateLinkedTokenSource(budget.Token);
         connect.CancelAfter(TimeSpan.FromSeconds(15));
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, connect.Token).ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK) throw new IOException("Configuration source returned an unsuccessful status.");
+        if (response.StatusCode != HttpStatusCode.OK) throw new HttpRequestException("Configuration source returned an unsuccessful status.", null, response.StatusCode);
         await using var body = await response.Content.ReadAsStreamAsync(budget.Token).ConfigureAwait(false);
         using var output = new MemoryStream();
         byte[] buffer = new byte[16384];
