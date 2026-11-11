@@ -52,6 +52,7 @@
             <Setter Property="FontWeight" Value="Normal" />
         </Style>
         <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
             <EventSetter Event="SizeChanged" Handler="TableSizeChanged" />
             <EventSetter Event="Loaded" Handler="TableLoaded" />
             <Setter Property="FontWeight" Value="Normal" />
