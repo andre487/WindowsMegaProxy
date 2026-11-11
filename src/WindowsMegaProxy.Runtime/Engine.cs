@@ -52,7 +52,7 @@ public sealed partial class Engine : IEngine
     }
     public bool HasProbeProfile => SelectedOutbound != "direct";
 
-    public Engine(string? stateDirectory = null, Uri? http3ProbeUri = null, bool allowEnvironmentOverrides = true, Func<bool>? otherRunning = null)
+    public Engine(string? stateDirectory = null, Uri? http3ProbeUri = null, bool allowEnvironmentOverrides = false, Func<bool>? otherRunning = null)
     {
         this.allowEnvironmentOverrides = allowEnvironmentOverrides;
         this.otherRunning = otherRunning ?? ChannelControl.OtherRunning;
@@ -185,15 +185,20 @@ public sealed partial class Engine : IEngine
         configPath = Path.Combine(stateDirectory, testOnly ? $"test-runtime-{Guid.NewGuid():N}.json" : "runtime.json");
         try
         {
-            await File.WriteAllTextAsync(configPath, config.ToJsonString(Configuration.JsonOptions));
-            var check = await CoreProcess.RunAsync(StartInfo(executable, "check"), TimeSpan.FromSeconds(30), cancellationToken);
-            if (check.ExitCode != 0)
+            string configuration = config.ToJsonString(Configuration.JsonOptions);
+            bool native = NativeCore.IsHost(executable);
+            if (!native)
             {
-                Log?.Invoke(check.Error);
-                throw new InvalidOperationException("sing-box rejected the configuration. Check the profile and rules.");
+                await File.WriteAllTextAsync(configPath, configuration);
+                var check = await CoreProcess.RunAsync(StartInfo(executable, "check"), TimeSpan.FromSeconds(30), cancellationToken);
+                if (check.ExitCode != 0)
+                {
+                    Log?.Invoke(check.Error);
+                    throw new InvalidOperationException("sing-box rejected the configuration. Check the profile and rules.");
+                }
             }
             cancellationToken.ThrowIfCancellationRequested();
-            consoleLease = await CoreConsole.AcquireAsync(cancellationToken);
+            if (!native) consoleLease = await CoreConsole.AcquireAsync(cancellationToken);
             job = new ProcessJob();
             var existing = !testOnly && settings.ResetExistingTcpConnections
                 ? await Task.Run(() => ExistingTcpConnections.Capture(settings, message => Log?.Invoke(message)), cancellationToken)
@@ -203,6 +208,7 @@ public sealed partial class Engine : IEngine
             process.EnableRaisingEvents = true;
             process.Exited += (_, _) => { if (!changingProfile) Exited?.Invoke(); };
             drain = Task.WhenAll(DrainAsync(process.StandardOutput), DrainAsync(process.StandardError));
+            if (native) await process.StandardInput.BaseStream.WriteAsync(NativeCore.Request(1, configuration), cancellationToken);
             for (int attempt = 0; attempt < 40; attempt++)
             {
                 if (!Running) throw new InvalidOperationException("The core exited during startup. TUN may already be in use.");
@@ -319,6 +325,12 @@ public sealed partial class Engine : IEngine
 
     private async Task<(int ExitCode, string Error)> RunCoreToolAsync(string executable, JsonObject config, string url, CancellationToken token)
     {
+        if (NativeCore.IsHost(executable))
+        {
+            var result = await CoreProcess.RunAsync(StartInfo(executable, "fetch"), TimeSpan.FromSeconds(15), token,
+                NativeCore.Request(2, config.ToJsonString(), url));
+            return (result.ExitCode, result.Error);
+        }
         string path = Path.Combine(stateDirectory, $"http3-probe-{Guid.NewGuid():N}.json");
         try
         {
@@ -342,7 +354,8 @@ public sealed partial class Engine : IEngine
         {
             if (Running)
             {
-                CoreConsole.Stop();
+                if (process!.StartInfo.RedirectStandardInput) process.StandardInput.Close();
+                else CoreConsole.Stop();
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 try { await process!.WaitForExitAsync(timeout.Token); }
                 catch (OperationCanceledException) { job?.Dispose(); job = null; }
@@ -404,6 +417,13 @@ public sealed partial class Engine : IEngine
     {
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
             WorkingDirectory = Path.GetDirectoryName(executable)!, WindowStyle = ProcessWindowStyle.Hidden };
+        if (NativeCore.IsHost(executable))
+        {
+            info.CreateNoWindow = true;
+            info.RedirectStandardInput = true;
+            info.ArgumentList.Add(executable == CoreExecutable(alpha: true) ? "experimental" : "stable");
+            return info;
+        }
         foreach (var arg in new[] { command, "-c", configPath }) info.ArgumentList.Add(arg);
         return info;
     }

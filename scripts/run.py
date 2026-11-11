@@ -2,7 +2,6 @@
 
 import ctypes as ct
 import os
-import shutil
 import subprocess as sp
 import sys
 import time
@@ -11,6 +10,7 @@ from ctypes import wintypes as wt
 from pathlib import Path
 
 import build
+import build_core
 from common import ROOT, app_name, artifact_root, cli
 from install import elevate, elevated_cli
 from service_control import service_state, stop_service
@@ -121,13 +121,8 @@ def restart():
     env["DOTNET_ROOT"] = str(ROOT / ".tools/dotnet")
     for directory, variable in (("sing-box", "WINDOWSMEGAPROXY_CORE"), ("sing-box-h3", "WINDOWSMEGAPROXY_H3_CORE")):
         destination = ROOT / ".tools/dev-cores" / directory
-        destination.mkdir(parents=True, exist_ok=True)
-        for source in (ROOT / ".tools" / directory).iterdir():
-            if source.is_file():
-                target = destination / ("sing-box-dev.exe" if source.name == "sing-box.exe" else source.name)
-                if not target.exists() or (target.stat().st_size, target.stat().st_mtime_ns) != (source.stat().st_size, source.stat().st_mtime_ns):
-                    shutil.copy2(source, target)
-        env[variable] = str(destination / "sing-box-dev.exe")
+        build_core.install(destination, experimental=directory == "sing-box-h3", dev=True)
+        env[variable] = str(destination / "WindowsMegaProxy.Dev.Core.exe")
     sp.Popen([str(artifact_root(True) / "app/WindowsMegaProxy.Dev.exe")], cwd=ROOT, env=env)
 
 

@@ -4,7 +4,9 @@
 
 Develop on Windows 10/11 x64 with VS Code and [uv](https://docs.astral.sh/uv/).
 Visual Studio is not required. Dependencies are downloaded into the checkout;
-the pinned Go SDK builds the standalone HTTP/3 diagnostic helper.
+the pinned Go SDK builds the HTTP/3 diagnostic helper and the two network core DLLs.
+The DLL build also downloads a checksum-pinned Zig C compiler; Go is not needed on
+users' computers. See [native core architecture and trust checks](../native/core/README.md).
 
 ```cmd
 setup.cmd
@@ -24,6 +26,8 @@ mode explicitly.
 | Command | Checks |
 | --- | --- |
 | `tools-test.cmd` | Python build/release tools |
+| `build-core.cmd --dev` | Build Stable and Experimental DLLs and the isolated DEV host |
+| `test-core.cmd --signed` | Native lifecycle, local forwarding and mutual signature checks |
 | `test.cmd` | Configuration and core validation |
 | `ui-test.cmd` | UI, service and lifecycle fixtures |
 | `h3-test.cmd` | Local HTTP/3, HTTPS Jump and fallback |
@@ -33,5 +37,7 @@ mode explicitly.
 
 The IPv6 suite uses local SOCKS ingress instead of TUN and does not test external
 IPv6 connectivity or Wintun. Logs and test reports remain under `artifacts`.
+`test-core.cmd --signed --tun` additionally creates and closes a test Wintun adapter
+without automatic routes; it requires administrator rights. CI runs this check.
 For release signing, packaging, CI gates and retries, see
 [Installer and release automation](../installer/README.md).

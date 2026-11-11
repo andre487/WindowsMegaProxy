@@ -19,6 +19,14 @@ from package import archive, checksums, merge, signed_manifest, version
 
 
 class PackageTests(unittest.TestCase):
+    def test_native_cores_do_not_generate_upstream_download_definitions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            directory = payload / "dependencies/sing-box"
+            directory.mkdir(parents=True)
+            (directory / "MegaProxy.Core.Stable.dll").touch()
+            self.assertEqual(package.core_installer_definitions(payload), {})
+
     @patch("package.github_asset_url", return_value="https://api.github.com/repos/SagerNet/sing-box/releases/assets/123")
     def test_installer_core_downloads_pin_official_archives_and_extracted_files(self, asset_url):
         with tempfile.TemporaryDirectory() as temporary:

@@ -95,7 +95,7 @@ internal static class Ipv6Checks
                 config.Remove("experimental");
                 string name = $"{type}-h{version}-{policy}";
                 inboundReservation.Stop();
-                await using var core = await Core.StartAsync(Configuration.RequiresAlpha(settings) ? alpha : stable, config, directory, name, IPAddress.Loopback, port, token);
+                await using var core = await Core.StartAsync(NetworkCorePaths.Client(Configuration.RequiresAlpha(settings)), config, directory, name, IPAddress.Loopback, port, token);
                 using var client = new HttpClient(new HttpClientHandler
                 { Proxy = new WebProxy($"socks5://127.0.0.1:{port}") { Credentials = new NetworkCredential("diagnostic", "fixture") }, UseProxy = true })
                 { Timeout = TimeSpan.FromSeconds(10) };
@@ -126,11 +126,23 @@ internal static class Ipv6Checks
             string path = Path.Combine(directory, name + ".json");
             await File.WriteAllTextAsync(path, config.ToJsonString(Configuration.JsonOptions), token);
             var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
-            foreach (string argument in new[] { "run", "-c", path }) start.ArgumentList.Add(argument);
+            bool native = Path.GetFileName(executable) == "WindowsMegaProxy.Dev.Core.exe";
+            if (native)
+            {
+                start.RedirectStandardInput = true;
+                start.ArgumentList.Add(executable == NetworkCorePaths.Client(true) ? "experimental" : "stable");
+            }
+            else foreach (string argument in new[] { "run", "-c", path }) start.ArgumentList.Add(argument);
             var process = Process.Start(start)!;
             var core = new Core(process, process.StandardError.ReadToEndAsync(), process.StandardOutput.ReadToEndAsync());
             try
             {
+                if (native)
+                {
+                    byte[] data = System.Text.Encoding.UTF8.GetBytes(config.ToJsonString());
+                    using var writer = new BinaryWriter(process.StandardInput.BaseStream, System.Text.Encoding.UTF8, leaveOpen: true);
+                    writer.Write(1); writer.Write(data.Length); writer.Write(data); writer.Flush();
+                }
                 for (int attempt = 0; ; attempt++)
                 {
                     if (process.HasExited) throw new IOException(name + ": " + await core.ErrorOutput);

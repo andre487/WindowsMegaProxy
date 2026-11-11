@@ -107,14 +107,15 @@ class SigningTests(unittest.TestCase):
                         auth.sign_file(path, environment)
 
     def test_upstream_dependencies_are_not_resigned(self):
-        names = ["WindowsMegaProxy.exe", "WindowsMegaProxy.Runtime.dll", "Microsoft.dll", "sing-box.exe", "settings.json"]
+        names = ["WindowsMegaProxy.exe", "WindowsMegaProxy.Runtime.dll", "MegaProxy.Core.Stable.dll", "MegaProxy.Core.Experimental.dll",
+                 "Microsoft.dll", "sing-box.exe", "wintun.dll", "settings.json"]
         for name in names:
             (self.root / name).touch()
         signer = object.__new__(auth.Signer)
         signer.environment = {}
         with patch.object(auth, "sign_file") as sign:
             signer.sign_directory(self.root)
-        self.assertEqual({call.args[0].name for call in sign.call_args_list}, set(names[:2]))
+        self.assertEqual({call.args[0].name for call in sign.call_args_list}, set(names[:4]))
 
     def test_old_tag_setup_uses_current_downloader_and_tag_dependency_versions(self):
         scripts = self.root / "scripts"

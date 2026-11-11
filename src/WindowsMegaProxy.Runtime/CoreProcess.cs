@@ -12,12 +12,13 @@ public sealed record ProcessResult(int ExitCode, string Output, string Error);
 
 public static class CoreProcess
 {
-    public static async Task<ProcessResult> RunAsync(ProcessStartInfo start, TimeSpan timeout, CancellationToken token)
+    public static async Task<ProcessResult> RunAsync(ProcessStartInfo start, TimeSpan timeout, CancellationToken token, byte[]? input = null)
     {
         token.ThrowIfCancellationRequested();
         start.UseShellExecute = false;
         start.CreateNoWindow = true;
         start.RedirectStandardOutput = start.RedirectStandardError = true;
+        start.RedirectStandardInput = input is not null;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(timeout);
         using var job = new ProcessJob();
@@ -27,6 +28,12 @@ public static class CoreProcess
             job.Assign(process);
             var output = ReadAsync(process.StandardOutput, deadline);
             var error = ReadAsync(process.StandardError, deadline);
+            if (input is not null)
+            {
+                try { await process.StandardInput.BaseStream.WriteAsync(input, deadline.Token); }
+                catch (IOException) when (process.HasExited) { }
+                finally { process.StandardInput.Close(); }
+            }
             await Task.WhenAll(output, error, process.WaitForExitAsync(deadline.Token));
             return new(process.ExitCode, await output, await error);
         }

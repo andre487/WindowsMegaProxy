@@ -99,7 +99,7 @@ def main():
             check("--published-update-check", args.version)
         check("--update-preservation-check", "verify")
         assert service_state("WindowsMegaProxy") == 4, "The update must preserve a running service."
-        assert "sing-box.exe" not in running_images(), "Update tests must never activate TUN."
+        assert not running_images() & {"sing-box.exe", "WindowsMegaProxy.Core.exe"}, "Update tests must never activate TUN."
         for _ in range(120):
             if not (destination / "update/setup.exe").exists() and not (local / "Updates/setup.exe").exists():
                 break

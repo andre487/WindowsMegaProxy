@@ -59,7 +59,7 @@ public static partial class Installation
             {
                 if (args.Length != 1) throw new ArgumentException("Invalid dependency check arguments.");
                 foreach (string directory in new[] { "sing-box", "sing-box-h3" })
-                    foreach (string name in new[] { AppIdentity.CoreExecutable, "libcronet.dll" })
+                    foreach (string name in new[] { AppIdentity.CoreExecutable, directory == "sing-box" ? "MegaProxy.Core.Stable.dll" : "MegaProxy.Core.Experimental.dll" })
                         if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "dependencies", directory, name)))
                             throw new IOException("A bundled sing-box dependency is missing. Repair the installation.");
                 if (!File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh-keyscan.exe")))

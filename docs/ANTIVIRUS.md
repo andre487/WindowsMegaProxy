@@ -12,15 +12,15 @@ suspicious software. These classifications can also affect unmodified upstream
 builds, including classifications reported by Kaspersky and DeepInstinct.
 Detections vary by core and engine version. Installing through a package manager
 does not remove antivirus checks.
-MegaProxy uses upstream binaries without modifying or re-signing them:
+MegaProxy builds and signs its own `MegaProxy.Core.Stable.dll` and
+`MegaProxy.Core.Experimental.dll` from pinned upstream Go modules:
 
-Both cores are bundled with the application and installer. They are downloaded
-at build time from the official SagerNet release URLs:
+- [Stable sing-box 1.14.4](https://github.com/SagerNet/sing-box/tree/v1.14.4).
+- [Experimental sing-box 1.15.0-alpha.13](https://github.com/SagerNet/sing-box/tree/v1.15.0-alpha.13).
 
-- [Stable sing-box 1.14.4](https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-windows-amd64.zip).
-- [HTTP/3 sing-box 1.15.0-alpha.13](https://github.com/SagerNet/sing-box/releases/download/v1.15.0-alpha.13/sing-box-1.15.0-alpha.13-windows-amd64.zip).
-
-Archive hashes are pinned; fallback mirrors must provide the same verified bytes.
+Both DLLs are bundled with the application and installer. Module versions and
+checksums are recorded in `native/core`; these are MegaProxy builds, not official
+sing-box release binaries. Custom packaging does not guarantee fewer detections.
 No WinGet installation or runtime core download is involved. The .NET runtime is
 also bundled at a pinned version. Wintun is supplied by the upstream cores;
 MegaProxy does not build its own kernel driver. OpenSSH Client is a mandatory
@@ -33,6 +33,12 @@ in [`assets/authenticode-certificate.pem`](../assets/authenticode-certificate.pe
 This does not establish Windows publisher trust. Production signing uses SHA-256
 and an RFC 3161 timestamp. Ed25519 manifest signatures and package hashes remain
 mandatory for application updates and release publication.
+
+Before loading a production core DLL, its host verifies the Authenticode signature
+and pinned publisher key. The DLL verifies the host executable in the same way.
+No certificate is installed in Windows trust stores. DEV binaries use a separate
+compile-time policy. These checks do not defend against an administrator or code
+already injected into an authorized process.
 
 ## Optional manual VirusTotal check
 

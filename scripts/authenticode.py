@@ -145,7 +145,7 @@ class Signer:
 
     def sign_directory(self, directory):
         for path in sorted(Path(directory).rglob("*")):
-            if path.is_file() and path.name.startswith("WindowsMegaProxy") and path.suffix.lower() in (".exe", ".dll"):
+            if path.is_file() and path.name.startswith(("WindowsMegaProxy", "MegaProxy.Core.")) and path.suffix.lower() in (".exe", ".dll"):
                 sign_file(path, self.environment)
 
     def inno_tool(self):

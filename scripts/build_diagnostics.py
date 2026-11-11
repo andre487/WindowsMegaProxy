@@ -9,7 +9,7 @@ GO_VERSION = "1.27.3"
 GO_SHA256 = "f26081f438319757f8a1b46d7d0b2c5ec7583d4038e485e0aa725cfde7885fff"
 
 
-def main(test=False):
+def ensure_go():
     executable = ROOT / ".tools/go/bin/go.exe"
     if not executable.exists():
         archive = download(f"https://go.dev/dl/go{GO_VERSION}.windows-amd64.zip",
@@ -17,6 +17,11 @@ def main(test=False):
         extract(archive, ROOT / ".tools")
     if (ROOT / ".tools/go/VERSION").read_text(encoding="utf-8").splitlines()[0] != f"go{GO_VERSION}":
         raise RuntimeError(f"The local Go SDK must be {GO_VERSION}; replace .tools/go before building.")
+    return executable
+
+
+def main(test=False):
+    executable = ensure_go()
     source = ROOT / "native/diagnostics"
     output = ROOT / "artifacts/diagnostics/WindowsMegaProxy.Diagnostics.exe"
     output.parent.mkdir(parents=True, exist_ok=True)
