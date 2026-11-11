@@ -96,8 +96,7 @@ public static class ConfigurationSubscription
         var owned = OwnedIds(current);
         ProfileTransfer.MatchListProfiles(import, current.Profiles.Where(profile => owned.Contains(profile.Id)).ToList(), subscription: true);
         var importedIds = import.Profiles.Select(profile => profile.Id).ToHashSet(StringComparer.Ordinal);
-        if (current.Profiles.Any(profile => importedIds.Contains(profile.Id) && !owned.Contains(profile.Id)))
-            throw new InvalidDataException("The subscription conflicts with a local profile ID.");
+        // A first refresh can adopt existing profiles by ID; unrelated local profiles remain local.
         if (import.Document["activeProfileId"] is { } active && !importedIds.Contains(active.GetValue<string>()))
             throw new InvalidDataException("The subscription refers to a missing active profile.");
         if (import.Document["failover"]?["profileIds"] is JsonArray backupIds && backupIds.Any(id => id is not JsonValue value || !value.TryGetValue<string>(out var text) || !importedIds.Contains(text)))

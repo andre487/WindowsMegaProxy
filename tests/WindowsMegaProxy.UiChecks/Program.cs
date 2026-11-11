@@ -960,7 +960,10 @@ internal static partial class Program
                 if (type == "HTTPS_JUMP") Assert(edit.Profile.Supported && edit.Profile.Proxy["jump"]!["username"]!.ToString() == "jump-user" && edit.Profile.Proxy["jump"]!["futureJump"]!.GetValue<bool>(), "Jump editing preserves separate credentials and unknown server options.");
             }
             var exportDialog = new ExportWindow { Owner = window, WindowStartupLocation = WindowStartupLocation.Manual, Left = -10000, Top = -10000, ShowInTaskbar = false };
-            Assert(!exportDialog.IncludePasswords && !exportDialog.IncludePrivateKeys, "Credentials must be opt-in for export.");
+            Assert(exportDialog.IncludePasswords && exportDialog.IncludePrivateKeys, "Passwords and private keys are included by default and can be opted out.");
+            ((CheckBox)exportDialog.FindName("PasswordsBox")).IsChecked = false;
+            ((CheckBox)exportDialog.FindName("PrivateKeysBox")).IsChecked = false;
+            Assert(!exportDialog.IncludePasswords && !exportDialog.IncludePrivateKeys, "Export permits excluding both kinds of credentials.");
             ((ComboBox)exportDialog.FindName("FormatBox")).SelectedIndex = 1;
             Assert(exportDialog.ProxyList && !((CheckBox)exportDialog.FindName("PrivateKeysBox")).IsEnabled, "ProxyList export exposes its supported subset and disables private-key export.");
             ((ComboBox)exportDialog.FindName("FormatBox")).SelectedIndex = 0;

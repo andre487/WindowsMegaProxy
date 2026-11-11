@@ -20,7 +20,7 @@ internal static class ConfigurationRefreshChecks
     private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
     private static async Task RejectAsync(Func<Task> action)
     {
-        try { await action(); } catch (Exception error) when (error is IOException or InvalidDataException or ArgumentException) { return; }
+        try { await action(); } catch (Exception error) when (error is IOException or InvalidDataException or ArgumentException or HttpRequestException) { return; }
         throw new Exception("Invalid source was accepted.");
     }
     public static async Task RunAsync()
@@ -43,6 +43,17 @@ internal static class ConfigurationRefreshChecks
         Check(notDue is null, "Automatic refresh respects interval.");
         var failed = await SubscriptionRefresh.RunAsync(second!, true, CancellationToken.None, (_, _, _) => throw new IOException("private remote URL/body"));
         Check(failed!.Profiles.Count == 2 && ConfigurationSubscription.Status(failed) == "Update failed", "All failed sources preserve working profiles and expose generic status.");
+        var diagnosticLog = new List<string>();
+        await SubscriptionRefresh.RunAsync(settings, true, CancellationToken.None,
+            (_, _, _) => throw new HttpRequestException("private remote URL/body", null, HttpStatusCode.Forbidden), diagnosticLog.Add);
+        Check(diagnosticLog.Count == 2 && diagnosticLog[0].Contains("source 1 failed during download: HTTP 403") &&
+            diagnosticLog[1].Contains("source 2") && !string.Join("", diagnosticLog).Contains("private"),
+            "Subscription diagnostics identify source, stage and HTTP status without exposing remote data.");
+        diagnosticLog.Clear();
+        await SubscriptionRefresh.RunAsync(settings, true, CancellationToken.None,
+            (_, _, _) => Task.FromResult("invalid config private"), diagnosticLog.Add);
+        Check(diagnosticLog.All(line => line.Contains("during parse:") && !line.Contains("private")),
+            "Malformed subscription diagnostics report the parse stage without leaking payloads.");
         using var stopping = new CancellationTokenSource(); stopping.Cancel();
         try { await SubscriptionRefresh.RunAsync(settings, true, stopping.Token); throw new Exception("Cancellation was ignored."); }
         catch (OperationCanceledException) { }

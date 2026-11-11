@@ -66,7 +66,20 @@ internal static class TransferChecks
         Check(PortableConfiguration.Export(refreshed)["windows"]![ConfigurationSubscription.StateKey] is null, "Ownership/status are never exported.");
         Check(PortableConfiguration.Export(refreshed)["subscription"]!["password"] is null, "Subscription passwords follow the export password option.");
         var collision = PortableConfiguration.Export(new Settings { Profiles = [local.Copy()], ActiveProfileId = local.Id });
-        Reject(() => ConfigurationSubscription.ApplySnapshot(subscribed, ProfileTransfer.Parse(collision.ToJsonString()), 0, DateTimeOffset.UtcNow));
+        collision["profiles"]![0]!["proxy"]!["port"] = 8443;
+        var adopted = ConfigurationSubscription.ApplySnapshot(subscribed, ProfileTransfer.Parse(collision.ToJsonString()), 0, DateTimeOffset.UtcNow);
+        Check(adopted.Profiles.Single(profile => profile.Id == local.Id).Port == 8443 && ConfigurationSubscription.OwnedIds(adopted).Contains(local.Id),
+            "A feed replaces a matching local ID and adopts it for future refreshes.");
+        var unowned = subscribed.Copy();
+        unowned.WindowsOptions.Remove(ConfigurationSubscription.StateKey);
+        var recovered = ConfigurationSubscription.ApplySnapshot(unowned, ProfileTransfer.Parse(collision.ToJsonString()), 0, DateTimeOffset.UtcNow);
+        Check(recovered.Profiles.Count == unowned.Profiles.Count && recovered.Profiles.Single(profile => profile.Id == local.Id).Port == 8443 &&
+            ConfigurationSubscription.OwnedIds(recovered).SetEquals(new[] { local.Id }),
+            "Missing ownership is recovered for matching IDs without deleting unrelated local profiles.");
+        var nextFeed = PortableConfiguration.Export(new Settings { Profiles = [first.Copy()], ActiveProfileId = first.Id });
+        var nextRefresh = ConfigurationSubscription.ApplySnapshot(recovered, ProfileTransfer.Parse(nextFeed.ToJsonString()), 0, DateTimeOffset.UtcNow);
+        Check(nextRefresh.Profiles.All(profile => profile.Id != local.Id) && nextRefresh.Profiles.Any(profile => profile.Id == "second"),
+            "Later refreshes remove adopted profiles absent from the feed while keeping unrelated local profiles.");
         var badSubscription = (JsonObject)feed.DeepClone(); badSubscription["subscription"] = new JsonArray("invalid");
         Reject(() => ConfigurationSubscription.ApplySnapshot(subscribed, ProfileTransfer.Parse(badSubscription.ToJsonString()), 0, DateTimeOffset.UtcNow));
         var badBackups = (JsonObject)feed.DeepClone(); badBackups["failover"] = new JsonObject { ["mode"] = "SELECTED", ["profileIds"] = new JsonArray((JsonNode?)null) };
