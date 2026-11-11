@@ -278,8 +278,6 @@ def check(setup, logs, destination, data, *, fresh=False):
             "Manifest": base64.b64encode((failed_feed / "update-manifest.json").read_bytes()).decode(),
             "Signature": base64.b64encode((failed_feed / "update-manifest.sig").read_bytes()).decode()}), encoding="utf-8")
         command("--install-update", "launch")
-        query_pid = "(Get-CimInstance Win32_Service -Filter \"Name='WindowsMegaProxy'\").ProcessId"
-        service_pid = sp.check_output(["powershell.exe", "-NoProfile", "-Command", query_pid], text=True).strip() if not damage else None
         worker = destination / "update/worker/WindowsMegaProxy.Service.exe"
         failed = sp.run([str(worker), "--run-staged-update"], timeout=120)
         assert failed.returncode == 1 and pending()["When"] == "failed"
