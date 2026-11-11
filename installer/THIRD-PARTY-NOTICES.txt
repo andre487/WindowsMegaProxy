@@ -29,3 +29,8 @@ The Wintun binary distribution license is included in licenses/Wintun-LICENSE.tx
 .NET source and license: https://github.com/dotnet/runtime/tree/v10.0.14
 Windows OpenSSH Client is a mandatory Windows capability installed when missing.
 Their respective installers and operating-system license terms apply.
+
+WiX 7 Burn and BootstrapperApplicationApi: Microsoft Reciprocal License (MS-RL).
+Source: https://github.com/wixtoolset/wix/tree/v7.0.0
+License: licenses/WiX-LICENSE.txt. The setup UI and installation engine run on the
+.NET Framework supplied with Windows; no separate bootstrap runtime is bundled.

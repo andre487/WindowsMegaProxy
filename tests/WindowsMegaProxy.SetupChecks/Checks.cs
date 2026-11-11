@@ -1,0 +1,226 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Globalization;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Reflection;
+using System.Security.AccessControl;
+using System.Security.Cryptography;
+using System.Security.Principal;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using WixToolset.BootstrapperApplicationApi;
+
+internal static class Checks
+{
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
+        string root = Path.Combine(Path.GetTempPath(), "MegaProxy.Setup.Check-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Console.WriteLine("Checking setup commands, permissions, archives and runtime caching.");
+            Arguments();
+            Permissions();
+            Archives(root);
+            Runtime(root).GetAwaiter().GetResult();
+            if (args.Length == 1) { Console.WriteLine("Checking setup wizard."); Windows(args[0]); }
+            Console.WriteLine("Setup command compatibility, archive boundaries, runtime caching and UI checks passed; no installation performed.");
+            return 0;
+        }
+        catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        finally { Directory.Delete(root, true); }
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition) throw new Exception(message);
+    }
+
+    private static void Reject<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T) { return; }
+        throw new Exception("Expected " + typeof(T).Name);
+    }
+
+    private static void Arguments()
+    {
+        new SetupArguments(new[] { "-norestart", "RegistrationOnly=1", "Scope=PerMachine" });
+        var parsed = new SetupArguments(new[] { "/ALLUSERS", "/VERYSILENT", "/MODE=service", "/BOOTUPDATE=1", "/REOPEN=0" });
+        Require(parsed.Boot && parsed.Silent && parsed.Scope == BundleScope.PerMachine, "Released boot worker switches were not recognized.");
+        parsed = new SetupArguments(new[] { "/CURRENTUSER", "/SILENT", "/MODE=login", "/STAGEDUPDATE=1", "/UPDATE=1", "/MERGETASKS=!automaticupdates" });
+        Require(parsed.Scope == BundleScope.PerUser && parsed.Values["StagedUpdate"] == "1" && parsed.Values["AutomaticUpdates"] == "false", "Released personal update switches were not recognized.");
+        parsed = new SetupArguments(new[] { "Scope=PerUser", "Mode=manual", "AutomaticUpdates=true", "/TASKS=" });
+        Require(parsed.Values["AutomaticUpdates"] == "false", "Explicit task clearing was lost.");
+        Reject<ArgumentException>(() => new SetupArguments(new[] { "/CURRENTUSER", "/MODE=service", "/BOOTUPDATE=1" }));
+        Reject<ArgumentException>(() => new SetupArguments(new[] { "Mode=unknown" }));
+        Reject<ArgumentException>(() => new SetupArguments(new[] { "InstallSSH=0" }));
+        Reject<ArgumentException>(() => new SetupArguments(new[] { "/TASKS=unknown" }));
+        Require(new SetupArguments(new[] { "/UPDATE=1" }).Values["LaunchAfterSetup"] == "1", "Legacy updates must reopen the application by default.");
+        Require(new SetupArguments(new[] { "/REOPEN=0", "/UPDATE=1" }).Values["LaunchAfterSetup"] == "0", "Explicit reopen suppression must survive argument ordering.");
+        foreach (string value in new[] { "", "a", @"C:\path with spaces\", @"C:\path\file.dll", "[value]" })
+            Require(SetupArguments.Split(Program.Quote(value))[0] == value, "Windows argument quoting failed.");
+        Reject<ArgumentException>(() => Program.Quote("a\"b"));
+    }
+
+    private static void Permissions()
+    {
+        var creator = new SecurityIdentifier(WellKnownSidType.CreatorOwnerSid, null);
+        var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+        Require(!Program.UntrustedWrite(new FileSystemAccessRule(creator, FileSystemRights.FullControl,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.InheritOnly, AccessControlType.Allow)), "Legacy inheritable creator-owner permissions must be accepted before hardening.");
+        Require(Program.UntrustedWrite(new FileSystemAccessRule(users, FileSystemRights.Write, AccessControlType.Allow)), "Unprivileged writes must be rejected.");
+        Require(Program.UntrustedWrite(new FileSystemAccessRule(creator, FileSystemRights.FullControl, AccessControlType.Allow)), "A direct creator-owner grant must not bypass validation.");
+        Require(!Program.UntrustedWrite(new FileSystemAccessRule(users, FileSystemRights.ReadAndExecute, AccessControlType.Allow)), "Read-only user access must be accepted.");
+        Require(!Program.UntrustedWrite(new FileSystemAccessRule(new SecurityIdentifier("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"), FileSystemRights.FullControl, AccessControlType.Allow)), "Windows TrustedInstaller is a privileged service.");
+        var generic = new DirectorySecurity();
+        generic.SetSecurityDescriptorSddlForm("D:(A;OIIO;GA;;;BU)");
+        Require(Program.UntrustedWrite((FileSystemAccessRule)generic.GetAccessRules(true, false, typeof(SecurityIdentifier))[0]), "Generic write grants to unprivileged users must be rejected.");
+    }
+
+    private static void Archives(string root)
+    {
+        foreach (string invalid in new[] { "../outside", "C:/outside", "/absolute", "a\\b", "a/../b", "a//b", "./a", "", "NUL.dll", "CON", "a.", ".setup/state", "update/setup.exe", "user-installation.sid" })
+            Reject<IOException>(() => Program.EntryPath(root, invalid));
+        Require(Program.EntryPath(root, "folder/app.dll") == Path.Combine(root, "folder", "app.dll"), "Valid archive path rejected.");
+        foreach (string[] entries in new[] { new[] { "../escape" }, new[] { "duplicate.dll", "DUPLICATE.dll" } })
+        {
+            string target = Path.Combine(root, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(target);
+            using var memory = new MemoryStream();
+            using (var zip = new ZipArchive(memory, ZipArchiveMode.Create, true)) foreach (string name in entries) zip.CreateEntry(name);
+            memory.Position = 0;
+            using var archive = new ZipArchive(memory);
+            Reject<IOException>(() => Program.ExtractPayload(archive, target));
+        }
+    }
+
+    private static async Task Runtime(string root)
+    {
+        foreach (string url in new[] { "http://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/a.nupkg", "https://evil.test/a.nupkg", "https://api.nuget.org.evil.test/a.nupkg", "https://user@api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/a.nupkg" })
+            Require(!Program.OfficialRuntime(new Uri(url)), "Untrusted runtime source accepted.");
+        Require(Program.OfficialRuntime(new Uri("https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/10.0.14/microsoft.netcore.app.runtime.win-x64.10.0.14.nupkg")), "Official runtime source rejected.");
+        string installed = Path.Combine(root, "installed"), staging = Path.Combine(root, "staging");
+        Directory.CreateDirectory(installed); Directory.CreateDirectory(staging);
+        byte[] bytes = { 1, 2, 3, 4 };
+        File.WriteAllBytes(Path.Combine(installed, "coreclr.dll"), bytes);
+        using var hash = SHA256.Create();
+        string checksum = BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "");
+        File.WriteAllBytes(Path.Combine(installed, "WindowsMegaProxy.Service.exe"), bytes);
+        var boot = new SetupManifest { Files = new[]
+        {
+            new RuntimeFile { Path = "WindowsMegaProxy.Service.exe", Sha256 = checksum },
+            new RuntimeFile { Path = "launcher/ignored.dll", Sha256 = checksum }
+        } };
+        Require(Program.VerifyInstalledInventory(boot, installed).Length == 1, "System boot registration must ignore personal launcher files.");
+        File.WriteAllText(Path.Combine(installed, "WindowsMegaProxy.Service.exe"), "incomplete");
+        Reject<IOException>(() => Program.VerifyInstalledInventory(boot, installed));
+        var field = typeof(Program).GetField("Root", BindingFlags.Static | BindingFlags.NonPublic)!;
+        field.SetValue(null, installed);
+        var manifest = new SetupManifest
+        {
+            Packages = new[] { new RuntimePackage { Url = "https://invalid.test/must-not-download" } },
+            RuntimeFiles = new[] { new RuntimeFile { Path = "coreclr.dll", Sha256 = checksum, Package = 0 } }
+        };
+        var method = typeof(Program).GetMethod("PrepareRuntime", BindingFlags.Static | BindingFlags.NonPublic)!;
+        await (Task)method.Invoke(null, new object[] { manifest, staging })!;
+        Require(Program.HashMatches(Path.Combine(staging, "coreclr.dll"), checksum), "A valid installed runtime was not reused.");
+        File.Delete(Path.Combine(staging, "coreclr.dll"));
+        File.WriteAllText(Path.Combine(installed, "coreclr.dll"), "damaged");
+        try { await (Task)method.Invoke(null, new object[] { manifest, staging })!; throw new Exception("Damaged cache was accepted."); }
+        catch (IOException) { }
+        Require(!File.Exists(Path.Combine(staging, "coreclr.dll")), "Damaged runtime was copied into installation staging.");
+    }
+
+    private static void Capture(SetupWindow window, string path)
+    {
+        window.ChoicesView.UpdateLayout();
+        using var bitmap = new Bitmap(window.Width, window.Height);
+        window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.Size));
+        // WM_PRINT does not render the WPF child of ElementHost.
+        var host = window.Controls.OfType<System.Windows.Forms.Integration.ElementHost>().Single();
+        var visual = (System.Windows.FrameworkElement)host.Child;
+        var rendered = new System.Windows.Media.Imaging.RenderTargetBitmap(host.Width, host.Height,
+            96 * host.Width / visual.ActualWidth, 96 * host.Height / visual.ActualHeight, System.Windows.Media.PixelFormats.Pbgra32);
+        rendered.Render(visual);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rendered));
+        using var memory = new MemoryStream(); encoder.Save(memory); memory.Position = 0;
+        using var content = Image.FromStream(memory);
+        using var graphics = Graphics.FromImage(bitmap);
+        var position = host.PointToScreen(Point.Empty);
+        graphics.DrawImage(content, position.X - window.Left, position.Y - window.Top, host.Width, host.Height);
+        bitmap.Save(path);
+    }
+
+    private static void Windows(string directory)
+    {
+        Require(SetupWindow.WheelDistance(-120, 3, 16, 400) == 48, "Wheel scrolling must honor Windows line count.");
+        Require(SetupWindow.WheelDistance(30, 3, 16, 400) == -12, "High-resolution wheel deltas must retain their proportion and direction.");
+        Require(SetupWindow.WheelDistance(-120, 0, 16, 400) == 0, "Disabled wheel scrolling must not move content.");
+        Require(SetupWindow.WheelDistance(-120, -1, 16, 400) == 400, "Windows page scrolling must use the viewport height.");
+        Directory.CreateDirectory(directory);
+        Application.EnableVisualStyles();
+        foreach (string language in new[] { "en", "ru" })
+        {
+            System.Threading.Thread.CurrentThread.CurrentUICulture = new CultureInfo(language);
+            Console.WriteLine("Creating wizard: " + language);
+            using var window = new SetupWindow(null, "0.0.0");
+            window.Ready(false, BundleScope.PerUser, new Dictionary<string, string> { ["Mode"] = "login" });
+            Require(window.Scope == BundleScope.PerUser && window.Options()["Mode"] == "login", "Personal UI options were lost.");
+            window.Show(); Application.DoEvents();
+            window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.ScrollableHeight == 0, "The first wizard page must not scroll when its content fits.");
+            for (int step = 0; step < 3; step++)
+            {
+                Require(window.Step == step, "Wizard navigation skipped a step.");
+                Application.DoEvents();
+                Capture(window, Path.Combine(directory, language + "-step-" + (step + 1) + ".png"));
+                if (step < 2) window.Advance();
+            }
+            foreach (var toggle in new[] { window.DesktopSwitch, window.LaunchSwitch })
+            {
+                var peer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer(toggle);
+                Require(!string.IsNullOrWhiteSpace(peer.GetName()), "Switches need accessible names.");
+                ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle)).Toggle();
+            }
+            Require(window.Options()["DesktopShortcut"] == "1" && window.Options()["LaunchAfterSetup"] == "1", "Switches must update installation options.");
+            window.Select(2, "false"); window.Previous(); window.Previous();
+            Require(window.Step == 0 && window.Options()["Mode"] == "login" && window.Options()["AutomaticUpdates"] == "false", "Going back must preserve choices.");
+            window.Select(0, "machine"); window.Select(1, "service"); window.Select(0, "user");
+            Require(window.Options()["Mode"] == "preserve", "Personal scope must clear a previously selected service mode.");
+            Reject<ArgumentException>(() => window.Select(1, "service"));
+            window.Ready(true, BundleScope.PerMachine, new Dictionary<string, string> { ["Mode"] = "service" });
+            Require(window.Scope == BundleScope.PerMachine && window.Options()["Mode"] == "service", "Maintenance UI options were lost.");
+            window.Advance(); Application.DoEvents();
+            Capture(window, Path.Combine(directory, language + "-system-mode.png"));
+            var large = window.Size;
+            window.Size = window.MinimumSize;
+            Application.DoEvents(); window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.ScrollableHeight > 0, "A short window must allow access to all choices.");
+            var wheel = new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, -30)
+            {
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseWheelEvent
+            };
+            window.ChoicesView.RaiseEvent(wheel);
+            window.ChoicesView.UpdateLayout();
+            double expected = Math.Min(window.ChoicesView.ScrollableHeight, SetupWindow.WheelDistance(-30,
+                System.Windows.SystemParameters.WheelScrollLines,
+                window.ChoicesView.FontSize * window.ChoicesView.FontFamily.LineSpacing, window.ChoicesView.ViewportHeight));
+            Require(wheel.Handled && Math.Abs(window.ChoicesView.VerticalOffset - expected) < 0.01,
+                "Wizard wheel input must apply the system setting once, without WPF acceleration.");
+            window.ChoicesView.ScrollToEnd(); window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.VerticalOffset > 0, "The narrow scrollbar must support scrolling.");
+            Capture(window, Path.Combine(directory, language + "-compact.png"));
+            window.Size = large; window.Previous();
+            Application.DoEvents(); window.ChoicesView.UpdateLayout();
+            Require(window.ChoicesView.ScrollableHeight == 0 && window.ChoicesView.VerticalOffset == 0, "Returning to the first page must clear old scroll extent and offset.");
+            window.Close();
+        }
+    }
+}

@@ -47,6 +47,7 @@ public static partial class Installation
                     {
                         if (File.Exists(PreparedPath(root))) return 0;
                         RequireNoQueuedRebootFiles(root);
+                        await CompleteBootRegistrationAsync(root, log);
                         string reboot = Path.Combine(staging, "reboot");
                         if (Directory.Exists(reboot)) { CheckDirectory(reboot); Directory.Delete(reboot, true); }
                         File.Delete(RebootReceipt(root));
@@ -91,5 +92,31 @@ public static partial class Installation
             CheckDirectory(directory);
             foreach (string name in new[] { "sing-box.exe", "sing-box-dev.exe", "libcronet.dll" }) File.Delete(Path.Combine(directory, name));
         }
+    }
+
+    private static async Task CompleteBootRegistrationAsync(string root, DiagnosticLog log)
+    {
+        // Released boot workers skip setup after successful file replacement, then invoke this new helper.
+        string directory = Path.Combine(root, ".setup", "registration");
+        if (!Directory.Exists(directory)) return;
+        CheckDirectory(Path.Combine(root, ".setup")); CheckDirectory(directory);
+        string installer = Path.Combine(directory, "setup.exe"), checksum = Path.Combine(directory, "sha256.txt");
+        foreach (string path in new[] { installer, checksum })
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("Invalid boot registration file.");
+        if (new FileInfo(checksum).Length != 64) throw new IOException("Invalid boot registration checksum.");
+        using (var stream = File.OpenRead(installer))
+            if (!Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).Equals(File.ReadAllText(checksum), StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Boot registration installer checksum mismatch.");
+        log.Write("Completing boot installation registration without stopping the service.");
+        var start = new System.Diagnostics.ProcessStartInfo(installer) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (string argument in new[] { "-quiet", "-norestart", "Scope=PerMachine", "RegistrationOnly=1", "Mode=service" }) start.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("Could not complete boot registration.");
+        using var deadline = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(15));
+        try { await process.WaitForExitAsync(deadline.Token); }
+        catch (OperationCanceledException)
+        { throw new InvalidOperationException("Boot registration has not finished; its installer is still running and recovery files are retained."); }
+        if (process.ExitCode != 0) throw new InvalidOperationException("Boot registration failed with exit code " + process.ExitCode + "; recovery files are retained.");
+        File.Delete(installer); File.Delete(checksum); Directory.Delete(directory);
+        log.Write("Boot installation registration completed.");
     }
 }

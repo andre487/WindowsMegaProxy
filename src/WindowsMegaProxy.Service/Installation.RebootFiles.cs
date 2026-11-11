@@ -101,7 +101,8 @@ public static partial class Installation
         if (AppIdentity.IsDev) return;
         string root = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         string receipt = RebootReceipt(root);
-        if (!File.Exists(receipt) || HasQueuedRebootFiles(root)) return;
+        if (!File.Exists(receipt)) { ResumeBootRegistration(root); return; }
+        if (HasQueuedRebootFiles(root)) return;
         CheckDirectory(root); CheckDirectory(UpdateDirectory(root));
         if ((File.GetAttributes(receipt) & FileAttributes.ReparsePoint) != 0 || new FileInfo(receipt).Length > 1024 * 1024)
             throw new InvalidDataException("Invalid reboot payload receipt.");
@@ -113,6 +114,18 @@ public static partial class Installation
             UpdateLog(false, "Service startup blocked by an incomplete reboot update; the recovery task will retry installation: " + error.Message);
             throw;
         }
+        ResumeBootRegistration(root);
+    }
+
+    private static void ResumeBootRegistration(string root)
+    {
+        if (!File.Exists(Path.Combine(root, ".setup", "registration", "setup.exe"))) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(root, AppIdentity.ServiceExecutable), "--cleanup-installation")
+                { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root })?.Dispose();
+        }
+        catch (Exception error) { UpdateLog(false, "Could not resume boot installation registration: " + error.Message); }
     }
 
     private static int StageRebootFiles(string source)

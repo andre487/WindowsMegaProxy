@@ -10,6 +10,7 @@ from pathlib import Path
 
 from common import ROOT, cli, dotnet
 from install import known_folder
+from installer_smoke_support import uninstall
 from run import stop_workspace_app, workspace_windows
 from service_control import running_images, service_state, system_executable
 from uninstall_dev import NAME, RUN_KEY, startup_records
@@ -153,9 +154,7 @@ def check_channel_switch(dev_root):
             if fixture.poll() is None:
                 fixture.kill()
                 fixture.wait()
-            uninstaller = production / "unins000.exe"
-            if uninstaller.is_file():
-                sp.run([str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], check=True, timeout=120)
+            uninstall(ROOT / "artifacts/installer-checks/dev-production-uninstall.log")
 
 
 if __name__ == "__main__":

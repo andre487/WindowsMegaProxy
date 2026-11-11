@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import json
 import re
 import zipfile
 
@@ -11,7 +12,7 @@ from common import digest
 PACKAGES = ("microsoft.netcore.app.runtime.win-x64", "microsoft.windowsdesktop.app.runtime.win-x64")
 
 
-def detach(payload, staging, packages, version):
+def detach(payload, staging, packages, version, *, legacy=False):
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise ValueError("Invalid .NET runtime version.")
     sources, archives = {}, []
@@ -33,7 +34,7 @@ def detach(payload, staging, packages, version):
                         raise ValueError("Unsafe Microsoft runtime asset path.")
                     value = (index, item.filename, hashlib.sha256(package.read(item)).hexdigest())
                     sources.setdefault(relative.casefold(), []).append(value)
-    files, statements = [], ["procedure InitializeRuntimeFiles;", "begin"]
+    files, runtime_sources, statements = [], [], ["procedure InitializeRuntimeFiles;", "begin"]
     for index, archive in enumerate(archives):
         statements.append(f"  AddRuntimePackage('{archive['url']}', '{archive['sha256']}');")
     for path in sorted(payload.rglob("*")):
@@ -50,11 +51,14 @@ def detach(payload, staging, packages, version):
             raise ValueError(f"Published runtime differs from the pinned Microsoft package: {relative}")
         index, entry, checksum = source
         files.append({"path": relative, "size": path.stat().st_size, "sha256": checksum, "downloaded": True})
+        runtime_sources.append({"Path": relative, "Package": index, "Entry": entry, "Sha256": checksum})
         statements.append(f"  AddRuntimeFile({index}, '{relative.replace('/', chr(92))}', '{entry.replace('/', chr(92))}', '{checksum}');")
     if not any(file["path"] == "coreclr.dll" for file in files) or not any(file["path"] == "PresentationFramework.dll" for file in files):
         raise ValueError("The app-local .NET runtime is incomplete.")
     statements += ["end;", ""]
-    (staging / "runtime-files.iss").write_text("\n".join(statements), encoding="utf-8")
+    if legacy:
+        (staging / "runtime-files.iss").write_text("\n".join(statements), encoding="utf-8")
+    (staging / "runtime-files.json").write_text(json.dumps(runtime_sources), encoding="utf-8")
     for file in files:
         (payload / file["path"]).unlink()
     return files, {"version": version, "bundled": False, "appLocal": True, "packages": archives}

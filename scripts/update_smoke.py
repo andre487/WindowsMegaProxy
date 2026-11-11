@@ -16,6 +16,7 @@ from build import product_version
 from common import ROOT, cli, digest, dotnet, download
 from deferred_update_smoke import wait_until
 from install import known_folder
+from installer_smoke_support import uninstall
 from publish_release import gh
 from release_notes import previous_release
 from service_control import running_images, service_state
@@ -113,10 +114,7 @@ def main():
         temporary = known_folder(0x1c) / "Temp"
         for log in temporary.glob("Setup Log*.txt"):
             shutil.copy2(log, logs / log.name)
-        uninstaller = destination / "unins000.exe"
-        if uninstaller.is_file():
-            sp.run([str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'uninstall.log'}"],
-                   check=True, timeout=120)
+        uninstall(logs / "uninstall.log")
 
 
 if __name__ == "__main__":

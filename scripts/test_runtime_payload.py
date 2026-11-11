@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import tempfile
 import unittest
 import zipfile
@@ -39,9 +40,12 @@ class RuntimePayloadTests(unittest.TestCase):
             self.assertTrue(all(file["downloaded"] for file in files))
             self.assertFalse(runtime["bundled"])
             self.assertTrue(all(item["url"].startswith("https://api.nuget.org/v3-flatcontainer/microsoft.") for item in runtime["packages"]))
-            script = (root / "runtime-files.iss").read_text()
-            self.assertIn("AddRuntimeFile(0, 'launcher\\Microsoft.VisualBasic.dll'", script)
-            self.assertIn("AddRuntimeFile(1, 'Microsoft.VisualBasic.dll'", script)
+            sources = {item["Path"]: item for item in json.loads((root / "runtime-files.json").read_text())}
+            self.assertEqual(sources["launcher/Microsoft.VisualBasic.dll"]["Package"], 0)
+            self.assertEqual(sources["Microsoft.VisualBasic.dll"]["Package"], 1)
+            self.assertEqual(sources["coreclr.dll"]["Entry"], "runtimes/win-x64/native/coreclr.dll")
+            self.assertEqual(sources["coreclr.dll"]["Sha256"], hashlib.sha256(b"runtime").hexdigest())
+            self.assertFalse((root / "runtime-files.iss").exists())
 
     def test_mismatched_publish_or_damaged_archive_does_not_delete_files(self):
         for corrupt_archive in (False, True):

@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from build import product_version, publish_options
 from common import ROOT, digest, dotnet
 from install import known_folder
+from installer_smoke_support import uninstall
 from package import merge, signed_manifest, version
 from run import stop_workspace_app, user32, workspace_windows
 from service_control import running_images, service_state
@@ -142,7 +143,11 @@ def check(setup, logs, destination, data, *, fresh=False):
             "Signature": base64.b64encode((feed / "update-manifest.sig").read_bytes()).decode()}), encoding="utf-8")
 
     def pending():
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as registration:
+        try:
+            registration = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy")
+        except FileNotFoundError:
+            return None
+        with registration:
             try:
                 return json.loads(winreg.QueryValueEx(registration, "PendingUpdate")[0])
             except FileNotFoundError:
@@ -153,7 +158,7 @@ def check(setup, logs, destination, data, *, fresh=False):
             return winreg.QueryValueEx(registration, "Start")[0]
 
     def cleaned():
-        return not (destination / "update/worker").exists() and not (destination / "update/setup.exe").exists()
+        return not (destination / "update/worker").exists() and not (destination / "update/setup.exe").exists() and not (destination / ".setup/registration").exists()
 
     def verify_settings():
         dotnet("run", "--project", "tests/WindowsMegaProxy.UiChecks", "-c", "Release", "--no-build", "--", "--installed-settings-check", "verify")
@@ -172,6 +177,8 @@ def check(setup, logs, destination, data, *, fresh=False):
             assert started_service.returncode == 0
             wait_until(lambda: service_state("WindowsMegaProxy") == 4, "The updated service must start before the recovery task.")
             assert product_version(destination / "WindowsMegaProxy.exe").split("+", 1)[0] == version()
+        query_pid = "(Get-CimInstance Win32_Service -Filter \"Name='WindowsMegaProxy'\").ProcessId"
+        service_pid = sp.check_output(["powershell.exe", "-NoProfile", "-Command", query_pid], text=True).strip() if not damage else None
         worker = destination / "update/worker/WindowsMegaProxy.Service.exe"
         start_time = (datetime.now() + timedelta(hours=1)).strftime("%H:%M")
         sp.run(["schtasks.exe", "/Create", "/TN", simulation, "/SC", "ONCE", "/ST", start_time,
@@ -183,6 +190,8 @@ def check(setup, logs, destination, data, *, fresh=False):
         wait_until(lambda: sp.check_output(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", query], text=True).strip() == str(expected_result),
                    "The SYSTEM update worker reported an unexpected result.", 30)
         assert service_start() == 2
+        if service_pid is not None:
+            assert sp.check_output(["powershell.exe", "-NoProfile", "-Command", query_pid], text=True).strip() == service_pid, "Burn registration must not restart the updated service."
         windows = wait_for_tray_client()
         session = ct.c_uint32()
         assert ct.windll.kernel32.ProcessIdToSessionId(windows[0][1], ct.byref(session)) and session.value > 0, "The tray client must never run in session zero."
@@ -289,6 +298,7 @@ def check(setup, logs, destination, data, *, fresh=False):
                 f"/LOG={logs / 'repair-missing-helper.log'}"], check=True, timeout=600)
         assert pending() is None and helper.exists(), "The new installer must repair missing old helper/runtime files."
         verify_settings()
+        uninstall(logs / "before-personal-uninstall.log")
         sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MODE=manual", "/TASKS=",
                 f"/LOG={logs / 'deferred-personal-install.log'}"], check=True, timeout=600)
         if fresh:
@@ -336,7 +346,5 @@ def check(setup, logs, destination, data, *, fresh=False):
                         pass
         stop_workspace_app(dev=False, workspace_only=False)
         sp.run(["schtasks.exe", "/Delete", "/TN", simulation, "/F"], check=False, capture_output=True)
-        if (personal_home / "unins000.exe").is_file():
-            sp.run([str(personal_home / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'deferred-personal-uninstall.log'}"], check=True, timeout=120)
-        if (destination / "unins000.exe").is_file():
-            sp.run([str(destination / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={logs / 'deferred-uninstall.log'}"], check=True, timeout=120)
+        uninstall(logs / "deferred-personal-uninstall.log", personal=True)
+        uninstall(logs / "deferred-uninstall.log")

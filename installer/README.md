@@ -17,6 +17,28 @@ Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in
 `artifacts/release-preview`. Preview manifests use disposable keys and have
 `preview: true`; do not distribute them as trusted updates.
 
+The installer uses WiX 7 and Burn with a C# interface that follows the Windows
+light/dark setting and display scaling. Bootstrap code runs on the .NET Framework
+already included in supported Windows versions; it does not need .NET 10 installed
+before opening. `src/WindowsMegaProxy.SetupUI` owns the interface and Burn lifecycle;
+`src/WindowsMegaProxy.Setup` prepares dependencies and performs protected file replacement.
+WiX tools are downloaded into `.tools/wix`; the build accepts the project's agreed
+WiX 7 OSMF terms. No Visual Studio IDE is required.
+
+Only one installation scope is registered for the current user at a time. Uninstall
+before changing between system and personal installation; settings are retained.
+Burn's cached bundle provides Repair and Uninstall in Windows Settings. Existing
+Inno installations are migrated without calling their destructive uninstaller.
+The new bundle accepts released clients' Inno-style update switches, including
+`/BOOTUPDATE=1`; this path stages files without installing or registering the bundle.
+The normal post-reboot recovery step completes registration.
+
+Silent setup supports `-quiet Scope=PerMachine Mode=service` or
+`-quiet Scope=PerUser Mode=login AutomaticUpdates=false`. Omitting mode or update
+preferences preserves existing choices. `-uninstall -quiet` removes the selected
+installed bundle. Installation engine logs are in `%ProgramData%/MegaProxy.Setup`.
+The engine and outer bundle are signed separately; all owned payload binaries are signed.
+
 The installer targets Windows 10/11 x64. UI, service and current-user launcher
 use self-contained folder deployment with .NET 10.0.14 pinned in
 Directory.Build.props. No system-wide .NET installation or WinGet is required.
@@ -142,10 +164,10 @@ verifies and stages the installer before elevation can execute it, preserves
 installation scope/mode and restarts the client. Old, partial and installed
 update downloads are removed. DEV checks can show releases but never install
 production updates over a development build. The installer also offers an
-automatic-update checkbox, selected by default.
+automatic-update selector; a new installation enables checks by default and an upgrade preserves the existing preference.
 
-Packaged MegaProxy EXE/DLL files and Inno Setup's installer, uninstaller and
-temporary Setup copies are Authenticode-signed. Release builds require the
+Packaged MegaProxy EXE/DLL files, the registration MSI, and both the Burn engine
+and final installer bundle are Authenticode-signed. Release builds require the
 permanent certificate pinned in `assets/authenticode-certificate.pem` and a
 SHA-256 timestamp; credentials are documented in [LOCAL-SECRETS.md](LOCAL-SECRETS.md).
 This certificate is self-signed, so Windows does not automatically trust its

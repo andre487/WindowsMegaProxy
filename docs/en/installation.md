@@ -33,6 +33,9 @@ Manual mode starts interception only after the application connects. Sign-in mod
 starts the application automatically. The installer prepares protected elevated
 launching for the selected mode. Changing startup mode later is supported in settings.
 
+Only one installation scope can be registered for the current user at a time.
+To change scope, uninstall first; configuration is retained.
+
 ## First connection
 
 1. Add a profile or use the configuration import section in Settings.
