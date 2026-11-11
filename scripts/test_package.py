@@ -22,10 +22,19 @@ class PackageTests(unittest.TestCase):
     def test_native_cores_do_not_generate_upstream_download_definitions(self):
         with tempfile.TemporaryDirectory() as temporary:
             payload = Path(temporary)
-            directory = payload / "dependencies/sing-box"
-            directory.mkdir(parents=True)
-            (directory / "MegaProxy.Core.Stable.dll").touch()
+            for folder, variant in (("sing-box", "Stable"), ("sing-box-h3", "Experimental")):
+                directory = payload / "dependencies" / folder
+                directory.mkdir(parents=True)
+                (directory / f"MegaProxy.Core.{variant}.dll").touch()
+                (directory / "WindowsMegaProxy.Core.exe").touch()
             self.assertEqual(package.core_installer_definitions(payload), {})
+            (directory / "sing-box.exe").touch()
+            with self.assertRaisesRegex(ValueError, "Legacy"):
+                package.core_installer_definitions(payload)
+            (directory / "sing-box.exe").unlink()
+            (directory / "MegaProxy.Core.Experimental.dll").unlink()
+            with self.assertRaisesRegex(ValueError, "incomplete"):
+                package.core_installer_definitions(payload)
 
     @patch("package.github_asset_url", return_value="https://api.github.com/repos/SagerNet/sing-box/releases/assets/123")
     def test_installer_core_downloads_pin_official_archives_and_extracted_files(self, asset_url):
@@ -36,7 +45,8 @@ class PackageTests(unittest.TestCase):
                 directory.mkdir(parents=True)
                 (directory / "sing-box.exe").write_bytes(b"official executable fixture")
                 (directory / "libcronet.dll").write_bytes(b"official library fixture")
-            definitions = package.core_installer_definitions(payload)
+            # Only rebuilding historical tags for upgrade tests accepts the old payload.
+            definitions = package.core_installer_definitions(payload, legacy=True)
             for label, http3, expected_hash in (("StableCore", False, CORE_HASH), ("H3Core", True, H3_CORE_HASH)):
                 upstream = core_package(http3=http3)
                 self.assertEqual(definitions[label + "URL"], upstream["url"])

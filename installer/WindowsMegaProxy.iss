@@ -64,6 +64,16 @@ Source: "{#PayloadDirectory}\*"; DestDir: "{tmp}\repair"; Excludes: "launcher\*,
 Source: "{#PayloadDirectory}\*"; DestDir: "{tmp}\reboot"; Excludes: "launcher\*"; Flags: dontcopy recursesubdirs createallsubdirs
 Source: "{#PayloadDirectory}\*"; DestDir: "{code:RuntimePath}"; Excludes: "launcher\*"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: not IsBootUpdate
 Source: "{#PayloadDirectory}\launcher\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsUserInstall
+Source: "{tmp}\dotnet\*"; DestDir: "{code:RuntimePath}"; Excludes: "launcher\*"; Flags: external ignoreversion recursesubdirs createallsubdirs; Check: not IsBootUpdate
+Source: "{tmp}\dotnet\launcher\*"; DestDir: "{app}"; Flags: external ignoreversion recursesubdirs createallsubdirs; Check: IsUserInstall
+
+[InstallDelete]
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box\sing-box.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box\sing-box-dev.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box\libcronet.dll"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box-h3\sing-box.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box-h3\sing-box-dev.exe"; Check: not IsBootUpdate
+Type: files; Name: "{code:RuntimePath}\dependencies\sing-box-h3\libcronet.dll"; Check: not IsBootUpdate
 
 [Icons]
 Name: "{autoprograms}\MegaProxy"; Filename: "{code:LaunchPath}"; AppUserModelID: "WindowsMegaProxy"
@@ -85,6 +95,8 @@ Type: filesandordirs; Name: "{code:RuntimePath}"; Check: IsSystemRuntime
 Filename: "{code:LaunchPath}"; Description: "{cm:LaunchProgram,MegaProxy}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Code]
+#include "Downloads.iss"
+#include "Runtime.iss"
 var OwnerSid, PreviousHelper, PreviousMode: String;
     Prepared: Boolean;
     ModePage: TInputOptionWizardPage;
@@ -283,6 +295,7 @@ begin
   if (ExpandConstant('{param:STAGEDUPDATE|0}') <> '1') and DirExists(Root) then begin
     { Recovery must not depend on the old helper or its runtime being intact. }
     ExtractTemporaryFiles('{tmp}\repair\*');
+    CopyRuntime(ExpandConstant('{tmp}\repair'));
     if not ExecAndLogOutput(ExpandConstant('{tmp}\repair\WindowsMegaProxy.Service.exe'), '--prepare-repair "' + Root + '"', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
       RaiseException('Could not close the previous installation. Close MegaProxy in all Windows sessions and retry.');
   end;
@@ -306,6 +319,8 @@ begin
   Result := '';
   try
     SelectedMode;
+    if IsUserInstall then PrepareRuntime(RuntimePath(''), ExpandConstant('{app}'))
+    else PrepareRuntime(RuntimePath(''), '');
     if not FileExists(ExpandConstant('{sys}\OpenSSH\ssh-keyscan.exe')) then begin
       if not Exec(ExpandConstant('{sys}\dism.exe'), '/Online /Add-Capability /CapabilityName:OpenSSH.Client~~~~0.0.1.0 /NoRestart', '', SW_HIDE, ewWaitUntilTerminated, Code) then
         RaiseException('Could not start Windows OpenSSH Client installation.');
@@ -316,6 +331,7 @@ begin
     if IsBootUpdate then begin
       if SelectedMode <> 'service' then RaiseException('Early-boot updates require service mode.');
       ExtractTemporaryFiles('{tmp}\reboot\*');
+      CopyRuntime(ExpandConstant('{tmp}\reboot'));
       if not ExecAndLogOutput(RuntimePath('') + '\update\worker\WindowsMegaProxy.Service.exe',
         '--stage-reboot-files "' + ExpandConstant('{tmp}\reboot') + '"', '', SW_HIDE, ewWaitUntilTerminated, Code, nil) or (Code <> 0) then
         RaiseException('Could not verify and schedule the reboot payload. See the application log.');

@@ -6,8 +6,6 @@ namespace WindowsMegaProxy;
 
 internal static class NativeCore
 {
-    public static bool IsHost(string executable) => Path.GetFileName(executable) is "WindowsMegaProxy.Core.exe" or "WindowsMegaProxy.Dev.Core.exe";
-
     public static byte[] Request(int operation, string configuration, string? url = null)
     {
         byte[] config = Encoding.UTF8.GetBytes(configuration);

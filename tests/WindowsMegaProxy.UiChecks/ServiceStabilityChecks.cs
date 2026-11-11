@@ -135,10 +135,8 @@ internal static class ServiceStabilityChecks
         Set(native, "failoverTask", Task.FromException(new IOException("Injected failover failure.")));
         Set(native, "listUpdates", Task.FromException(new UnauthorizedAccessException("Injected list failure.")));
         Set(native, "listStopping", lists);
-        string runtime = Path.Combine(root, "runtime-test.json"); File.WriteAllText(runtime, "{}");
-        Set(native, "configPath", runtime);
         await native.StopAsync();
-        Assert(!File.Exists(runtime), "Faulted workers cannot bypass runtime cleanup.");
+        Assert(lists.IsCancellationRequested && !native.Running, "Faulted workers cannot bypass native core shutdown.");
         Console.WriteLine("Service startup retry, crash recovery, health threshold, manual stop, diagnostic isolation, corrupt-settings repair and failed-worker cleanup passed; no TUN.");
     }
 

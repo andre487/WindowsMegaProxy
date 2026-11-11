@@ -19,13 +19,11 @@ public sealed partial class Engine : IEngine
 {
     private Process? process;
     private HttpClient client = new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
-    private string configPath = "";
     private readonly string stateDirectory;
     private readonly Uri http3ProbeUri;
     private readonly bool allowEnvironmentOverrides;
     private readonly Func<bool> otherRunning;
     private ProcessJob? job;
-    private IDisposable? consoleLease;
     public bool Running => process is { HasExited: false };
     public event Action? Exited;
     public event Action<string>? Log;
@@ -116,8 +114,16 @@ public sealed partial class Engine : IEngine
         }
     }
 
-    private string CoreExecutable(bool alpha) => (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(alpha ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
-        ?? Path.Combine(AppContext.BaseDirectory, "dependencies", alpha ? "sing-box-h3" : "sing-box", AppIdentity.CoreExecutable);
+    private string CoreExecutable(bool alpha)
+    {
+        string executable = (allowEnvironmentOverrides ? Environment.GetEnvironmentVariable(alpha ? "WINDOWSMEGAPROXY_H3_CORE" : "WINDOWSMEGAPROXY_CORE") : null)
+            ?? Path.Combine(AppContext.BaseDirectory, "dependencies", alpha ? "sing-box-h3" : "sing-box", AppIdentity.CoreExecutable);
+        string name = Path.GetFileName(executable);
+        if (!name.Equals("WindowsMegaProxy.Core.exe", StringComparison.OrdinalIgnoreCase) &&
+            !name.Equals("WindowsMegaProxy.Dev.Core.exe", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only the MegaProxy native DLL host can be used as the network core.");
+        return executable;
+    }
 
     private async Task StartCoreAsync(Settings settings, bool testOnly, CancellationToken cancellationToken)
     {
@@ -182,33 +188,20 @@ public sealed partial class Engine : IEngine
         client = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
         client.BaseAddress = new Uri($"http://127.0.0.1:{port}/");
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secret);
-        configPath = Path.Combine(stateDirectory, testOnly ? $"test-runtime-{Guid.NewGuid():N}.json" : "runtime.json");
         try
         {
             string configuration = config.ToJsonString(Configuration.JsonOptions);
-            bool native = NativeCore.IsHost(executable);
-            if (!native)
-            {
-                await File.WriteAllTextAsync(configPath, configuration);
-                var check = await CoreProcess.RunAsync(StartInfo(executable, "check"), TimeSpan.FromSeconds(30), cancellationToken);
-                if (check.ExitCode != 0)
-                {
-                    Log?.Invoke(check.Error);
-                    throw new InvalidOperationException("sing-box rejected the configuration. Check the profile and rules.");
-                }
-            }
             cancellationToken.ThrowIfCancellationRequested();
-            if (!native) consoleLease = await CoreConsole.AcquireAsync(cancellationToken);
             job = new ProcessJob();
             var existing = !testOnly && settings.ResetExistingTcpConnections
                 ? await Task.Run(() => ExistingTcpConnections.Capture(settings, message => Log?.Invoke(message)), cancellationToken)
                 : [];
-            process = Process.Start(StartInfo(executable, "run")) ?? throw new InvalidOperationException("The core did not start.");
+            process = Process.Start(StartInfo(executable)) ?? throw new InvalidOperationException("The core did not start.");
             job.Assign(process);
             process.EnableRaisingEvents = true;
             process.Exited += (_, _) => { if (!changingProfile) Exited?.Invoke(); };
             drain = Task.WhenAll(DrainAsync(process.StandardOutput), DrainAsync(process.StandardError));
-            if (native) await process.StandardInput.BaseStream.WriteAsync(NativeCore.Request(1, configuration), cancellationToken);
+            await process.StandardInput.BaseStream.WriteAsync(NativeCore.Request(1, configuration), cancellationToken);
             for (int attempt = 0; attempt < 40; attempt++)
             {
                 if (!Running) throw new InvalidOperationException("The core exited during startup. TUN may already be in use.");
@@ -305,7 +298,7 @@ public sealed partial class Engine : IEngine
 
     private async Task<bool> FetchHttp3Async(string host, CancellationToken token)
     {
-        // The stable core's fetch command supports HTTP/3 over the authenticated SOCKS5 UDP relay.
+        // The stable DLL's fetch operation supports HTTP/3 over the authenticated SOCKS5 UDP relay.
         var config = new JsonObject
         {
             ["log"] = new JsonObject { ["disabled"] = true },
@@ -325,22 +318,9 @@ public sealed partial class Engine : IEngine
 
     private async Task<(int ExitCode, string Error)> RunCoreToolAsync(string executable, JsonObject config, string url, CancellationToken token)
     {
-        if (NativeCore.IsHost(executable))
-        {
-            var result = await CoreProcess.RunAsync(StartInfo(executable, "fetch"), TimeSpan.FromSeconds(15), token,
-                NativeCore.Request(2, config.ToJsonString(), url));
-            return (result.ExitCode, result.Error);
-        }
-        string path = Path.Combine(stateDirectory, $"http3-probe-{Guid.NewGuid():N}.json");
-        try
-        {
-            await File.WriteAllTextAsync(path, config.ToJsonString(), token);
-            var start = new ProcessStartInfo(executable) { WorkingDirectory = Path.GetDirectoryName(executable)! };
-            foreach (string argument in new[] { "-c", path, "--disable-color", "tools", "fetch", url }) start.ArgumentList.Add(argument);
-            var result = await CoreProcess.RunAsync(start, TimeSpan.FromSeconds(15), token);
-            return (result.ExitCode, result.Error);
-        }
-        finally { File.Delete(path); }
+        var result = await CoreProcess.RunAsync(StartInfo(executable), TimeSpan.FromSeconds(15), token,
+            NativeCore.Request(2, config.ToJsonString(), url));
+        return (result.ExitCode, result.Error);
     }
 
     private async Task StopSelectedAsync()
@@ -354,8 +334,7 @@ public sealed partial class Engine : IEngine
         {
             if (Running)
             {
-                if (process!.StartInfo.RedirectStandardInput) process.StandardInput.Close();
-                else CoreConsole.Stop();
+                process!.StandardInput.Close();
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 try { await process!.WaitForExitAsync(timeout.Token); }
                 catch (OperationCanceledException) { job?.Dispose(); job = null; }
@@ -368,8 +347,6 @@ public sealed partial class Engine : IEngine
             finally
             {
                 process?.Dispose(); process = null;
-                consoleLease?.Dispose(); consoleLease = null;
-                if (configPath.Length > 0) File.Delete(configPath);
             }
         }
         Log?.Invoke("Network core stopped.");
@@ -413,18 +390,12 @@ public sealed partial class Engine : IEngine
     private static void SetPodkopWarningMetadata(Settings settings, string[] ids) =>
         settings.WindowsOptions[PodkopCatalog.WarningKey] = new JsonArray(ids.Select(id => (JsonNode)JsonValue.Create(id)!).ToArray());
 
-    private ProcessStartInfo StartInfo(string executable, string command)
+    private ProcessStartInfo StartInfo(string executable)
     {
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+            RedirectStandardInput = true, CreateNoWindow = true,
             WorkingDirectory = Path.GetDirectoryName(executable)!, WindowStyle = ProcessWindowStyle.Hidden };
-        if (NativeCore.IsHost(executable))
-        {
-            info.CreateNoWindow = true;
-            info.RedirectStandardInput = true;
-            info.ArgumentList.Add(executable == CoreExecutable(alpha: true) ? "experimental" : "stable");
-            return info;
-        }
-        foreach (var arg in new[] { command, "-c", configPath }) info.ArgumentList.Add(arg);
+        info.ArgumentList.Add(executable == CoreExecutable(alpha: true) ? "experimental" : "stable");
         return info;
     }
 
@@ -440,7 +411,6 @@ public sealed partial class Engine : IEngine
         failoverStopping?.Cancel();
         listStopping?.Cancel();
         job?.Dispose(); job = null;
-        consoleLease?.Dispose(); consoleLease = null;
         process?.Dispose();
         client.Dispose();
     }

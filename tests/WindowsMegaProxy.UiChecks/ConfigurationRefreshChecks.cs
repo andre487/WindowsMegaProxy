@@ -116,13 +116,13 @@ internal static class ConfigurationRefreshChecks
         config["route"]!["rule_set"]![0]!["path"] = combined;
         var emptySet = PodkopCatalog.Definition("youtube"); emptySet["path"] = unavailable;
         config["route"]!["rule_set"]!.AsArray().Add(emptySet);
-        string configPath = Path.Combine(directory, "check.json"); File.WriteAllText(configPath, config.ToJsonString());
-        foreach (string core in new[] { ".tools/sing-box/sing-box.exe", ".tools/sing-box-h3/sing-box.exe" })
+        foreach (bool experimental in new[] { false, true })
         {
-            if (!File.Exists(core)) continue;
-            var start = new ProcessStartInfo(Path.GetFullPath(core)); start.ArgumentList.Add("check"); start.ArgumentList.Add("-c"); start.ArgumentList.Add(configPath);
-            var result = await CoreProcess.RunAsync(start, TimeSpan.FromSeconds(15), CancellationToken.None);
-            Check(result.ExitCode == 0, "Both cores accept the generated Podkop source/routing configuration: " + result.Error);
+            var start = new ProcessStartInfo(NetworkCorePaths.Client(experimental));
+            start.ArgumentList.Add(experimental ? "experimental" : "stable");
+            var result = await CoreProcess.RunAsync(start, TimeSpan.FromSeconds(15), CancellationToken.None,
+                NetworkCorePaths.Request(0, config));
+            Check(result.ExitCode == 0, "Both DLLs accept the generated Podkop source/routing configuration: " + result.Error);
         }
         await cache.GetAsync("youtube", CancellationToken.None, (_, _) => Task.FromResult("youtube.com"));
         cache.MergeGroup(["discord", "youtube"]);

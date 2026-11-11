@@ -61,7 +61,7 @@ class ToolsChecks(unittest.TestCase):
                     (root / directory / executable).write_bytes(b"fixture")
                 def core(destination, *_, **__):
                     destination.mkdir(parents=True, exist_ok=True)
-                    (destination / "sing-box.exe").write_bytes(b"core-fixture")
+                    (destination / (app_name(dev) + ".Core.exe")).write_bytes(b"core-fixture")
                 with patch("sys.argv", ["install.py", "--mode", mode] + (["--dev"] if dev else [])), patch("ctypes.windll.shell32.IsUserAnAdmin", return_value=True), \
                      patch("install.artifact_root", return_value=root), patch("install.known_folder", return_value=root / "Program Files"), \
                      patch("install.install_openssh") as dependencies, \

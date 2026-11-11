@@ -20,9 +20,10 @@ internal static class CoreProcessChecks
     {
         if (args.Length == 0) return false;
         if (args[0] == "--process-output") { Console.Write(new string('x', 70000)); Thread.Sleep(Timeout.Infinite); return true; }
-        string? marker = args[0] == "check" ? Environment.GetEnvironmentVariable("WINDOWSMEGAPROXY_CHECK_FIXTURE")
+        string? marker = args[0] is "stable" or "experimental" ? Environment.GetEnvironmentVariable("WINDOWSMEGAPROXY_CHECK_FIXTURE")
             : args.Length == 2 && args[0] is "--process-hang" or "--process-leaf" ? args[1] : null;
         if (marker is null) return false;
+        if (args[0] is "stable" or "experimental") _ = NetworkCorePaths.ReadRequest();
         File.WriteAllText(marker, Environment.ProcessId.ToString());
         if (args[0] != "--process-leaf")
         {
@@ -77,7 +78,7 @@ internal static class CoreProcessChecks
         catch (IOException) { }
 
         string? previousCore = Environment.GetEnvironmentVariable("WINDOWSMEGAPROXY_CORE");
-        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", Environment.ProcessPath);
+        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", NetworkCorePaths.FixtureHost());
         Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CHECK_FIXTURE", marker);
         try
         {
@@ -86,7 +87,7 @@ internal static class CoreProcessChecks
             var startup = engine.StartAsync(new Settings(), testOnly: true, cancellation.Token);
             await WaitForMarkers(marker);
             cancellation.Cancel();
-            try { await startup; throw new Exception("Core validation ignored cancellation."); }
+            try { await startup; throw new Exception("Core startup ignored cancellation."); }
             catch (OperationCanceledException) { }
             await AssertStopped(marker);
             if (Directory.GetFiles(directory, "*.json").Length > 0) throw new Exception("Cancelled validation left a runtime configuration behind.");

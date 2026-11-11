@@ -26,9 +26,9 @@ internal static class FailoverChecks
     public static bool RunFixture(string[] args)
     {
         string? state = Environment.GetEnvironmentVariable("WINDOWSMEGAPROXY_FAILOVER_FIXTURE");
-        if (state is null || !args.Contains("-c")) return false;
-        var config = JsonNode.Parse(File.ReadAllText(args[Array.IndexOf(args, "-c") + 1]))!;
-        if (args.Contains("tools"))
+        if (state is null || args.Length != 1 || args[0] is not ("stable" or "experimental")) return false;
+        var (operation, config) = NetworkCorePaths.ReadRequest();
+        if (operation == 2)
         {
             if (config["route"]!["rules"]!.AsArray().Count != 0 || config["route"]!["rule_set"] is not null)
                 throw new Exception("Transport probes must not load user routing rules or unprepared Podkop files.");
@@ -43,12 +43,11 @@ internal static class FailoverChecks
             { Console.Error.WriteLine("outbound/http[proxy]: connection refused"); Environment.ExitCode = 1; }
             return true;
         }
-        if (args[0] == "check") return true;
-        if (args[0] != "run") throw new Exception("Unexpected fake-core command.");
+        if (operation != 1) throw new Exception("Unexpected fake-core operation.");
         var endpoint = IPEndPoint.Parse(config["experimental"]!["clash_api"]!["external_controller"]!.ToString());
         using var listener = new TcpListener(endpoint); listener.Start();
         using var stopping = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; stopping.Cancel(); };
+        _ = Task.Run(() => { Console.OpenStandardInput().ReadByte(); stopping.Cancel(); });
         ServeAsync(listener, stopping.Token).GetAwaiter().GetResult();
         return true;
     }
@@ -77,8 +76,9 @@ internal static class FailoverChecks
         const string variable = "WINDOWSMEGAPROXY_CORE";
         string? previous = Environment.GetEnvironmentVariable(variable);
         string? previousH3 = Environment.GetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE");
-        Environment.SetEnvironmentVariable(variable, Environment.ProcessPath);
-        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE", Environment.ProcessPath);
+        string host = NetworkCorePaths.FixtureHost();
+        Environment.SetEnvironmentVariable(variable, host);
+        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_H3_CORE", host);
         Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_FAILOVER_FIXTURE", state);
         using var stopping = new CancellationTokenSource(TimeSpan.FromSeconds(50));
         using var origin = new TcpListener(IPAddress.Loopback, 0); origin.Start();

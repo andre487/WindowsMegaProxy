@@ -110,18 +110,12 @@ jobs:
         run: scripts\tools.cmd scripts\core_smoke.py --signed --tun
 
       - name: Test HTTP/3 and HTTPS Jump on local servers
-        env:
-          MEGAPROXY_TEST_NATIVE: '1'
         run: h3-test.cmd
 
       - name: Test SSH on a local server
-        env:
-          MEGAPROXY_TEST_NATIVE: '1'
         run: ssh-test.cmd
 
       - name: Test IPv6 routing across all proxy types on local servers
-        env:
-          MEGAPROXY_TEST_NATIVE: '1'
         run: ipv6-test.cmd
 
       - name: Test selective domain sniffing on local servers

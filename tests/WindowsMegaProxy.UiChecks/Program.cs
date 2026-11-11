@@ -1194,7 +1194,7 @@ internal static partial class Program
         Directory.CreateDirectory(directory);
         string report = Path.Combine(directory, "result.txt");
         File.Delete(report);
-        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", Path.GetFullPath(".tools/sing-box/sing-box.exe"));
+        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", NetworkCorePaths.Client());
         var before = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces().Where(item => item.Name == "MegaProxy").Select(item => item.Id).ToArray();
         using var engine = new Engine(directory, allowEnvironmentOverrides: true);
         var messages = new System.Collections.Generic.List<string>();
@@ -1233,7 +1233,7 @@ internal static partial class Program
         Directory.CreateDirectory(directory);
         File.Delete(Path.Combine(directory, "result.txt"));
         File.Delete(Path.Combine(directory, "failure.txt"));
-        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", Path.GetFullPath(".tools/sing-box/sing-box.exe"));
+        Environment.SetEnvironmentVariable("WINDOWSMEGAPROXY_CORE", NetworkCorePaths.Client());
         using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var rejector = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         rejector.Start();
@@ -1261,8 +1261,7 @@ internal static partial class Program
         try
         {
             await core.StartAsync(new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy" }, true, timeout.Token);
-            var config = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Directory.GetFiles(directory, "*.json").Single()))!;
-            int port = config["inbounds"]![0]!["listen_port"]!.GetValue<int>();
+            int port = core.ProbeAccess.Port;
             using var unauthenticated = new System.Net.Http.HttpClient(new System.Net.Http.HttpClientHandler
             { UseProxy = true, Proxy = new System.Net.WebProxy($"socks5://127.0.0.1:{port}") });
             try

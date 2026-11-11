@@ -18,9 +18,17 @@ from run import stop_workspace_app, user32, workspace_windows
 from service_control import running_images, service_state
 
 
+def seed_legacy_cores(directory):
+    for folder in ("sing-box", "sing-box-h3"):
+        for name in ("sing-box.exe", "sing-box-dev.exe", "libcronet.dll"):
+            (directory / "dependencies" / folder / name).write_bytes(b"obsolete core fixture")
+
+
 def check_downloaded_cores(version_directory):
     manifest = json.loads((ROOT / "artifacts/release-preview/update-manifest.json").read_text(encoding="utf-8"))
     for name in ("sing-box", "sing-box-h3"):
+        for legacy in ("sing-box.exe", "sing-box-dev.exe", "libcronet.dll"):
+            assert not (version_directory / "dependencies" / name / legacy).exists(), "Legacy core files must be removed."
         assert (version_directory / "dependencies" / name / "WindowsMegaProxy.Core.exe").is_file(), "Both pinned cores must be bundled."
         library = "MegaProxy.Core.Stable.dll" if name == "sing-box" else "MegaProxy.Core.Experimental.dll"
         assert (version_directory / "dependencies" / name / library).is_file()
@@ -28,7 +36,10 @@ def check_downloaded_cores(version_directory):
             assert digest(version_directory / entry["path"], "sha256") == entry["sha256"], "Bundled core must match the pinned release files."
     assert not (version_directory / "WindowsMegaProxy.Http3Core.exe").exists(), "No on-demand installer is needed."
     assert (version_directory / "WindowsMegaProxy.runtimeconfig.json").is_file(), "Production must use a self-contained folder."
-    assert (version_directory / "coreclr.dll").is_file(), "The pinned .NET runtime must be bundled."
+    assert (version_directory / "coreclr.dll").is_file(), "The pinned .NET runtime must be installed locally."
+    for entry in manifest["components"]["app"]["files"]:
+        if entry.get("downloaded") and not entry["path"].startswith("launcher/"):
+            assert digest(version_directory / entry["path"], "sha256") == entry["sha256"], "Downloaded runtime must match the signed installed-file inventory."
     environment = os.environ.copy()
     environment["DOTNET_ROOT"] = str(ROOT / "artifacts/nonexistent-dotnet")
     environment["DOTNET_MULTILEVEL_LOOKUP"] = "0"
@@ -67,10 +78,16 @@ def main():
 
     previous = None
     for attempt, mode in enumerate(("manual", "login", "service", "service", "manual"), 1):
+        if previous:
+            seed_legacy_cores(destination)
+        if attempt == 4:
+            (destination / "createdump.exe").write_bytes(b"damaged runtime fixture")
         arguments = [str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", f"/LOG={logs / f'install-{attempt}.log'}"]
         if attempt != 1:
             arguments.append("/MODE=" + mode)
         sp.run(arguments, check=True, timeout=600)
+        runtime_downloaded = 'Downloading pinned Microsoft .NET runtime package:' in (logs / f'install-{attempt}.log').read_text(encoding='utf-8-sig')
+        assert runtime_downloaded == (attempt in (1, 4)), "Download runtime only for a new installation or missing/damaged/version-mismatched files."
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             current = winreg.QueryValueEx(key, "HelperPath")[0]
@@ -256,6 +273,8 @@ def check_user_install(setup, logs, global_data):
         system_helper = winreg.QueryValueEx(key, "HelperPath")[0]
     previous = None
     for mode in ("manual", "login", "manual"):
+        if previous:
+            seed_legacy_cores(protected)
         sp.run([str(setup), "/CURRENTUSER", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", "/MODE=" + mode,
                 f"/LOG={logs / f'user-{mode}.log'}"], check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as key:

@@ -22,7 +22,7 @@ Both DLLs are bundled with the application and installer. Module versions and
 checksums are recorded in `native/core`; these are MegaProxy builds, not official
 sing-box release binaries. Custom packaging does not guarantee fewer detections.
 No WinGet installation or runtime core download is involved. The .NET runtime is
-also bundled at a pinned version. Wintun is supplied by the upstream cores;
+downloaded from official Microsoft packages on NuGet.org at a pinned version and installed locally. Wintun is supplied by the upstream cores;
 MegaProxy does not build its own kernel driver. OpenSSH Client is a mandatory
 Windows capability installed by Setup when missing.
 

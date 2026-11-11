@@ -91,7 +91,7 @@ public sealed class RoutingRule : INotifyPropertyChanged
 
 public static class Configuration
 {
-    public static readonly string[] DirectProcessNames = ["sing-box.exe", "sing-box-dev.exe", "WindowsMegaProxy.Core.exe", "WindowsMegaProxy.Dev.Core.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe", "WindowsMegaProxy.Diagnostics.exe"];
+    public static readonly string[] DirectProcessNames = ["WindowsMegaProxy.Core.exe", "WindowsMegaProxy.Dev.Core.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe", "WindowsMegaProxy.Diagnostics.exe"];
     public const string CoreVersion = "1.14.4";
     public const string Http3CoreVersion = "1.15.0-alpha.13";
     public const string DefaultTlsFingerprint = "chrome";
