@@ -25,7 +25,7 @@ WindowsMegaProxy does not build a kernel driver or remove the shared driver.
 Wintun: https://www.wintun.net/ and https://git.zx2c4.com/wintun/
 The Wintun binary distribution license is included in licenses/Wintun-LICENSE.txt.
 
-.NET 10.0.14 is bundled in the self-contained application executables.
+.NET 10.0.14 is downloaded from official Microsoft packages on NuGet.org and installed beside the application.
 .NET source and license: https://github.com/dotnet/runtime/tree/v10.0.14
 Windows OpenSSH Client is a mandatory Windows capability installed when missing.
 Their respective installers and operating-system license terms apply.

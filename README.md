@@ -23,7 +23,7 @@ Windows 10/11 x64 and an administrator account are required.
 [Latest release and changelog](https://github.com/andre487/WindowsMegaProxy/releases/latest) ·
 [Installation guide](docs/en/installation.md) · [Установка на русском](docs/ru/installation.md)
 
-The installer includes .NET and both proxy cores and prepares Windows OpenSSH Client
+The installer includes both proxy cores, downloads an app-local .NET runtime when needed, and prepares Windows OpenSSH Client
 if missing. Choose a personal or system-wide installation and a startup mode.
 The application is signed with a self-signed certificate; Windows may show an
 unrecognized-publisher warning. [Signatures and antivirus notes](docs/ANTIVIRUS.md).

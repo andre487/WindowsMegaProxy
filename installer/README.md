@@ -19,9 +19,9 @@ Run `setup.cmd`, then `build-installer.cmd --preview`. Outputs are in
 
 The installer targets Windows 10/11 x64. UI, service and current-user launcher
 use self-contained folder deployment with .NET 10.0.14 pinned in
-Directory.Build.props. No separate .NET installation or WinGet is required.
-Both unmodified upstream sing-box cores are bundled: stable 1.14.4 and
-HTTP/3 1.15.0-alpha.13. Their archive SHA-256 values are pinned at build time;
+Directory.Build.props. No system-wide .NET installation or WinGet is required.
+Both native core DLLs are bundled: stable 1.14.4 and experimental
+1.15.0-alpha.13. Their dependencies are pinned at build time;
 the application selects the core from the profile transport automatically.
 There is no global H3 toggle or on-demand core download. Legacy http3Enabled
 options are ignored and omitted on export. Other absent import options keep
@@ -30,11 +30,16 @@ existing values.
 Windows OpenSSH Client is a mandatory Windows capability. Setup installs it
 when missing; failure stops setup with an error. Wintun is provided by the
 upstream cores. Python, uv and the .NET SDK remain development-only downloads
-inside the checkout. Production and DEV include their .NET runtime as regular
-files; no single-file extraction is used. UI and service share the same desktop
+inside the checkout. DEV publish outputs retain the runtime as regular files.
+Release installers and update ZIPs omit those files. Setup downloads the exact
+Microsoft runtime packages from NuGet.org, verifies the pinned archive SHA-256 and
+each file hash, and installs them locally; matching installed files are reused
+without a download. Downloads complete before stopping the installed application.
+No single-file extraction is used. UI and service share the same desktop
 runtime files. The unprivileged personal-install launcher has its own runtime
-in the user's application directory. Updating bundled .NET requires an
-application update.
+in the user's application directory. Updating the pinned local .NET version requires an
+application update. Reboot updates stage and verify the runtime before restarting;
+boot-time replacement does not require a network connection.
 
 The installer defaults to manual launch on a new installation and offers three
 operating modes: manual, elevated sign-in startup, or a Windows service. It
@@ -124,7 +129,9 @@ The release build refuses to run without it or from a dirty checkout.
 SHA-256. The updater pins that public key in its trusted installed code and does
 not trust a key downloaded alongside the manifest. The manifest
 records version, commit, architecture, runtime requirement, component URLs,
-archive sizes/hashes and individual archive entry hashes. App and service update
+archive sizes/hashes and installed-file hashes. Runtime file entries carry
+`downloaded: true`: they are absent from ZIPs but included in the signed inventory
+so existing boot-update workers also verify and replace them. App and service update
 together; each core is a separate component with installation-relative paths.
 The application checks GitHub Releases once a day while running (including in
 the tray), verifies the manifest against its pinned Ed25519 key and downloads

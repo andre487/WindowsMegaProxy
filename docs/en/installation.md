@@ -8,8 +8,9 @@
 
 Requires Windows 10/11 x64 and an administrator account. Windows may request UAC
 approval during installation and configuration of privileged startup modes.
-.NET and both sing-box cores are bundled; Python, Go, uv and the .NET SDK are not
-required on the user's computer. Setup installs Windows OpenSSH Client if missing.
+Both proxy cores are bundled. Setup downloads the pinned .NET runtime from Microsoft
+packages on NuGet.org when it is missing, damaged or needs an update, and installs it
+beside MegaProxy. Python, Go, uv and the .NET SDK are not required. Setup installs Windows OpenSSH Client if missing.
 
 The installer has a persistent self-signed signature, not a Windows-trusted publisher
 certificate. SmartScreen or an antivirus may warn about the installer or proxy cores.

@@ -36,7 +36,10 @@ def check_downloaded_cores(version_directory):
             assert digest(version_directory / entry["path"], "sha256") == entry["sha256"], "Bundled core must match the pinned release files."
     assert not (version_directory / "WindowsMegaProxy.Http3Core.exe").exists(), "No on-demand installer is needed."
     assert (version_directory / "WindowsMegaProxy.runtimeconfig.json").is_file(), "Production must use a self-contained folder."
-    assert (version_directory / "coreclr.dll").is_file(), "The pinned .NET runtime must be bundled."
+    assert (version_directory / "coreclr.dll").is_file(), "The pinned .NET runtime must be installed locally."
+    for entry in manifest["components"]["app"]["files"]:
+        if entry.get("downloaded") and not entry["path"].startswith("launcher/"):
+            assert digest(version_directory / entry["path"], "sha256") == entry["sha256"], "Downloaded runtime must match the signed installed-file inventory."
     environment = os.environ.copy()
     environment["DOTNET_ROOT"] = str(ROOT / "artifacts/nonexistent-dotnet")
     environment["DOTNET_MULTILEVEL_LOOKUP"] = "0"
@@ -77,10 +80,14 @@ def main():
     for attempt, mode in enumerate(("manual", "login", "service", "service", "manual"), 1):
         if previous:
             seed_legacy_cores(destination)
+        if attempt == 4:
+            (destination / "createdump.exe").write_bytes(b"damaged runtime fixture")
         arguments = [str(setups[0]), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=", f"/LOG={logs / f'install-{attempt}.log'}"]
         if attempt != 1:
             arguments.append("/MODE=" + mode)
         sp.run(arguments, check=True, timeout=600)
+        runtime_downloaded = 'Downloading pinned Microsoft .NET runtime package:' in (logs / f'install-{attempt}.log').read_text(encoding='utf-8-sig')
+        assert runtime_downloaded == (attempt in (1, 4)), "Download runtime only for a new installation or missing/damaged/version-mismatched files."
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WindowsMegaProxy") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             current = winreg.QueryValueEx(key, "HelperPath")[0]
