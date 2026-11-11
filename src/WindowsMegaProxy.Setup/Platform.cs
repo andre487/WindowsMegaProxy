@@ -88,9 +88,20 @@ internal static partial class Program
         var owner = (SecurityIdentifier)security.GetOwner(typeof(SecurityIdentifier))!;
         if (!owner.Equals(Administrators) && !owner.Equals(SystemAccount)) throw new UnauthorizedAccessException("Untrusted installation directory owner.");
         foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
-            if (rule.AccessControlType == AccessControlType.Allow && !rule.IdentityReference.Equals(Administrators) && !rule.IdentityReference.Equals(SystemAccount) &&
-                (rule.FileSystemRights & (FileSystemRights.Write | FileSystemRights.Delete | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership | FileSystemRights.DeleteSubdirectoriesAndFiles)) != 0)
+            if (UntrustedWrite(rule))
                 throw new UnauthorizedAccessException("An unprivileged account can modify the installation directory.");
+    }
+
+    internal static bool UntrustedWrite(FileSystemAccessRule rule)
+    {
+        // Legacy Inno directories inherit these standard Program Files entries.
+        if (rule.IdentityReference.Equals(new SecurityIdentifier(WellKnownSidType.CreatorOwnerSid, null)) &&
+            (rule.PropagationFlags & PropagationFlags.InheritOnly) != 0) return false;
+        var trustedInstaller = new SecurityIdentifier("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464");
+        return rule.AccessControlType == AccessControlType.Allow && !rule.IdentityReference.Equals(Administrators) &&
+            !rule.IdentityReference.Equals(SystemAccount) && !rule.IdentityReference.Equals(trustedInstaller) &&
+            (rule.FileSystemRights & (FileSystemRights.Write | FileSystemRights.Delete | FileSystemRights.ChangePermissions |
+                FileSystemRights.TakeOwnership | FileSystemRights.DeleteSubdirectoriesAndFiles | (FileSystemRights)0x50000000)) != 0;
     }
 
     private static void Protect(string path, bool readable = true)

@@ -142,7 +142,8 @@ public sealed class SetupApplication : BootstrapperApplication
             if (parsed.Boot)
             {
                 string hash = engine.GetVariableString("SetupEngineSha256");
-                string bundle = engine.GetVariableString("WixBundleOriginalSource");
+                // OriginalSource is persisted by Burn and can point at the first installer download.
+                string bundle = engine.GetVariableString("WixBundleSourceProcessPath");
                 System.Threading.Tasks.Task.Run(() =>
                 {
                     int result;

@@ -5,7 +5,9 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using WixToolset.BootstrapperApplicationApi;
@@ -20,6 +22,7 @@ internal static class Checks
         try
         {
             Arguments();
+            Permissions();
             Archives(root);
             Runtime(root).GetAwaiter().GetResult();
             if (args.Length == 1) Windows(args[0]);
@@ -60,6 +63,19 @@ internal static class Checks
         foreach (string value in new[] { "", "a", @"C:\path with spaces\", @"C:\path\file.dll", "[value]" })
             Require(SetupArguments.Split(Program.Quote(value))[0] == value, "Windows argument quoting failed.");
         Reject<ArgumentException>(() => Program.Quote("a\"b"));
+    }
+
+    private static void Permissions()
+    {
+        var creator = new SecurityIdentifier(WellKnownSidType.CreatorOwnerSid, null);
+        var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+        Require(!Program.UntrustedWrite(new FileSystemAccessRule(creator, FileSystemRights.FullControl,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.InheritOnly, AccessControlType.Allow)), "Legacy inheritable creator-owner permissions must be accepted before hardening.");
+        Require(Program.UntrustedWrite(new FileSystemAccessRule(users, FileSystemRights.Write, AccessControlType.Allow)), "Unprivileged writes must be rejected.");
+        Require(Program.UntrustedWrite(new FileSystemAccessRule(creator, FileSystemRights.FullControl, AccessControlType.Allow)), "A direct creator-owner grant must not bypass validation.");
+        Require(!Program.UntrustedWrite(new FileSystemAccessRule(users, FileSystemRights.ReadAndExecute, AccessControlType.Allow)), "Read-only user access must be accepted.");
+        Require(!Program.UntrustedWrite(new FileSystemAccessRule(new SecurityIdentifier("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"), FileSystemRights.FullControl, AccessControlType.Allow)), "Windows TrustedInstaller is a privileged service.");
+        Require(Program.UntrustedWrite(new FileSystemAccessRule(users, (FileSystemRights)0x10000000, InheritanceFlags.ObjectInherit, PropagationFlags.InheritOnly, AccessControlType.Allow)), "Generic write grants to unprivileged users must be rejected.");
     }
 
     private static void Archives(string root)

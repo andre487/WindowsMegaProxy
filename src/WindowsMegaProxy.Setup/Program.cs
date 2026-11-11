@@ -85,10 +85,6 @@ internal static partial class Program
             Payload = Path.GetFullPath(args[10]);
             if (args[0] == "boot") BundleSource = Path.GetFullPath(args[11]);
             if (Personal && (args[3] == "service" || args[0] == "boot")) throw new ArgumentException("Personal installations cannot use service mode.");
-            Root = Path.Combine(ProgramFiles, Personal ? "WindowsMegaProxy.Users" : "WindowsMegaProxy");
-            Protect(Root);
-            if (Personal) { Root = Path.Combine(Root, Sid); Protect(Root); }
-            Protect(State, readable: false);
             string logs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MegaProxy.Setup");
             Protect(logs);
             using var log = new StreamWriter(Path.Combine(logs, (Personal ? Sid : "machine") + "-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + ".log")) { AutoFlush = true };
@@ -96,6 +92,10 @@ internal static partial class Program
             Console.SetError(log);
             try
             {
+                Root = Path.Combine(ProgramFiles, Personal ? "WindowsMegaProxy.Users" : "WindowsMegaProxy");
+                Protect(Root);
+                if (Personal) { Root = Path.Combine(Root, Sid); Protect(Root); }
+                Protect(State, readable: false);
                 bool removed = false;
                 using (var lease = new FileStream(Path.Combine(State, "install.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
                 {
