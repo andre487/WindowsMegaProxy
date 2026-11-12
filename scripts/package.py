@@ -186,9 +186,16 @@ def main():
                     raise ValueError("Published application was built from a different commit.")
         if any(".Dev" in file.name or file.name == "python.exe" for file in payload.rglob("*")):
             raise ValueError("Unexpected development files.")
-        shutil.copy2(ROOT / "LICENSE", payload / "LICENSE.txt")
+        shutil.copy2(ROOT / "src/LICENSE" if (ROOT / "src/LICENSE").exists() else ROOT / "LICENSE", payload / "LICENSE.txt")
+        if (ROOT / "LICENSING.md").exists():
+            shutil.copy2(ROOT / "LICENSING.md", payload / "LICENSING.md")
         shutil.copy2(ROOT / "installer/THIRD-PARTY-NOTICES.txt", payload / "THIRD-PARTY-NOTICES.txt")
         shutil.copytree(ROOT / "installer/licenses", payload / "licenses")
+        if not legacy_core:
+            (payload / "licenses/Cronet-Go-LICENSE.txt").unlink(missing_ok=True)
+        if (ROOT / "src/WindowsMegaProxy.Setup/LICENSE").exists():
+            shutil.copy2(ROOT / "src/WindowsMegaProxy.Setup/LICENSE", payload / "licenses/Setup-MIT.txt")
+        shutil.copy2(ROOT / "assets/branding/IDENTITY-LICENSE", payload / "licenses/Artwork-CC0.txt")
         if not legacy_runtime:
             for package, filename, output_name in (
                 ("microsoft.netcore.app.runtime.win-x64", "LICENSE.TXT", "dotnet-LICENSE.txt"),
@@ -299,6 +306,9 @@ def main():
             components["installer"]["format"] = "wix-burn"
         source = f"WindowsMegaProxy-{app_version}-source.zip"
         sp.run(["git", "archive", "--format=zip", f"--output={staging / source}", commit], cwd=ROOT, check=True)
+        if not legacy_core and wix_installer:
+            from source_bundle import append_dependencies
+            append_dependencies(staging / source, root=ROOT)
         components["source"] = {"version": app_version, "file": source}
         for item in components.values():
             file = staging / item["file"]

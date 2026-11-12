@@ -32,7 +32,7 @@
     <String Id="DisableUpdates" Value="Disable automatic updates" />
     <String Id="DesktopShortcut" Value="Create a desktop shortcut" />
     <String Id="LaunchAfterSetup" Value="Launch MegaProxy after installation" />
-    <String Id="StepTitle" Value="Step {0} of 3 — {1}" />
+    <String Id="StepTitle" Value="Step {0} of 4 — {1}" />
     <String Id="NextButton" Value="&amp;Next" />
     <String Id="BackButton" Value="&amp;Back" />
     <String Id="SystemScopeDescription" Value="One shared configuration for this computer. Administrators can change settings. Supports running as a Windows service." />
@@ -49,4 +49,7 @@
     <String Id="KeepDataDescription" Value="Remove the application and its startup entries. Keep profiles, rules and settings for a later installation." />
     <String Id="RemoveData" Value="Uninstall and delete data" />
     <String Id="RemoveDataDescription" Value="Also permanently delete profiles, rules, settings, logs and caches for this installation scope. Export your configuration first if you need it. Other users' personal installations and DEV data are not removed." />
+    <String Id="LicenseTitle" Value="Licenses" />
+    <String Id="LicenseDescription" Value="The installer is licensed under MIT, the application and proxy cores under GNU GPL v3 or later, and WiX components under MS-RL. Third-party components retain their own licenses." />
+    <String Id="AcceptLicenses" Value="I accept the license terms" />
 </WixLocalization>

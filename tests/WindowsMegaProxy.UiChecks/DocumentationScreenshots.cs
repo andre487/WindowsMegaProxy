@@ -31,6 +31,7 @@ internal static partial class Program
         object? Invoke(string name, params object?[] values) => typeof(MainWindow).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, values);
         window.Loaded -= typeof(MainWindow).GetMethod("WindowLoaded", BindingFlags.NonPublic | BindingFlags.Instance)!.CreateDelegate<RoutedEventHandler>(window);
         ((DispatcherTimer)typeof(MainWindow).GetField("timer", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!).Stop();
+        ((DispatcherTimer)typeof(MainWindow).GetField("trayTimer", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!).Stop();
         var settings = new Settings { Language = "en", Theme = "light", ShowAllConnections = true };
         foreach (var (name, country, type, host, port) in new[]
         {
@@ -62,9 +63,6 @@ internal static partial class Program
             Wait(window, controller.ConnectAsync(settings));
             Invoke("SetConnected", true);
             ((TextBlock)window.FindName("ConnectionsHint")).Text = "Shown: 4 of 4.";
-            var columns = ((DataGrid)window.FindName("ConnectionsGrid")).Columns;
-            double[] widths = [260, 230, 95, 145, 135, 135];
-            for (int index = 0; index < widths.Length; index++) columns[index].Width = new DataGridLength(widths[index]);
             var sections = (TabControl)window.FindName("Sections");
             foreach (string theme in new[] { "light", "dark" })
             {

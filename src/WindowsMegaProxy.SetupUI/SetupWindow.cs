@@ -28,6 +28,8 @@ internal sealed class SetupWindow : Form
     private readonly Wpf.StackPanel[] pages = new Wpf.StackPanel[4];
     private readonly Dictionary<string, Wpf.RadioButton>[] choices = new Dictionary<string, Wpf.RadioButton>[4];
     private bool removing;
+    private readonly Wpf.DockPanel licensePage = new();
+    internal readonly WpfPrimitives.ToggleButton LicenseAcceptance = new();
     private readonly Label heading = new() { AutoSize = true, Margin = new Padding(0, 12, 0, 12) };
     private readonly Label status = new() { AutoSize = true, MaximumSize = new Size(570, 0), Tag = "Explanation" };
     internal readonly WpfPrimitives.ToggleButton DesktopSwitch = new();
@@ -91,8 +93,8 @@ internal sealed class SetupWindow : Form
             choices[i] = new Dictionary<string, Wpf.RadioButton>();
             pages[i] = new Wpf.StackPanel { Margin = new System.Windows.Thickness(0, 0, 8, 8) };
         }
-        AddChoice(0, "machine", "SystemScope", "SystemScopeDescription", "\uE716");
         AddChoice(0, "user", "PersonalScope", "PersonalScopeDescription", "\uE77B");
+        AddChoice(0, "machine", "SystemScope", "SystemScopeDescription", "\uE716");
         AddChoice(1, "preserve", "PreserveMode", "PreserveModeDescription", "\uE713");
         AddChoice(1, "manual", "ManualMode", "ManualModeDescription", "\uE768");
         AddChoice(1, "login", "LoginMode", "LoginModeDescription", "\uE77B");
@@ -117,6 +119,34 @@ internal sealed class SetupWindow : Form
             System.Windows.Automation.AutomationProperties.SetName(toggle, T(label));
             pages[2].Children.Add(toggle);
         }
+        var licenseDescription = new Wpf.TextBlock { Text = T("LicenseDescription"),
+            TextWrapping = System.Windows.TextWrapping.Wrap, Margin = new System.Windows.Thickness(0, 0, 0, 12) };
+        licenseDescription.SetResourceReference(Wpf.TextBlock.ForegroundProperty, "Secondary");
+        licensePage.Resources = ChoicesView.Resources;
+        licensePage.SetResourceReference(Wpf.Control.ForegroundProperty, "Foreground");
+        Wpf.DockPanel.SetDock(licenseDescription, Wpf.Dock.Top);
+        licensePage.Children.Add(licenseDescription);
+        var licenseText = new Wpf.TextBox { IsReadOnly = true, FontSize = 12,
+            TextWrapping = System.Windows.TextWrapping.Wrap, VerticalScrollBarVisibility = Wpf.ScrollBarVisibility.Auto,
+            Padding = new System.Windows.Thickness(12) };
+        foreach (string resource in new[] { "SetupLicense.txt", "ApplicationLicense.txt", "WixLicense.txt" })
+            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resource))
+            using (var reader = new StreamReader(stream!))
+                licenseText.AppendText(reader.ReadToEnd() + "\r\n\r\n");
+        licenseText.SetResourceReference(Wpf.Control.BackgroundProperty, "CardBackground");
+        licenseText.SetResourceReference(Wpf.Control.ForegroundProperty, "Foreground");
+        licenseText.SetResourceReference(Wpf.Control.BorderBrushProperty, "Border");
+        UseSystemScrolling(licenseText);
+        System.Windows.Automation.AutomationProperties.SetName(licenseText, T("LicenseTitle"));
+        LicenseAcceptance.Content = new Wpf.TextBlock { Text = T("AcceptLicenses"), TextWrapping = System.Windows.TextWrapping.Wrap };
+        LicenseAcceptance.SetResourceReference(Wpf.Control.ForegroundProperty, "Foreground");
+        LicenseAcceptance.Margin = new System.Windows.Thickness(0, 16, 0, 8);
+        System.Windows.Automation.AutomationProperties.SetName(LicenseAcceptance, T("AcceptLicenses"));
+        LicenseAcceptance.Checked += (_, _) => { if (Step == -1) next.Enabled = true; };
+        LicenseAcceptance.Unchecked += (_, _) => { if (Step == -1) next.Enabled = false; };
+        Wpf.DockPanel.SetDock(LicenseAcceptance, Wpf.Dock.Bottom);
+        licensePage.Children.Add(LicenseAcceptance);
+        licensePage.Children.Add(licenseText);
         AddSwitch(DesktopSwitch, "DesktopShortcut");
         AddSwitch(LaunchSwitch, "LaunchAfterSetup");
         var footer = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Dock = DockStyle.Bottom };
@@ -129,12 +159,7 @@ internal sealed class SetupWindow : Form
         InstallLog.SetResourceReference(Wpf.Control.BackgroundProperty, "CardBackground");
         InstallLog.SetResourceReference(Wpf.Control.ForegroundProperty, "Foreground");
         InstallLog.SetResourceReference(Wpf.Control.BorderBrushProperty, "Border");
-        InstallLog.PreviewMouseWheel += (_, args) =>
-        {
-            InstallLog.ScrollToVerticalOffset(InstallLog.VerticalOffset + WheelDistance(args.Delta,
-                System.Windows.SystemParameters.WheelScrollLines, InstallLog.FontSize * InstallLog.FontFamily.LineSpacing, InstallLog.ViewportHeight));
-            args.Handled = true;
-        };
+        UseSystemScrolling(InstallLog);
         System.Windows.Automation.AutomationProperties.SetName(InstallLog, T("SetupLog"));
         System.Windows.Automation.AutomationProperties.SetName(InstallProgress, T("ProgressHeader"));
         logTimer.Tick += async (_, _) =>
@@ -152,7 +177,7 @@ internal sealed class SetupWindow : Form
         Disposed += (_, _) => { logTimer.Dispose(); if (!readingLog) logReader.Dispose(); };
         log.Text = T("SetupLog"); footer.Controls.Add(log);
         var license = new LinkLabel { Text = T("LicenseLink"), AutoSize = true, Margin = new Padding(0, 10, 0, 4) };
-        license.LinkClicked += (_, _) => System.Diagnostics.Process.Start("https://github.com/andre487/WindowsMegaProxy/blob/main/LICENSE")?.Dispose();
+        license.LinkClicked += (_, _) => System.Diagnostics.Process.Start("https://github.com/andre487/WindowsMegaProxy/blob/main/LICENSING.md")?.Dispose();
         footer.Controls.Add(license);
         var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, Padding = new Padding(0, 12, 0, 0) };
         close.Text = T("InstallCancelButton"); back.Text = T("BackButton"); remove.Text = T("ModifyUninstallButton");
@@ -177,6 +202,16 @@ internal sealed class SetupWindow : Form
     // WPF pixel scrolling uses oversized lines; match text height and the Windows wheel preference.
     internal static double WheelDistance(int delta, int lines, double lineHeight, double viewport) =>
         -delta / 120.0 * (lines < 0 ? viewport : lines * lineHeight);
+    private static void UseSystemScrolling(Wpf.TextBox textBox)
+    {
+        textBox.PreviewMouseWheel += (_, args) =>
+        {
+            textBox.ScrollToVerticalOffset(textBox.VerticalOffset + WheelDistance(args.Delta,
+                System.Windows.SystemParameters.WheelScrollLines,
+                textBox.FontSize * textBox.FontFamily.LineSpacing, textBox.ViewportHeight));
+            args.Handled = true;
+        };
+    }
     private string Selected(int page) => choices[page].FirstOrDefault(pair => pair.Value.IsChecked == true).Key ?? "invalid";
     internal void Select(int page, string value)
     {
@@ -229,7 +264,7 @@ internal sealed class SetupWindow : Form
     {
         this.installed = installed; locked = installed || scopeLocked;
         choices[1]["preserve"].Visibility = choices[2]["preserve"].Visibility = locked ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-        Select(0, selectedScope == BundleScope.PerUser ? "user" : "machine");
+        Select(0, selectedScope == BundleScope.PerMachine ? "machine" : "user");
         pages[0].IsEnabled = !locked;
         Select(1, arguments.TryGetValue("Mode", out var mode) && (locked || mode != "preserve") ? mode : locked ? "preserve" : "manual");
         Select(2, arguments.TryGetValue("AutomaticUpdates", out var updates) && (locked || updates != "preserve") ? updates : locked ? "preserve" : "true");
@@ -237,24 +272,26 @@ internal sealed class SetupWindow : Form
         DesktopSwitch.IsChecked = arguments.TryGetValue("DesktopShortcut", out var shortcut) && shortcut == "1";
         LaunchSwitch.IsChecked = arguments.TryGetValue("LaunchAfterSetup", out var launchValue) ? launchValue == "1" : locked && clientWasRunning;
         next.Enabled = true; remove.Visible = installed;
-        ShowStep(0);
+        ShowStep(-1);
     }
 
     private void ShowStep(int step)
     {
         Step = step;
-        ChoicesView.Content = pages[step];
+        content.Child = step == -1 ? licensePage : ChoicesView;
+        if (step >= 0) ChoicesView.Content = pages[step];
         ChoicesView.ScrollToTop();
-        heading.Text = string.Format(CultureInfo.CurrentCulture, T("StepTitle"), step + 1,
-            T(new[] { "SetupOptions", "OperatingMode", "AutomaticUpdates" }[step]));
-        back.Visible = step > 0;
+        heading.Text = string.Format(CultureInfo.CurrentCulture, T("StepTitle"), step + 2,
+            step == -1 ? T("LicenseTitle") : T(new[] { "SetupOptions", "OperatingMode", "AutomaticUpdates" }[step]));
+        back.Visible = step >= 0;
+        next.Enabled = LicenseAcceptance.IsChecked == true;
         next.Text = T(step < 2 ? "NextButton" : installed ? "ModifyRepairButton" : "InstallInstallButton");
         status.Text = step == 0 && locked ? T("ScopeLocked") : "";
         next.Focus();
     }
 
-    internal void Advance() { if (Step < 2) ShowStep(Step + 1); else application?.Install(); }
-    internal void Previous() { if (Step > 0) ShowStep(Step - 1); }
+    internal void Advance() { if (LicenseAcceptance.IsChecked != true) return; if (Step < 2) ShowStep(Step + 1); else application?.Install(); }
+    internal void Previous() { if (Step >= 0) ShowStep(Step - 1); }
     internal Dictionary<string, string> Options() => new()
     {
         ["Mode"] = Selected(1), ["AutomaticUpdates"] = Selected(2), ["RemoveData"] = Selected(3),

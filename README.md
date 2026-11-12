@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/andre487/WindowsMegaProxy/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/andre487/WindowsMegaProxy/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Release](https://img.shields.io/github/v/release/andre487/WindowsMegaProxy)](https://github.com/andre487/WindowsMegaProxy/releases/latest)
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![License: MIT / GPL-3.0-or-later](https://img.shields.io/badge/license-MIT%20%2F%20GPL--3.0--or--later-blue.svg)](LICENSING.md)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-blue)](docs/en/installation.md)
 
 <p align="center">
@@ -35,7 +35,7 @@ unrecognized-publisher warning. [Signatures and antivirus notes](docs/ANTIVIRUS.
 
 For updates, use **Settings → Application updates** or install the latest Setup
 over the existing installation, keeping its scope. Profiles and settings are preserved.
-The download link above always points to the latest release's installer, starting with 0.1.1.
+The download link always points to the latest release's installer.
 
 Server setup: [MegaProxyServer](https://github.com/andre487/MegaProxyServer).
 Other clients: [Android](https://github.com/andre487/AndroidMegaProxy) ·
@@ -54,6 +54,8 @@ Other clients: [Android](https://github.com/andre487/AndroidMegaProxy) ·
 
 [Profiles and routing](docs/en/profiles-and-routing.md) · [Updates](docs/en/updates.md) ·
 [English documentation](docs/en/index.md) / [Документация на русском](docs/ru/index.md)
+
+[Troubleshooting](docs/en/troubleshooting.md) · [Решение проблем](docs/ru/troubleshooting.md)
 
 ## Screenshots
 
@@ -82,7 +84,6 @@ Develop with VS Code, cmd scripts and uv; Visual Studio is not required.
 
 ## License
 
-MegaProxy for Windows is licensed under [GPL-3.0-or-later](LICENSE).
-Earlier MIT releases retain their original license; their
-[copyright and permission notice](installer/licenses/WindowsMegaProxy-MIT.txt) is preserved.
-Bundled components and [artwork](assets/branding/README.md) retain their respective licenses.
+The repository defaults to [MIT](LICENSE). The application, service and network
+components are **GPL-3.0-or-later**; our installer code is MIT. Third-party components
+and artwork retain their own licenses. See [license scopes and notices](LICENSING.md).

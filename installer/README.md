@@ -25,14 +25,16 @@ before opening. `src/WindowsMegaProxy.SetupUI` owns the interface and Burn lifec
 WiX tools are downloaded into `.tools/wix`; the build accepts the project's agreed
 WiX 7 OSMF terms. No Visual Studio IDE is required.
 
+Interactive setup starts with offline license texts and explicit acceptance.
+New installations default to the current user; upgrades retain their existing scope.
+Silent updates and uninstallation do not show the acceptance page.
+
 Only one installation scope is registered for the current user at a time. Uninstall
 before changing between system and personal installation; settings are retained.
 Burn's cached bundle provides Repair and Uninstall in Windows Settings.
-Transitioning from Inno Setup requires a clean installation: export configuration,
-uninstall the old application, then run the new installer and import configuration.
-Setup refuses an existing Inno registration or uninstaller files without modifying
-them. In-place updates and repair remain supported between WiX/Burn releases.
-Old Inno command-line switches are no longer accepted.
+The one-time Inno transition is described in the [installation guide](../docs/en/installation.md).
+Setup refuses existing Inno registrations or uninstaller files. Legacy switches
+are not accepted; in-place updates and repair are supported between Burn releases.
 
 Silent setup supports `-quiet Scope=PerMachine Mode=service` or
 `-quiet Scope=PerUser Mode=login AutomaticUpdates=false`. Omitting mode or update
@@ -40,71 +42,37 @@ preferences preserves existing choices. `-uninstall -quiet` removes the selected
 installed bundle. Installation engine logs are in `%ProgramData%/MegaProxy.Setup`.
 The engine and outer bundle are signed separately; all owned payload binaries are signed.
 
-The installer targets Windows 10/11 x64. UI, service and current-user launcher
-use self-contained folder deployment with .NET 10.0.14 pinned in
-Directory.Build.props. No system-wide .NET installation or WinGet is required.
-Both native core DLLs are bundled: stable 1.14.4 and experimental
-1.15.0-alpha.13. Their dependencies are pinned at build time;
-the application selects the core from the profile transport automatically.
-There is no global H3 toggle or on-demand core download. Legacy http3Enabled
-options are ignored and omitted on export. Other absent import options keep
-existing values.
+## Deployment and dependencies
 
-Windows OpenSSH Client is a mandatory Windows capability. Setup installs it
-when missing; failure stops setup with an error. Wintun is provided by the
-upstream cores. Python, uv and the .NET SDK remain development-only downloads
-inside the checkout. DEV publish outputs retain the runtime as regular files.
-Release installers and update ZIPs omit those files. Setup downloads the exact
-Microsoft runtime packages from NuGet.org, verifies the pinned archive SHA-256 and
-each file hash, and installs them locally; matching installed files are reused
-without a download. Downloads complete before stopping the installed application.
-No single-file extraction is used. UI and service share the same desktop
-runtime files. The unprivileged personal-install launcher has its own runtime
-in the user's application directory. Updating the pinned local .NET version requires an
-application update. Reboot updates stage and verify the runtime before restarting;
-boot-time replacement does not require a network connection.
+Windows 10/11 x64 is required. Scope, startup modes, data retention and removal
+are described in the [installation guide](../docs/en/installation.md).
+System files use `Program Files/WindowsMegaProxy`; personal protected runtimes
+use `Program Files/WindowsMegaProxy.Users/<SID>`. The personal launcher lives in
+the user's application directory. DEV has separate files and registrations.
 
-The installer defaults to manual launch on a new installation and offers three
-operating modes: manual, elevated sign-in startup, or a Windows service. It
-preserves the chosen mode on upgrade. Silent installations can select
-`Mode=manual`, `Mode=login` or `Mode=service`. Manual and login modes register
-no Windows service; login mode uses a highest-privilege interactive logon task
-for the administrator who selected it, without storing a password. The settings
-page can change the mode with administrator approval and restarts the interface.
-Exiting a standalone host stops its core; service-mode clients can close while
-the shared core continues running.
+Both [native core DLLs](../native/core/README.md) are bundled. There is no global
+H3 toggle or on-demand core download. Legacy `http3Enabled` is ignored on import.
+Windows OpenSSH Client is mandatory; failure to install it stops setup. Wintun
+comes from the upstream core dependencies. No WinGet or system-wide .NET is needed.
 
-System installations always use `Program Files/WindowsMegaProxy`; protected
-personal runtimes use `Program Files/WindowsMegaProxy.Users/<SID>`. Setup stops
-the service and closes clients before replacing files. Interrupted preparation
-restores the previous operating mode. Global and
-personal configuration and the shared Wintun driver survive uninstall. DEV
-uses its separate fixed directory and registrations.
+UI, service and launcher use folder deployment. The pinned .NET version is in
+[Directory.Build.props](../Directory.Build.props). DEV output includes runtime
+files, but release installers and component ZIPs omit them. Setup downloads exact
+Microsoft runtime packages from NuGet.org, checks archive and file hashes, and
+reuses matching installed files. UI and service share the desktop runtime; the
+personal launcher has its own runtime. Downloads finish before stopping the app.
 
-Service-mode updates scheduled for a restart are extracted and verified against
-the signed file manifest before restarting. Windows Session Manager replaces the
-files through `MoveFileEx` before services start; the service stays automatic.
-The new service verifies the payload before serving clients. A protected boot
-task checks completion and uses the verified installer to recover an incomplete
-replacement. Queued replacements require a restart before another update,
-mode change, repair or uninstall. Normal and current-user updates retain the
-installer-based workflow. A client waiting for an active installer displays
-“Update in progress” and reconnects automatically.
-The signed manifest marks WiX/Burn installers with `format: wix-burn`. Release
-checks skip an incompatible Inno baseline; CI still tests clean installation,
-repair and deferred updates between Burn installations.
+Boot-time service updates stage verified files and runtime packages before restart.
+Windows Session Manager replaces them before services start; the new service
+verifies the payload. A protected boot task recovers incomplete replacement using
+the verified installer. Queued replacements require a restart before another
+update, mode change, repair or removal. Restoring the tray client does not wait
+for temporary-file cleanup or Burn registration. Other updates use the installer.
 
-Global settings use machine-scope DPAPI and a directory restricted to SYSTEM
-and administrators so either elevated desktop hosts or the service can use
-them. Legacy service-identity DPAPI settings are migrated through authenticated
-IPC before stopping/removing the old service. DEV uses an independent machine-scope
-store, migrating its legacy user settings on first launch. `cleanup-dev.cmd`
-preserves settings and removes DEV services, scheduled tasks, Run entries,
-operating mode registration and installed binaries. Production is untouched.
-
-IPC v3 carries rule names and enabled state. Update the interface and service
-together; the installation helper can still read a v2 service during legacy
-configuration migration.
+Global settings use machine-scope DPAPI and SYSTEM/administrator-only storage.
+Personal settings are separate. IPC v3 updates UI and service together; legacy
+configuration migration can read v2. `cleanup-dev.cmd` removes DEV registrations
+and binaries while retaining settings and leaving production untouched.
 
 ## Release
 
@@ -130,16 +98,23 @@ base. Retries reuse an existing release PR and never move an existing tag.
    `vX.Y.Z`. The tag points to the merged commit, which must also pass main CI.
 3. The Release action builds and publishes the installer, application archive,
    separate stable/H3 core archives, application source, signed update manifest
-   and SHA256SUMS. VirusTotal is a separate manual diagnostic, not a release gate.
+   and SHA256SUMS. VirusTotal scans the signed installer and application ZIP. Up to
+   ten malicious/suspicious verdicts per file are allowed; more detections, API
+   errors or incomplete results block publication.
    A manual dispatch with an existing tag resumes the release. Published assets
    are never replaced; repeated publication verifies the original files and
    updates release notes without changing package bytes.
 
+The source archive also includes the linked Go module sources, Go runtime/library
+sources and checksum-pinned WiX source. `third-party/README.txt` explains their layout
+and local module replacement; each component retains its own license.
+
 Original packages are checkpointed for 14 days so retries can resume without
 rebuilding files or changing hashes. Complete draft/published releases can also
 restore their original packages; only unpublished draft files may be replaced.
-Antivirus reports are never required, restored, uploaded or published by release
-automation. See [antivirus notes and manual checks](../docs/ANTIVIRUS.md).
+Release notes include detection counts, report links and a false-positive caveat
+when needed. Raw reports are not release assets or repository files. See
+[antivirus policy and manual checks](../docs/ANTIVIRUS.md).
 
 Configure the repository secret `UPDATE_SIGNING_KEY` before releasing: base64
 of a 32-byte Ed25519 private key. Generate it with a trusted tool, store it in a
@@ -156,16 +131,8 @@ archive sizes/hashes and installed-file hashes. Runtime file entries carry
 `downloaded: true`: they are absent from ZIPs but included in the signed inventory
 so existing boot-update workers also verify and replace them. App and service update
 together; each core is a separate component with installation-relative paths.
-The application checks GitHub Releases once a day while running (including in
-the tray), verifies the manifest against its pinned Ed25519 key and downloads
-one installer. Settings provide a manual check, an automatic-update opt-out and
-an install action. Ignored notifications repeat weekly or for a newer release;
-opening the update page acknowledges the ready version. The protected helper
-verifies and stages the installer before elevation can execute it, preserves
-installation scope/mode and restarts the client. Old, partial and installed
-update downloads are removed. DEV checks can show releases but never install
-production updates over a development build. The installer also offers an
-automatic-update selector; a new installation enables checks by default and an upgrade preserves the existing preference.
+User-facing checking, download and installation choices are documented in
+[Application updates](../docs/en/updates.md). DEV never installs production updates.
 
 Packaged MegaProxy EXE/DLL files, the registration MSI, and both the Burn engine
 and final installer bundle are Authenticode-signed. Release builds require the
@@ -181,16 +148,7 @@ and tests silent installation, repair and uninstall on a disposable runner,
 without activating TUN. Interactive installation, failure rollback and driver
 activation still need testing in a disposable Windows VM before public release.
 
-OpenSSH uses the Windows capability installer; Wintun is provided by the bundled
-cores. Setup does not install dependencies through a package manager.
-
-Development/release downloads retry HTTP 5xx four times with 1, 2 and 4 second
-backoff delays, logging a bounded error body and diagnostic headers. After
-exhausted retries on a GitHub release URL, build tools can retrieve the same
-asset through the official GitHub REST API with the original pinned hash.
-Download-rule checks are a separate test executable and are not bundled.
-
-Core downloads prefer GitHub, then dl.sing-box.org for stable builds, then ghfast.top,
-with the official GitHub asset API as the final fallback. Mirrors are third-party
-services; every archive must match the original pinned SHA-256 before extraction.
-Alpha builds skip dl.sing-box.org because it only carries stable archives.
+Development downloads retry HTTP 5xx with backoff. Official GitHub assets have
+API and checksum-verified mirror fallbacks; upstream core executables downloaded
+by development tools are test servers, not installed application components.
+See `scripts/dependencies.py` and `scripts/common.py` for current sources and download handling.

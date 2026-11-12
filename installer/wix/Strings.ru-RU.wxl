@@ -32,7 +32,7 @@
     <String Id="DisableUpdates" Value="Отключить автоматические обновления" />
     <String Id="DesktopShortcut" Value="Создать ярлык на рабочем столе" />
     <String Id="LaunchAfterSetup" Value="Запустить MegaProxy после установки" />
-    <String Id="StepTitle" Value="Шаг {0} из 3 — {1}" />
+    <String Id="StepTitle" Value="Шаг {0} из 4 — {1}" />
     <String Id="NextButton" Value="&amp;Далее" />
     <String Id="BackButton" Value="&amp;Назад" />
     <String Id="SystemScopeDescription" Value="Общая конфигурация для этого компьютера. Менять настройки могут администраторы. Доступен запуск в виде службы Windows." />
@@ -49,4 +49,7 @@
     <String Id="KeepDataDescription" Value="Удалить приложение и записи автозапуска. Сохранить профили, правила и настройки для последующей установки." />
     <String Id="RemoveData" Value="Удалить приложение и данные" />
     <String Id="RemoveDataDescription" Value="Также безвозвратно удалить профили, правила, настройки, журналы и кеши этой области установки. При необходимости сначала экспортируйте конфигурацию. Личные установки других пользователей и данные DEV не удаляются." />
+    <String Id="LicenseTitle" Value="Лицензии" />
+    <String Id="LicenseDescription" Value="Установщик распространяется по MIT, приложение и прокси-ядра — по GNU GPL v3 или более поздней версии, компоненты WiX — по MS-RL. Сторонние компоненты сохраняют свои лицензии." />
+    <String Id="AcceptLicenses" Value="Я принимаю условия лицензий" />
 </WixLocalization>

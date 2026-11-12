@@ -26,17 +26,9 @@ Share this link without embedding a release version:
 
 **[WindowsMegaProxy-setup.exe](https://github.com/andre487/WindowsMegaProxy/releases/latest/download/WindowsMegaProxy-setup.exe)**
 
-Starting with 0.1.1, each release includes this filename as a byte-for-byte copy
-of its verified, signed, versioned installer. GitHub's `latest` redirect selects
-the latest published release. For reproducible deployments, use the versioned
-asset from a specific [release](https://github.com/andre487/WindowsMegaProxy/releases).
-
-Auto-update manifests continue to refer to versioned assets. The permanent-name
-copy has the same SHA-256 as the versioned Setup entry in `SHA256SUMS`; it is not
-a second build. Retrying publication does not replace published installer bytes.
+The link selects the latest published release. For a fixed version, use an asset
+from a specific [release](https://github.com/andre487/WindowsMegaProxy/releases).
 
 If in-app updating is unavailable, download Setup and install over an existing
 WiX/Burn installation with the same scope. Existing profiles and settings are preserved.
-For the transition from Inno Setup, export configuration, uninstall the old version,
-then install the new version and import configuration. This one-time transition
-requires a clean installation; later WiX/Burn updates work normally.
+For the one-time Inno Setup transition, see [Installation](installation.md).

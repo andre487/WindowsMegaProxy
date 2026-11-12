@@ -105,7 +105,7 @@ public sealed class SetupApplication : BootstrapperApplication
                 return;
             }
             var scope = detected != BundleScope.Default ? detected : requestedScope != BundleScope.Default ? requestedScope
-                : relatedScope != BundleScope.Default ? relatedScope : BundleScope.PerMachine;
+                : relatedScope != BundleScope.Default ? relatedScope : BundleScope.PerUser;
             if (scope == BundleScope.PerUser && arguments.TryGetValue("Mode", out var mode) && mode == "service")
                 throw new ArgumentException("Windows service mode is unavailable for a personal installation.");
             window.Ready(installed, scope, arguments, relatedScope != BundleScope.Default, clientWasRunning);

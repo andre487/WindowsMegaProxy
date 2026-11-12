@@ -21,7 +21,7 @@ def main(dev=False, tidy=False, publisher=None):
     source = ROOT / "native/core"
     inputs = sorted(path for path in source.iterdir() if path.name != "host_certificate.h")
     publisher = Path(publisher) if publisher else ROOT / "assets/authenticode-certificate.pem"
-    inputs += [Path(__file__), Path(__file__).with_name("build_diagnostics.py"), publisher, ROOT / "LICENSE"]
+    inputs += [Path(__file__), Path(__file__).with_name("build_diagnostics.py"), publisher]
     fingerprint = hashlib.sha256(b"".join(path.read_bytes() for path in inputs) + str(dev).encode()).hexdigest()
     stamp = output / "build.sha256"
     expected = [f"MegaProxy.Core.{name}.dll" for name in ("Stable", "Experimental")]
@@ -46,7 +46,7 @@ def main(dev=False, tidy=False, publisher=None):
                CC=f'"{zig}" cc -target x86_64-windows-gnu',
                CGO_CFLAGS="-DMEGAPROXY_DEV" if dev else "",
                ZIG_GLOBAL_CACHE_DIR=str(ROOT / ".tools/zig-cache"))
-    notices = [(ROOT / "LICENSE").read_text(encoding="utf-8"),
+    notices = [(source / "LICENSE").read_text(encoding="utf-8"),
                "Go runtime\n" + (ROOT / ".tools/go/LICENSE").read_text(encoding="utf-8")]
     modules = set()
     for name, modfile in (("Stable", "go.mod"), ("Experimental", "experimental.mod")):
@@ -79,7 +79,7 @@ def main(dev=False, tidy=False, publisher=None):
             *(["-DMEGAPROXY_DEV"] if dev else []), str(host), "-lwintrust", "-lcrypt32",
             "-o", str(output / ("WindowsMegaProxy.Dev.Core.exe" if dev else "WindowsMegaProxy.Core.exe"))],
            env=env, check=True)
-    shutil.copy2(ROOT / "LICENSE", output / "LICENSE.txt")
+    shutil.copy2(source / "LICENSE", output / "LICENSE.txt")
     if not tidy:
         stamp.write_text(fingerprint, encoding="ascii")
     return output
