@@ -59,7 +59,8 @@ to omit them. Exported files are not encrypted. MTU and traffic units are export
 See the [Windows configuration contract](../configuration.md) for fields and defaults.
 
 HTTPS subscriptions support backup sources and optional Basic authentication.
-Updates preserve local profiles; reconnect to apply network changes. Optional
+Updates preserve unrelated local profiles; matching IDs are replaced and become
+subscription-managed. Reconnect to apply network changes. Optional
 failover uses selected or all-profile backups in profile order.
 
 ## Diagnostics and logs
@@ -71,3 +72,17 @@ comes from ProxyCheck and is not a guarantee of anonymity.
 The Connections tab shows grouped connections and traffic rates; enable Show all
 to include default-route connections. Copy paths or log excerpts as needed.
 Logs are local, rotate at a configurable size and use English messages.
+
+Connection rows and traffic rates refresh only while the window is focused and
+the Connections tab is open. Optional reverse DNS replaces unknown IP addresses
+with hostnames; enable it in Connection settings. Successful and failed lookups
+default to a 24-hour cache. Other fixed durations or DNS-record TTL are available;
+failed lookups in TTL mode are cached for one hour. Lookups run only while the
+connection table is active. Full paths remain available in tooltips and for copying.
+
+The opt-in reset of existing TCP connections runs on connection startup. It applies
+only to IPv4 TCP connections matched by EXE/folder rules through the active profile;
+ambiguous destination-domain rules are skipped. Existing transfers can be interrupted.
+
+For missing tray icons, service connection problems or failed updates, see
+[Troubleshooting](troubleshooting.md).

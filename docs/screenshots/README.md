@@ -16,7 +16,7 @@ is loaded, and no proxy connection or network test is performed.
 To regenerate on Windows with the .NET SDK, from the repository root:
 
 ```cmd
-dotnet run --project tests\WindowsMegaProxy.UiChecks -c Release -- --documentation-screenshots
+scripts\dotnet.cmd run --project tests\WindowsMegaProxy.UiChecks -c Release -- --documentation-screenshots
 ```
 
 Use a production build (without `MegaProxyDev=true`). The screenshot fixture uses

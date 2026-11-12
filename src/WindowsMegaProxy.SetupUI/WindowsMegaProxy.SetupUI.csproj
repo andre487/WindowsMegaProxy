@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>net462</TargetFramework>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <LangVersion>latest</LangVersion>
         <AcceptEula>wix7</AcceptEula>
         <OutputType>WinExe</OutputType>
@@ -19,6 +20,9 @@
         <PackageReference Include="WixToolset.BootstrapperApplicationApi" Version="7.0.0" />
         <EmbeddedResource Include="../../installer/wix/Strings.en-US.wxl" LogicalName="en.wxl" WithCulture="false" />
         <EmbeddedResource Include="../../installer/wix/Strings.ru-RU.wxl" LogicalName="ru.wxl" WithCulture="false" />
+        <EmbeddedResource Include="LICENSE" LogicalName="SetupLicense.txt" />
+        <EmbeddedResource Include="../LICENSE" LogicalName="ApplicationLicense.txt" />
+        <EmbeddedResource Include="../../installer/licenses/WiX-LICENSE.txt" LogicalName="WixLicense.txt" />
         <Page Remove="WizardStyles.xaml" />
         <EmbeddedResource Include="WizardStyles.xaml" LogicalName="WizardStyles.xaml" />
     </ItemGroup>

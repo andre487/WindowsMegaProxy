@@ -18,13 +18,18 @@ See [signatures and antivirus notes](../ANTIVIRUS.md); inspect unexpected warnin
 
 ## Installation scope and startup
 
+Setup first shows the licenses for acceptance. For a new installation, **Current user**
+is the first and default scope. An upgrade preserves the existing installation scope.
+
 | Scope | Configuration | Available modes |
 | --- | --- | --- |
-| System-wide | Shared, administrator-managed | Manual, sign-in, Windows service |
 | Current user | Personal, encrypted settings | Manual or sign-in; no Windows service |
+| System-wide | Shared, administrator-managed | Manual, sign-in, Windows service |
 
-The system application is installed in Program Files; personal installations live
-under the user's application directory. Select the same scope when upgrading.
+The system application is installed in `Program Files\WindowsMegaProxy`. Personal
+installations keep a launcher in the user's application directory and protected
+application files in `Program Files\WindowsMegaProxy.Users\<SID>`. Personal settings
+remain under `%LOCALAPPDATA%\WindowsMegaProxy\Personal`. Keep the same scope when upgrading.
 In service mode, administrator accounts can edit the shared configuration; other
 users see a read-only interface. The tray client opens at sign-in while the service
 can keep the connection active independently of the window.
@@ -36,7 +41,7 @@ launching for the selected mode. Changing startup mode later is supported in set
 Only one installation scope can be registered for the current user at a time.
 To change scope, uninstall first; configuration is retained.
 
-## First connection
+## Removal and older installations
 
 Uninstall offers two choices: keep profiles and settings (the default), or delete
 the selected installation's data as well. Full removal does not delete DEV data or
@@ -46,6 +51,8 @@ When moving from the old Inno Setup installer, export your configuration first,
 uninstall the old version in Windows Settings, then install MegaProxy and import
 the configuration. Installing WiX/Burn over Inno is not supported. Subsequent
 WiX/Burn releases support normal updates and repair.
+
+## First connection
 
 1. Add a profile or use the configuration import section in Settings.
 2. Select a default route. System mode is the default; rules add exceptions.

@@ -244,14 +244,44 @@ internal static class Checks
             System.Threading.Thread.CurrentThread.CurrentUICulture = new CultureInfo(language);
             Console.WriteLine("Creating wizard: " + language);
             using var window = new SetupWindow(null, "0.0.0");
-            window.Ready(false, BundleScope.PerUser, new Dictionary<string, string>());
+            window.Ready(false, BundleScope.Default, new Dictionary<string, string>());
+            Require(window.Scope == BundleScope.PerUser, "Fresh installations must default to the current user.");
             Require(window.Options()["Mode"] == "manual" && window.Options()["AutomaticUpdates"] == "true", "Fresh installations must have concrete defaults.");
             Require(window.Options()["RemoveData"] == "0", "Uninstall must keep data by default.");
             window.Ready(false, BundleScope.PerUser, new Dictionary<string, string> { ["Mode"] = "login" });
             Require(window.Scope == BundleScope.PerUser && window.Options()["Mode"] == "login", "Personal UI options were lost.");
             window.Show(); Application.DoEvents();
+            Require(window.Step == -1 && window.LicenseAcceptance.IsChecked != true, "Licenses must require explicit acceptance.");
+            window.Advance();
+            Require(window.Step == -1, "Unaccepted licenses must prevent advancing.");
+            Capture(window, Path.Combine(directory, language + "-license.png"));
+            var licenseHost = window.Controls.OfType<System.Windows.Forms.Integration.ElementHost>().Single();
+            var licensePanel = (System.Windows.Controls.DockPanel)licenseHost.Child;
+            var licenseText = licensePanel.Children.OfType<System.Windows.Controls.TextBox>().Single();
+            licenseText.ScrollToHome(); licenseText.UpdateLayout();
+            var licenseWheel = new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, -30)
+            {
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseWheelEvent
+            };
+            licenseText.RaiseEvent(licenseWheel); licenseText.UpdateLayout();
+            double licenseDistance = Math.Min(licenseText.ExtentHeight - licenseText.ViewportHeight,
+                SetupWindow.WheelDistance(-30, System.Windows.SystemParameters.WheelScrollLines,
+                    licenseText.FontSize * licenseText.FontFamily.LineSpacing, licenseText.ViewportHeight));
+            Require(licenseWheel.Handled && Math.Abs(licenseText.VerticalOffset - licenseDistance) < 0.01,
+                "License scrolling must honor Windows settings without WPF acceleration.");
+            licenseText.ScrollToHome();
+            window.LicenseAcceptance.IsChecked = true;
+            window.Advance();
+            window.Previous();
+            window.LicenseAcceptance.IsChecked = false;
+            window.Advance();
+            Require(window.Step == -1, "Revoking acceptance must prevent advancing.");
+            window.LicenseAcceptance.IsChecked = true;
+            window.Advance();
             window.ChoicesView.UpdateLayout();
             Require(window.ChoicesView.ScrollableHeight == 0, "The first wizard page must not scroll when its content fits.");
+            var scopeChoices = (System.Windows.Controls.StackPanel)window.ChoicesView.Content;
+            Require(((System.Windows.Controls.RadioButton)scopeChoices.Children[0]).IsChecked == true, "Personal scope must be the first choice.");
             for (int step = 0; step < 3; step++)
             {
                 Require(window.Step == step, "Wizard navigation skipped a step.");
@@ -273,6 +303,7 @@ internal static class Checks
             Reject<ArgumentException>(() => window.Select(1, "service"));
             window.Ready(true, BundleScope.PerMachine, new Dictionary<string, string> { ["Mode"] = "service" });
             Require(window.Scope == BundleScope.PerMachine && window.Options()["Mode"] == "service", "Maintenance UI options were lost.");
+            window.Advance();
             window.Advance(); Application.DoEvents();
             Capture(window, Path.Combine(directory, language + "-system-mode.png"));
             var large = window.Size;
@@ -296,6 +327,7 @@ internal static class Checks
             window.Size = large; window.Previous();
             Application.DoEvents(); window.ChoicesView.UpdateLayout();
             Require(window.ChoicesView.ScrollableHeight == 0 && window.ChoicesView.VerticalOffset == 0, "Returning to the first page must clear old scroll extent and offset.");
+            window.LicenseAcceptance.IsChecked = false;
             window.Removal();
             window.Select(3, "1");
             Require(window.Options()["RemoveData"] == "1", "Full removal must require an explicit selection.");

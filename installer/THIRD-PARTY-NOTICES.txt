@@ -1,6 +1,7 @@
 WindowsMegaProxy distribution
 
 Application: GPL-3.0-or-later. See LICENSE.txt.
+Original setup code: MIT. See licenses/Setup-MIT.txt and LICENSING.md for scopes.
 Source: https://github.com/andre487/WindowsMegaProxy
 Application source for this build is supplied as a separate release archive.
 The MIT notice for previously MIT-licensed project code is preserved in
@@ -19,6 +20,10 @@ HTTP/3 source: https://github.com/SagerNet/sing-box/tree/v1.15.0-alpha.13
 Releases: https://github.com/SagerNet/sing-box/releases
 Build metadata: native/core/go.mod, native/core/experimental.mod and their checksums.
 The profile transport selects the DLL automatically. Each DLL contains its own Go runtime.
+
+The diagnostic helper is GPL-3.0-or-later; its dependency notices are in
+Notices/Diagnostics-NOTICES.txt. Country flags: MIT, Notices/flag-icons-LICENSE.txt.
+MegaProxy artwork: CC0-1.0, licenses/Artwork-CC0.txt.
 
 Wintun is embedded in the upstream cores. The signed upstream binary is used;
 WindowsMegaProxy does not build a kernel driver or remove the shared driver.
