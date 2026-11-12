@@ -46,6 +46,24 @@ def row(path, malicious=0):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class VirusTotalTests(unittest.TestCase):
+    def test_release_limit_counts_malicious_and_suspicious_per_file(self):
+        for malicious, suspicious in ((0, 0), (10, 0), (9, 1), (0, 10), (10, 1), (11, 0), (0, 11)):
+            with self.subTest(malicious=malicious, suspicious=suspicious), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary) / "build"
+                rows = fixture(directory)
+                for item in rows:
+                    item["stats"].update(malicious=malicious, suspicious=suspicious)
+                with patch.object(vt, "Client") as client:
+                    client.return_value.scan.side_effect = rows
+                    if malicious + suspicious <= 10:
+                        self.assertEqual(vt.scan_artifacts(directory, Path(temporary) / "reports", "a" * 64, max_detections=10), rows)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "limit of 10"):
+                            vt.scan_artifacts(directory, Path(temporary) / "reports", "a" * 64, max_detections=10)
+                    self.assertEqual(client.return_value.scan.call_count, 2)
+                report = (Path(temporary) / "reports/VIRUSTOTAL.md").read_text(encoding="utf-8")
+                self.assertEqual("false positives" in report, malicious + suspicious > 0)
+
     def test_manual_key_file_supports_bom_and_environment_override(self):
         with tempfile.TemporaryDirectory() as temporary:
             key = Path(temporary) / "key.txt"
@@ -173,6 +191,51 @@ class VirusTotalTests(unittest.TestCase):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class ReleaseRetryTests(unittest.TestCase):
+    def test_release_scans_verified_files_and_adds_counts_and_conditional_explanation(self):
+        for detections in (0, 10):
+            with self.subTest(detections=detections), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary) / "build"
+                rows = fixture(directory)
+                rows[0]["stats"]["malicious"] = detections
+                notes = Path(temporary) / "notes.md"
+                notes.write_text("Release notes")
+                published_notes = []
+
+                def gh(*args):
+                    if "--notes-file" in args:
+                        published_notes.append(Path(args[args.index("--notes-file") + 1]).read_text(encoding="utf-8"))
+                    if args[:2] == ("release", "upload"):
+                        self.assertFalse(any("VIRUSTOTAL" in argument for argument in args))
+
+                with patch.object(vt, "Client") as client, patch.object(release, "release_state", side_effect=[None, {"draft": True}]), patch.object(release, "gh", side_effect=gh), patch.object(release.time, "sleep"):
+                    client.return_value.scan.side_effect = rows
+                    release.publish(directory, REPO, TAG, COMMIT, notes, virustotal=True)
+                    self.assertEqual(client.return_value.scan.call_count, 2)
+                self.assertEqual(len(published_notes), 2)
+                self.assertIn(rows[0]["url"], published_notes[-1])
+                self.assertIn(rows[1]["url"], published_notes[-1])
+                self.assertEqual("false positives" in published_notes[-1], detections > 0)
+                self.assertEqual(published_notes[-1], release.release_notes(published_notes[-1], vt.report_text(rows, True)))
+
+    def test_failed_scan_never_creates_or_edits_a_release(self):
+        for failure in ("detections", "api", "invalid", "hash"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary) / "build"
+                rows = fixture(directory)
+                notes = Path(temporary) / "notes.md"
+                notes.write_text("Release notes")
+                if failure == "detections":
+                    rows[1]["stats"].update(malicious=10, suspicious=1)
+                elif failure == "invalid":
+                    rows[1]["stats"] = {}
+                elif failure == "hash":
+                    rows[1]["sha256"] = "f" * 64
+                with patch.object(vt, "Client") as client, patch.object(release, "release_state", return_value=None), patch.object(release, "gh") as gh:
+                    client.return_value.scan.side_effect = [rows[0], RuntimeError("VirusTotal API failed (HTTP 429)")] if failure == "api" else rows
+                    with self.assertRaises(RuntimeError):
+                        release.publish(directory, REPO, TAG, COMMIT, notes, virustotal=True)
+                    gh.assert_not_called()
+
     def test_setup_permalink_uploads_the_verified_installer_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / "build"

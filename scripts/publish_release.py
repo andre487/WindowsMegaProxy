@@ -16,6 +16,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+import virus_total as vt
 from authenticode import PUBLIC_CERTIFICATE
 
 START = "<!-- megaproxy-virustotal -->"
@@ -154,12 +155,14 @@ def restore(directory, repo, tag, commit, run_id=None):
         return True
 
 
-def release_notes(body):
+def release_notes(body, report=None):
     body = re.sub(re.escape(START) + ".*?" + re.escape(END), "", body, flags=re.S).rstrip()
+    if report is not None:
+        body += f"\n\n{START}\n{report.rstrip()}\n{END}"
     return body + "\n"
 
 
-def publish(directory, repo, tag, commit, notes_path):
+def publish(directory, repo, tag, commit, notes_path, *, virustotal=False):
     names = verify(directory, tag, commit)
     state = release_state(repo, tag)
     if (state is None or state["draft"]) and not has_current_authenticode(directory):
@@ -176,8 +179,12 @@ def publish(directory, repo, tag, commit, notes_path):
             body = state.get("body") or ""
         else:
             body = notes_path.read_text(encoding="utf-8")
+        report = None
+        if virustotal:
+            rows = vt.scan_artifacts(directory, temporary / "virustotal", max_detections=10)
+            report = vt.report_text(rows, complete=True)
         notes = temporary / "notes.md"
-        notes.write_text(release_notes(body), encoding="utf-8")
+        notes.write_text(release_notes(body, report), encoding="utf-8")
         if state is None:
             gh("release", "create", tag, "--repo", repo, "--verify-tag", "--draft", "--title", tag, "--notes-file", str(notes))
         if state is None or state["draft"]:
@@ -203,6 +210,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("restore", "publish"))
     parser.add_argument("--artifacts", type=Path, default=Path("artifacts/release"))
+    parser.add_argument("--virustotal", action="store_true", help="Scan both release files; allow at most 10 detections per file")
     args = parser.parse_args()
     tag = os.environ["RELEASE_TAG"]
     repo = os.environ["GITHUB_REPOSITORY"]
@@ -218,7 +226,7 @@ def main():
             with open(output, "a", encoding="utf-8") as stream:
                 stream.write(f"reused={str(reused).lower()}\n")
     else:
-        publish(args.artifacts, repo, tag, commit, Path(__file__).resolve().parent.parent / "release-notes" / (tag + ".md"))
+        publish(args.artifacts, repo, tag, commit, Path(__file__).resolve().parent.parent / "release-notes" / (tag + ".md"), virustotal=args.virustotal)
 
 
 if __name__ == "__main__":
