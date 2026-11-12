@@ -609,6 +609,30 @@ internal static partial class Program
             }
             var trayMenu = (ContextMenu)typeof(MainWindow).GetField("trayMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
             Assert(trayMenu.PlacementTarget == window && ((MenuItem)trayMenu.Items[0]).Header as string == "Open " + AppIdentity.DisplayName, "Tray uses the application's WPF menu and language.");
+            var recoveredTray = (System.Windows.Forms.NotifyIcon)typeof(MainWindow).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+            string tooltipBeforeRecovery = recoveredTray.Text;
+            var trayRegistration = typeof(MainWindow).Assembly.GetType("WindowsMegaProxy.TrayRegistration")!
+                .GetMethod("Exists", BindingFlags.Static | BindingFlags.NonPublic)!;
+            bool TrayExists() => (bool)trayRegistration.Invoke(null, [recoveredTray])!;
+            bool shellAvailable = System.Diagnostics.Process.GetProcessesByName("explorer")
+                .Any(process => process.SessionId == System.Diagnostics.Process.GetCurrentProcess().SessionId);
+            recoveredTray.Visible = false;
+            Assert(!TrayExists(), "Deleting the tray icon removes its actual shell registration.");
+            int taskbarMessage = (int)typeof(MainWindow).GetField("TaskbarCreatedMessage", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            Assert(taskbarMessage != 0, "The taskbar creation message is registered.");
+            typeof(MainWindow).GetMethod("RestartMessage", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
+                [IntPtr.Zero, taskbarMessage, IntPtr.Zero, IntPtr.Zero, false]);
+            Layout(window);
+            Assert(recoveredTray.Visible && recoveredTray.Text == tooltipBeforeRecovery,
+                "Taskbar creation restores the tray icon without changing its connection status.");
+            if (shellAvailable) Assert(TrayExists(), "Taskbar recovery registers the icon in Explorer, not only in NotifyIcon.Visible.");
+            recoveredTray.Visible = false;
+            // Reproduce NotifyIcon's state after NIM_ADD failed while Explorer was starting.
+            typeof(System.Windows.Forms.NotifyIcon).GetField("_visible", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(recoveredTray, true);
+            typeof(System.Windows.Forms.NotifyIcon).GetField("_added", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(recoveredTray, true);
+            Assert(recoveredTray.Visible && !TrayExists(), "The fixture reproduces a visible flag without a shell icon.");
+            typeof(MainWindow).GetMethod("CheckTrayIcon", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null);
+            if (shellAvailable) Assert(TrayExists(), "The independent watchdog restores a missing shell registration without a TaskbarCreated event.");
             typeof(MainWindow).GetMethod("UpdateSpeedResults", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
                 [new SpeedResult("Without profile", Status: "Waiting"), new SpeedResult("Through profile", Status: "Error")]);
             Assert(((DataGrid)window.FindName("SpeedResultsGrid")).Items.Cast<SpeedMetricRow>().Last() is { Metric: "Status", Direct: "Waiting", Profile: "Error" }, "Speed results use English display labels.");

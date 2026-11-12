@@ -196,6 +196,29 @@ def check(setup, logs, destination, data, *, fresh=False):
         session = ct.c_uint32()
         assert ct.windll.kernel32.ProcessIdToSessionId(windows[0][1], ct.byref(session)) and session.value > 0, "The tray client must never run in session zero."
         stop_workspace_app(dev=False, workspace_only=False)
+        if not damage:
+            # A locked disposable download must not prevent the SYSTEM helper restoring the tray.
+            leftover = destination / "update/setup.exe.previous"
+            leftover.parent.mkdir(exist_ok=True)
+            leftover.write_bytes(b"cleanup fixture")
+            create_file = ct.windll.kernel32.CreateFileW
+            create_file.argtypes = [ct.c_wchar_p, ct.c_uint32, ct.c_uint32, ct.c_void_p, ct.c_uint32, ct.c_uint32, ct.c_void_p]
+            create_file.restype = ct.c_void_p
+            close_handle = ct.windll.kernel32.CloseHandle
+            close_handle.argtypes = [ct.c_void_p]
+            handle = create_file(str(leftover), 0x80000000, 1, None, 3, 0, None)
+            assert handle != ct.c_void_p(-1).value
+            try:
+                helper = destination / "WindowsMegaProxy.Service.exe"
+                sp.run(["schtasks.exe", "/Create", "/TN", simulation, "/SC", "ONCE", "/ST", start_time,
+                        "/RU", "SYSTEM", "/RL", "HIGHEST", "/TR", f'"{helper}" --cleanup-installation', "/F"], check=True, capture_output=True)
+                sp.run(["schtasks.exe", "/Run", "/TN", simulation], check=True, capture_output=True)
+                wait_for_tray_client()
+                assert leftover.exists(), "The tray must return before cleanup can delete the locked file."
+            finally:
+                close_handle(handle)
+            wait_until(lambda: not leftover.exists(), "Cleanup did not resume after releasing the file.", 30)
+            stop_workspace_app(dev=False, workspace_only=False)
         sp.run(["schtasks.exe", "/Delete", "/TN", simulation, "/F"], check=True, capture_output=True)
 
     try:

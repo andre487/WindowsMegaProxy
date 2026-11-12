@@ -82,10 +82,17 @@ public partial class MainWindow : Window
         IntPtr handle = new WindowInteropHelper(this).Handle;
         HwndSource.FromHwnd(handle)?.AddHook(RestartMessage);
         ChangeWindowMessageFilterEx(handle, ChannelControl.ActivateMessage, 1, IntPtr.Zero);
+        // Explorer runs unelevated even when the login task starts this client elevated.
+        ChangeWindowMessageFilterEx(handle, TaskbarCreatedMessage, 1, IntPtr.Zero);
     }
 
     private IntPtr RestartMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (message == TaskbarCreatedMessage && TaskbarCreatedMessage != 0)
+        {
+            Dispatcher.BeginInvoke(RestoreTrayIcon);
+            return IntPtr.Zero;
+        }
         if (message == ChannelControl.ActivateMessage)
         {
             handled = true;
@@ -184,6 +191,8 @@ public partial class MainWindow : Window
         tray.MouseUp += (_, args) => { if (args.Button == Forms.MouseButtons.Right) trayMenu.IsOpen = true; };
         tray.DoubleClick += (_, _) => ShowWindow();
         tray.BalloonTipClicked += UpdateNotificationClicked;
+        trayTimer.Tick += (_, _) => CheckTrayIcon();
+        trayTimer.Start();
         if (this.appUpdates is not null)
         {
             this.appUpdates.Changed += () => Dispatcher.BeginInvoke(() => { if (!quitting) UpdateAppUpdatesView(); });
@@ -1533,6 +1542,7 @@ public partial class MainWindow : Window
             appUpdates?.Dispose(); updatesStopping.Dispose();
             log.Changed -= LogChanged;
             SystemEvents.UserPreferenceChanged -= ThemeChanged;
+            trayTimer.Stop();
             trayMenu.IsOpen = false; tray.Visible = false; tray.Dispose(); trayIcon.Dispose(); lightTrayIcon.Dispose(); connectedIcon.Dispose();
             Application.Current.Shutdown();
         }
