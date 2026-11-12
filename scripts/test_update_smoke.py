@@ -25,7 +25,7 @@ class UpdateSmokeSafetyTests(unittest.TestCase):
             document = ET.parse(project)
             self.assertEqual(document.findall(".//ProjectReference"), [])
             for reference in document.findall(".//Reference"):
-                self.assertEqual(Path(reference.findtext("HintPath")), application / (reference.attrib["Include"] + ".dll"))
+                self.assertEqual(Path(reference.findtext("HintPath")), (application / (reference.attrib["Include"] + ".dll")).resolve())
             dotnet.assert_called_once_with("run", "--project", str(project), "-c", "Release", "--", str(data))
 
     def test_service_failure_prints_redirected_diagnostic_and_still_fails(self):
