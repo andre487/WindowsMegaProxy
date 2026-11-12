@@ -421,11 +421,6 @@
                                 MinWidth="80"
                                 Header="{Binding [Protocol], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
-                                Binding="{Binding Route}"
-                                Width="*"
-                                MinWidth="120"
-                                Header="{Binding [Route], Source={x:Static core:Ui.Strings}}" />
-                            <DataGridTextColumn
                                 Binding="{Binding Upload}"
                                 SortMemberPath="UploadedBytes"
                                 Width="SizeToHeader"

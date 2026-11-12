@@ -809,7 +809,7 @@ internal static partial class Program
             Assert(pathBox.ToolTip as string == fullPath && pathBox.FontWeight == FontWeights.Normal, "Full paths available by tooltip with regular text.");
             pathBox.RaiseEvent(new KeyboardFocusChangedEventArgs(Keyboard.PrimaryDevice, Environment.TickCount, null, pathBox) { RoutedEvent = Keyboard.GotKeyboardFocusEvent });
             Assert(pathBox.Text == fullPath && pathBox.SelectedText == fullPath, "Focusing a path exposes selectable full text.");
-            Assert(new[] { 2, 4, 5 }.All(index => grid.Columns[index].Width.IsSizeToHeader && grid.Columns[index].MinWidth == 80),
+            Assert(new[] { 2, 3, 4 }.All(index => grid.Columns[index].Width.IsSizeToHeader && grid.Columns[index].MinWidth == 80),
                 "Protocol and traffic columns size to localized headers instead of consuming flexible space.");
             Assert(grid.Columns[0].ActualWidth > grid.Columns[2].ActualWidth,
                 "The application column receives more room than the compact protocol column.");
