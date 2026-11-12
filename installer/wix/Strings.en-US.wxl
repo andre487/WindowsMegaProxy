@@ -13,7 +13,7 @@
     <String Id="ModifyUninstallButton" Value="&amp;Uninstall" />
     <String Id="SuccessHeader" Value="Setup Successful" />
     <String Id="SuccessRestartText" Value="You must restart your computer before you can use the software." />
-    <String Id="SuccessCloseButton" Value="&amp;Close" />
+    <String Id="SuccessCloseButton" Value="&amp;Finish" />
     <String Id="FailureHeader" Value="Setup Failed" />
     <String Id="SetupOptions" Value="Installation scope" />
     <String Id="ScopeLocked" Value="To change installation scope, uninstall MegaProxy first. Configuration is retained." />

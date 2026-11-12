@@ -13,7 +13,7 @@
     <String Id="ModifyUninstallButton" Value="Удалить" />
     <String Id="SuccessHeader" Value="Готово" />
     <String Id="SuccessRestartText" Value="Перед использованием приложения необходимо перезагрузить компьютер." />
-    <String Id="SuccessCloseButton" Value="Закрыть" />
+    <String Id="SuccessCloseButton" Value="Готово" />
     <String Id="FailureHeader" Value="Ошибка установки" />
     <String Id="SetupOptions" Value="Область установки" />
     <String Id="ScopeLocked" Value="Чтобы изменить область установки, сначала удалите MegaProxy. Конфигурация сохраняется." />
