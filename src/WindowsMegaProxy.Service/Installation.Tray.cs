@@ -44,6 +44,7 @@ public static partial class Installation
         if (!WTSEnumerateSessions(IntPtr.Zero, 0, 1, out var sessions, out int count)) throw new Win32Exception();
         try
         {
+            Exception? failure = null;
             dynamic scheduler = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")!)!;
             scheduler.Connect();
             dynamic task = scheduler.GetFolder(@"\").GetTask(AppIdentity.Name + ".Tray");
@@ -56,8 +57,9 @@ public static partial class Installation
                     task.RunEx(null, 4, session.Id, null);
                     log.Write($"Requested the unelevated tray client in Windows session {session.Id} after installation.");
                 }
-                catch (Exception error) { log.Write($"Could not restore the tray client in session {session.Id}: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}."); }
+                catch (Exception error) { failure = error; log.Write($"Could not restore the tray client in session {session.Id}: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}."); }
             }
+            if (failure is not null) throw new IOException("Could not restore all tray clients.", failure);
         }
         finally { WTSFreeMemory(sessions); }
     }

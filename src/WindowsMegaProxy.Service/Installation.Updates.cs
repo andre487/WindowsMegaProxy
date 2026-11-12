@@ -31,6 +31,21 @@ public static partial class Installation
             : InstallRoot(AppContext.BaseDirectory, programFiles);
         CheckDirectory(root);
         var log = new DiagnosticLog(Path.Combine(SettingsStore.DirectoryPath, "logs"), initialLimit: 100);
+        bool trayRestoreRequested = false;
+        async Task RestoreClientsAsync()
+        {
+            if (trayRestoreRequested || UserInstallation.IsUser || System.Diagnostics.Process.GetCurrentProcess().SessionId != 0 || StartupConfiguration.Mode != "service") return;
+            trayRestoreRequested = true;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try { RestoreTrayClients(log); return; }
+                catch (Exception error)
+                {
+                    log.Write($"Could not restore tray clients (attempt {attempt + 1}): {error.GetType().Name}; HRESULT=0x{error.HResult:X8}.");
+                    if (attempt < 2) await Task.Delay(1000 * (1 << attempt));
+                }
+            }
+        }
         for (int attempt = 0; attempt < 60; attempt++)
         {
             try
@@ -47,6 +62,8 @@ public static partial class Installation
                     {
                         if (File.Exists(PreparedPath(root))) return 0;
                         RequireNoQueuedRebootFiles(root);
+                        // Files are ready; cleanup and Burn registration must not gate the user's tray client.
+                        await RestoreClientsAsync();
                         await CompleteBootRegistrationAsync(root, log);
                         string reboot = Path.Combine(staging, "reboot");
                         if (Directory.Exists(reboot)) { CheckDirectory(reboot); Directory.Delete(reboot, true); }
@@ -60,11 +77,7 @@ public static partial class Installation
                     }
                 }
                 log.Write("Installation cleanup completed.");
-                if (!UserInstallation.IsUser && System.Diagnostics.Process.GetCurrentProcess().SessionId == 0 && StartupConfiguration.Mode == "service")
-                {
-                    try { RestoreTrayClients(log); }
-                    catch (Exception error) { log.Write($"Could not restore tray clients: {error.GetType().Name}; HRESULT=0x{error.HResult:X8}."); }
-                }
+                await RestoreClientsAsync();
                 return 0;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)

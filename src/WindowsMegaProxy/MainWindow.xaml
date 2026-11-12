@@ -421,17 +421,17 @@
                                 MinWidth="80"
                                 Header="{Binding [Protocol], Source={x:Static core:Ui.Strings}}" />
                             <DataGridTextColumn
-                                Binding="{Binding Upload}"
-                                SortMemberPath="UploadedBytes"
-                                Width="SizeToHeader"
-                                MinWidth="80"
-                                Header="{Binding [Uploaded], Source={x:Static core:Ui.Strings}}" />
-                            <DataGridTextColumn
                                 Binding="{Binding Download}"
                                 SortMemberPath="DownloadedBytes"
                                 Width="SizeToHeader"
                                 MinWidth="80"
                                 Header="{Binding [Downloaded], Source={x:Static core:Ui.Strings}}" />
+                            <DataGridTextColumn
+                                Binding="{Binding Upload}"
+                                SortMemberPath="UploadedBytes"
+                                Width="SizeToHeader"
+                                MinWidth="80"
+                                Header="{Binding [Uploaded], Source={x:Static core:Ui.Strings}}" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>

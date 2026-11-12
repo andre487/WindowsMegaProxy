@@ -6,6 +6,50 @@ namespace WindowsMegaProxy;
 
 public partial class MainWindow
 {
+    private static readonly int TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
+    private readonly System.Windows.Threading.DispatcherTimer trayTimer = new() { Interval = TimeSpan.FromSeconds(10) };
+    private bool trayMissing;
+
+    private void CheckTrayIcon()
+    {
+        if (quitting) return;
+        try { CheckTrayRegistration(); }
+        catch (Exception error)
+        {
+            // A runtime compatibility issue must not take down the client or its active connections.
+            trayTimer.Stop();
+            WriteLog("Tray registration monitoring disabled: " + error);
+        }
+    }
+
+    private void CheckTrayRegistration()
+    {
+        if (!TrayRegistration.Exists(tray))
+        {
+            if (!trayMissing) WriteLog("Tray icon is absent from Explorer; retrying registration.");
+            trayMissing = true;
+            tray.Visible = false;
+            tray.Visible = true;
+        }
+        if (trayMissing && TrayRegistration.Exists(tray))
+        {
+            trayMissing = false;
+            WriteLog("Tray icon registration confirmed by Explorer.");
+        }
+    }
+
+    private void RestoreTrayIcon()
+    {
+        if (quitting) return;
+        // NotifyIcon remembers a failed initial NIM_ADD as successful; force a fresh add.
+        tray.Visible = false;
+        tray.Visible = true;
+        CheckTrayIcon();
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int RegisterWindowMessage(string message);
+
     private static void PositionTrayMenu(IntPtr handle)
     {
         var cursor = Forms.Cursor.Position;

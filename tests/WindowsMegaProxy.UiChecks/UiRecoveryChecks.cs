@@ -43,6 +43,10 @@ internal static class UiRecoveryChecks
             Wait(window, Invoke(window, "RefreshServiceAsync"));
             Assert(((TextBlock)window.FindName("StatusText")).Text == "Connection unknown" && migrations == 0,
                 "An unavailable service cannot overwrite or prematurely migrate settings.");
+            var startupTray = (System.Windows.Forms.NotifyIcon)Field(window, "tray")!;
+            startupTray.Visible = false;
+            typeof(MainWindow).GetMethod("CheckTrayIcon", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null);
+            Assert(startupTray.Visible, "Tray recovery does not wait for the unavailable service or settings initialization.");
             Assert(((TextBlock)window.FindName("ServiceStateText")).Visibility == Visibility.Visible,
                 "Service clients display the Windows service state separately from connection state.");
             Assert(((TextBlock)window.FindName("MessageText")).Text.Contains(AppIdentity.IsDev ? "run.cmd" : "installer") &&
