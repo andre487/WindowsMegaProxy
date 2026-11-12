@@ -32,6 +32,7 @@ public sealed class Settings
     public string Theme { get; set; } = "auto";
     public bool AlwaysMinimizeToTray { get; set; }
     public string TlsFingerprint { get; set; } = "DEFAULT";
+    public string CoreLogLevel { get; set; } = "warn";
     public string BootstrapDnsProvider { get; set; } = "auto";
     public int TunMtu { get; set; } = 1500;
     public string TrafficUnits { get; set; } = "IEC";
@@ -101,7 +102,13 @@ public static class Configuration
         "FIREFOX_ANDROID" => "firefox", "EDGE_ANDROID" => "edge", "RANDOMIZED" => "randomized", _ => "chrome"
     };
     public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || AppUpdatePolicy.ThroughProxy(settings) ||
+    public static void ValidateCoreLogLevel(string value)
+    {
+        if (value is not ("trace" or "debug" or "info" or "warn" or "error" or "fatal" or "panic"))
+            throw new ArgumentException("Invalid sing-box log level.");
+    }
+
+    public static bool UsesProxy(Settings settings) => settings.ActiveProfile is not null || settings.DefaultAction == "proxy" || AppUpdatePolicy.ThroughProxy(settings) ||
         settings.Rules.Any(rule => rule.Enabled && (rule.Action == "proxy" || rule.PodkopThroughProxy && PodkopCatalog.Parse(rule.Destination.Trim()).Length > 0));
     public static bool RequiresHttp3(Settings settings) => UsesProxy(settings) && settings.ActiveProfile?.UsesHttp3 == true;
     public static bool RequiresAlpha(Settings settings) => RequiresHttp3(settings) || UsesProxy(settings) && settings.ActiveProfile?.PreferHttp2 == true;
@@ -137,7 +144,9 @@ public static class Configuration
     public static JsonObject Build(Settings settings, int apiPort, string apiSecret, bool allowUnresolvedSsh = false)
     {
         ValidateAction(settings.DefaultAction);
+        ValidateCoreLogLevel(settings.CoreLogLevel);
         bool proxyDefault = settings.DefaultAction == "proxy";
+        bool interceptDns = settings.ActiveProfile is not null;
         var outbounds = new JsonArray(new JsonObject { ["type"] = "direct", ["tag"] = "direct" });
         if (UsesProxy(settings))
         {
@@ -152,7 +161,7 @@ public static class Configuration
 
         var rules = new JsonArray
         {
-            proxyDefault ? new JsonObject { ["port"] = 53, ["action"] = "hijack-dns" }
+            interceptDns ? new JsonObject { ["port"] = 53, ["action"] = "hijack-dns" }
                 : new JsonObject { ["port"] = 53, ["action"] = "route", ["outbound"] = "direct" },
             new JsonObject { ["process_name"] = new JsonArray(DirectProcessNames.Select(name => (JsonNode)JsonValue.Create(name)!).ToArray()), ["action"] = "route", ["outbound"] = "direct" }
         };
@@ -183,27 +192,27 @@ public static class Configuration
 
         return new JsonObject
         {
-            ["log"] = new JsonObject { ["level"] = "warn", ["timestamp"] = true },
+            ["log"] = new JsonObject { ["level"] = settings.CoreLogLevel, ["timestamp"] = true },
             ["dns"] = new JsonObject
             {
-                ["servers"] = proxyDefault ? new JsonArray(
+                ["servers"] = interceptDns ? new JsonArray(
                     ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, proxyDefault),
                     ProfileDns.Build(settings.ActiveProfile!))
                     : new JsonArray(ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, proxyDefault), new JsonObject { ["type"] = "local", ["tag"] = "system" }),
-                ["final"] = proxyDefault ? "dns" : "system",
+                ["final"] = interceptDns ? "dns" : "system",
                 ["strategy"] = "prefer_ipv4", ["reverse_mapping"] = true
             },
             ["inbounds"] = new JsonArray(new JsonObject
             {
                 ["type"] = "tun", ["tag"] = "tun", ["interface_name"] = AppIdentity.DisplayName,
                 ["address"] = new JsonArray(tunAddresses.Ipv4, tunAddresses.Ipv6),
-                ["mtu"] = settings.TunMtu, ["auto_route"] = true, ["strict_route"] = proxyDefault,
-                ["dns_mode"] = proxyDefault ? "hijack" : "disabled"
+                ["mtu"] = settings.TunMtu, ["auto_route"] = true, ["strict_route"] = interceptDns,
+                ["dns_mode"] = interceptDns ? "hijack" : "disabled"
             }),
             ["outbounds"] = outbounds,
             ["route"] = new JsonObject
             {
-                ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = proxyDefault ? "bootstrap" : "system", ["rules"] = rules,
+                ["auto_detect_interface"] = true, ["find_process"] = true, ["default_domain_resolver"] = interceptDns ? "bootstrap" : "system", ["rules"] = rules,
                 ["rule_set"] = new JsonArray(PodkopCatalog.Groups(settings).Select(ids => (JsonNode)PodkopCatalog.Definition(ids)).ToArray()),
                 ["final"] = proxyDefault ? "proxy" : "direct"
             },

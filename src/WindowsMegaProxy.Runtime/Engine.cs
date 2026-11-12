@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -17,6 +18,10 @@ namespace WindowsMegaProxy;
 
 public sealed partial class Engine : IEngine
 {
+    [DllImport("dnsapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DnsFlushResolverCache();
+    private bool tunDnsActive;
     private Process? process;
     private HttpClient client = new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
     private readonly string stateDirectory;
@@ -141,16 +146,21 @@ public sealed partial class Engine : IEngine
         var config = Configuration.Build(settings, port, secret);
         if (!testOnly)
         {
-            var addresses = await Task.Run(() =>
+            var network = await Task.Run(() =>
             {
-                var networks = NetworkInterface.GetAllNetworkInterfaces()
+                var adapters = NetworkInterface.GetAllNetworkInterfaces()
                     .Where(adapter => !string.Equals(adapter.Name, AppIdentity.DisplayName, StringComparison.OrdinalIgnoreCase))
-                    .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
+                    .ToArray();
+                bool ipv6 = adapters.Any(adapter => adapter.OperationalStatus == OperationalStatus.Up &&
+                    adapter.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                    TunAddresses.HasIpv6Uplink(adapter.GetIPProperties().UnicastAddresses.Select(item => item.Address),
+                        adapter.GetIPProperties().GatewayAddresses.Select(item => item.Address)));
+                var networks = adapters.SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
                     .Select(address => TunAddresses.Network(address.Address, address.PrefixLength));
-                return TunAddresses.Select(networks, AppIdentity.IsDev);
+                return (Addresses: TunAddresses.Select(networks, AppIdentity.IsDev), Ipv6: ipv6);
             }, cancellationToken).ConfigureAwait(false);
-            config["inbounds"]![0]!["address"] = new JsonArray(addresses.Ipv4, addresses.Ipv6);
-            Log?.Invoke($"TUN interface {AppIdentity.DisplayName}: IPv4={addresses.Ipv4}; IPv6={addresses.Ipv6}.");
+            TunAddresses.Apply(config, network.Addresses, network.Ipv6);
+            Log?.Invoke($"TUN interface {AppIdentity.DisplayName}: IPv4={network.Addresses.Ipv4}; IPv6={(network.Ipv6 ? network.Addresses.Ipv6 : "disabled (no IPv6 uplink)")}.");
         }
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
         foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken,
@@ -192,6 +202,7 @@ public sealed partial class Engine : IEngine
                 ? await Task.Run(() => ExistingTcpConnections.Capture(settings, message => Log?.Invoke(message)), cancellationToken)
                 : [];
             process = Process.Start(StartInfo(executable)) ?? throw new InvalidOperationException("The core did not start.");
+            tunDnsActive = !testOnly && config["inbounds"]![0]!["dns_mode"]?.ToString() == "hijack";
             job.Assign(process);
             process.EnableRaisingEvents = true;
             process.Exited += (_, _) => { if (!changingProfile) Exited?.Invoke(); };
@@ -206,6 +217,9 @@ public sealed partial class Engine : IEngine
                     if (response.IsSuccessStatusCode)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
+                        if (!testOnly && config["inbounds"]![0]!["dns_mode"]?.ToString() == "hijack")
+                            Log?.Invoke(DnsFlushResolverCache() ? "Windows DNS cache cleared after TUN DNS activation."
+                                : $"Windows DNS cache could not be cleared (error {Marshal.GetLastWin32Error()}). Applications may retain stale DNS records.");
                         if (existing.Length > 0)
                             await Task.Run(() => ExistingTcpConnections.Close(existing, message => Log?.Invoke(message)), cancellationToken);
                         return;
@@ -342,6 +356,12 @@ public sealed partial class Engine : IEngine
             finally
             {
                 process?.Dispose(); process = null;
+                if (tunDnsActive)
+                {
+                    tunDnsActive = false;
+                    Log?.Invoke(DnsFlushResolverCache() ? "Windows DNS cache cleared after TUN shutdown; system DNS restored."
+                        : $"Windows DNS cache could not be cleared after TUN shutdown (error {Marshal.GetLastWin32Error()}).");
+                }
             }
         }
         Log?.Invoke("Network core stopped.");

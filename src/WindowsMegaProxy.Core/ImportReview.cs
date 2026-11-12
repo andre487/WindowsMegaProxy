@@ -127,6 +127,7 @@ public sealed class ImportReview
             result.AlwaysMinimizeToTray = current.AlwaysMinimizeToTray;
             result.TlsFingerprint = current.TlsFingerprint; result.LaunchAtSignIn = current.LaunchAtSignIn;
             result.BootstrapDnsProvider = current.BootstrapDnsProvider;
+            result.CoreLogLevel = current.CoreLogLevel;
             result.ResetExistingTcpConnections = current.ResetExistingTcpConnections;
             result.WindowsOptions = (JsonObject)current.WindowsOptions.DeepClone();
             result.Rules = current.Rules.Select(rule => rule.Copy()).ToList();

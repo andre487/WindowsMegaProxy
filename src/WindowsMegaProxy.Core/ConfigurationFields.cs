@@ -72,7 +72,7 @@ public static class ConfigurationFields
             }
             else
             {
-                Keep(windows, "version defaultAction bypassLocalNetworks autoConnect resetExistingTcpConnections logSizeMb reverseDnsCacheHours resolveConnectionHosts showAllConnections language theme alwaysMinimizeToTray tlsFingerprint bootstrapDnsProvider launchAtSignIn rules tunMtu trafficUnits automaticAppUpdates appUpdatesThroughProxy");
+                Keep(windows, "version defaultAction bypassLocalNetworks autoConnect resetExistingTcpConnections logSizeMb reverseDnsCacheHours resolveConnectionHosts showAllConnections language theme alwaysMinimizeToTray tlsFingerprint coreLogLevel bootstrapDnsProvider launchAtSignIn rules tunMtu trafficUnits automaticAppUpdates appUpdatesThroughProxy");
                 Fingerprint(windows, "tlsFingerprint");
             }
         }

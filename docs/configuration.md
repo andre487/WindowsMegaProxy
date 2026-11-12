@@ -74,6 +74,7 @@ to fresh settings. MTU and traffic units are portable within this section.
 | tunMtu | integer 1280–65535; 1500 |
 | trafficUnits | IEC (default), SI |
 | bootstrapDnsProvider | auto (default), system, CLOUDFLARE, GOOGLE, QUAD9, YANDEX, YANDEX_SAFE, YANDEX_FAMILY |
+| coreLogLevel | trace, debug, info, warn (default), error, fatal, panic; applies after reconnection |
 | reverseDnsCacheHours | 0 (DNS TTL), 1, 6, 12, 24 (default), 72; failed TTL-mode queries cache for one hour |
 | resolveConnectionHosts | boolean; false |
 | showAllConnections | boolean; false |
