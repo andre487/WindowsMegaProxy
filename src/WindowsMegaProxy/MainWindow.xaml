@@ -1261,7 +1261,7 @@
                                             <ComboBoxItem Content="{DynamicResource &quot;Yandex Family&quot;}" Tag="YANDEX_FAMILY" />
                                         </ComboBox>
                                         <TextBlock
-                                            Text="{DynamicResource &quot;Resolves proxy server names directly, before connecting. Automatic uses Cloudflare for proxy-default mode and Windows DNS otherwise. Does not replace application DNS.&quot;}"
+                                            Text="{DynamicResource &quot;Resolves proxy server names before connecting. Automatic uses Cloudflare. While connected, ordinary application DNS uses the active profile DNS, including direct traffic. System DNS resumes after disconnection.&quot;}"
                                             TextWrapping="Wrap"
                                             FontSize="12"
                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -1275,6 +1275,25 @@
                                             <ComboBoxItem Content="{DynamicResource &quot;Password only&quot;}" Tag="PASSWORD_ONLY" />
                                             <ComboBoxItem Content="{DynamicResource &quot;Private key only&quot;}" Tag="KEY_ONLY" />
                                         </ComboBox>
+                                        <Label
+                                            Content="{DynamicResource &quot;sing-box log level&quot;}"
+                                            Target="{Binding ElementName=CoreLogLevelBox}"
+                                            Padding="0"
+                                            Margin="0,20,0,4" />
+                                        <ComboBox x:Name="CoreLogLevelBox" Width="220" HorizontalAlignment="Left" Margin="0,0,0,8">
+                                            <ComboBoxItem Content="trace" Tag="trace" />
+                                            <ComboBoxItem Content="debug" Tag="debug" />
+                                            <ComboBoxItem Content="info" Tag="info" />
+                                            <ComboBoxItem Content="warn" Tag="warn" />
+                                            <ComboBoxItem Content="error" Tag="error" />
+                                            <ComboBoxItem Content="fatal" Tag="fatal" />
+                                            <ComboBoxItem Content="panic" Tag="panic" />
+                                        </ComboBox>
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;Applies after reconnection. Debug and trace include destination addresses and application paths and increase log volume.&quot;}"
+                                            TextWrapping="Wrap"
+                                            FontSize="12"
+                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                         <Label
                                             Content="MTU"
                                             Target="{Binding ElementName=MtuBox}"

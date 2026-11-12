@@ -15,6 +15,25 @@ static void Reject(Action action)
 }
 
 SniffChecks.Run();
+var logProfile = ProxyProfile.Create("Log level test");
+logProfile.Proxy["host"] = "proxy.example";
+var logSettings = new Settings { Profiles = [logProfile], ActiveProfileId = logProfile.Id };
+Assert(logSettings.CoreLogLevel == "warn", "Core logs default to warnings.");
+var logAnalysis = SettingsAnalysis.Prepare(logSettings);
+foreach (var level in new[] { "trace", "debug", "info", "warn", "error", "fatal", "panic" })
+{
+    logSettings.CoreLogLevel = level;
+    Assert(Configuration.Build(logSettings, 1, "test")["log"]!["level"]!.ToString() == level, "Apply the selected core log level.");
+    Assert(PortableConfiguration.Import(PortableConfiguration.Export(logSettings).ToJsonString(), new Settings()).CoreLogLevel == level, "Core log level round-trips.");
+}
+logSettings.CoreLogLevel = "debug";
+Assert(SettingsAnalysis.Prepare(logSettings, logAnalysis).Signature != logAnalysis.Signature, "Log level changes require reconnect.");
+var missingLogLevel = PortableConfiguration.Export(logSettings);
+missingLogLevel["windows"]!.AsObject().Remove("coreLogLevel");
+Assert(PortableConfiguration.Import(missingLogLevel.ToJsonString(), logSettings).CoreLogLevel == "debug", "Absent log level preserves the current selection.");
+logSettings.CoreLogLevel = "invalid";
+Reject(() => PortableConfiguration.ValidateSettings(logSettings));
+Reject(() => Configuration.Build(logSettings, 1, "test"));
 DnsChecks.Run();
 ReputationChecks.Run();
 ConnectionOptionsChecks.Run();
@@ -23,6 +42,18 @@ Assert(ProfileAppearance.Colors.Count == 12 && ProfileAppearance.Countries.Count
 TransferChecks.Run();
 ConfigurationContractChecks.Run();
 var defaultTun = TunAddresses.Select([], false);
+var globalIpv6 = System.Net.IPAddress.Parse("2001:db8::2");
+var localIpv6 = System.Net.IPAddress.Parse("fe80::1");
+Assert(!TunAddresses.HasIpv6Uplink([globalIpv6], []), "An IPv6 address without a gateway is not an uplink.");
+Assert(!TunAddresses.HasIpv6Uplink([localIpv6, System.Net.IPAddress.Parse("fd62::2")], [localIpv6]), "Local IPv6 addresses do not establish Internet connectivity.");
+Assert(TunAddresses.HasIpv6Uplink([globalIpv6], [localIpv6]), "A global address and link-local gateway allow IPv6.");
+var ipv4Config = Configuration.Build(new Settings(), 1, "test");
+TunAddresses.Apply(ipv4Config, defaultTun, false);
+Assert(ipv4Config["inbounds"]![0]!["address"]!.AsArray().Count == 1 && ipv4Config["dns"]!["strategy"]!.ToString() == "ipv4_only" &&
+    ipv4Config["route"]!["rules"]![0]!["ip_version"]!.GetValue<int>() == 6, "No IPv6 uplink removes the TUN IPv6 address, filters DNS and rejects IPv6.");
+var dualConfig = Configuration.Build(new Settings(), 1, "test");
+TunAddresses.Apply(dualConfig, defaultTun, true);
+Assert(dualConfig["inbounds"]![0]!["address"]!.AsArray().Count == 2 && dualConfig["dns"]!["strategy"]!.ToString() == "prefer_ipv4", "IPv6 uplinks retain dual-stack configuration.");
 var devTun = TunAddresses.Select([], true);
 Assert(defaultTun.Ipv4 != devTun.Ipv4 && defaultTun.Ipv6 != devTun.Ipv6, "DEV and production prefer separate IPv4 and IPv6 TUN subnets.");
 var occupiedTun = new[] { TunAddresses.Network(System.Net.IPAddress.Parse("172.29.0.1"), 30),
@@ -260,7 +291,7 @@ Assert(diagnostic.Read(true).EndsWith("last-entry" + Environment.NewLine) && dia
 string redacted = DiagnosticLog.Redact("password=topsecret {\"token\":\"two words\"} https://user:password@example.com/?secret=abc");
 Assert(!redacted.Contains("topsecret") && !redacted.Contains("two words") && !redacted.Contains("user:") && !redacted.Contains("abc"), "Redact credentials and URL tokens.");
 
-var systemConfig = Configuration.Build(new Settings(), 9999, "test");
+var systemConfig = Configuration.Build(new Settings { BootstrapDnsProvider = "system" }, 9999, "test");
 Assert(systemConfig["route"]!["final"]!.ToString() == "direct", "System mode needs no profile.");
 Assert(systemConfig["inbounds"]![0]!["dns_mode"]!.ToString() == "disabled" && !systemConfig["inbounds"]![0]!["strict_route"]!.GetValue<bool>(), "System mode preserves Windows DNS.");
 Assert(systemConfig["dns"]!["servers"]![0]!["type"]!.ToString() == "local", "System DNS resolver.");
@@ -326,7 +357,7 @@ Assert(!Configuration.RequiresAlpha(h2Settings) && Configuration.Signature(h2Set
 h2Profile.Proxy["preferHttp2"] = "true";
 Reject(() => PortableConfiguration.ValidateProfile(h2Profile));
 h3Settings.DefaultAction = "system";
-Assert(!Configuration.RequiresHttp3(h3Settings), "An unused HTTP/3 profile does not select alpha.");
+Assert(Configuration.RequiresHttp3(h3Settings), "The active HTTP/3 profile is required for DNS even when application traffic is direct.");
 h3Profile.Proxy["preferHttp3"] = "true"; Reject(() => PortableConfiguration.ValidateProfile(h3Profile));
 Assert(Http3Fallback.IsUnavailable(["HTTP/3 unavailable: timeout: no recent network activity"]), "Known QUIC timeouts permit stable fallback.");
 Assert(!Http3Fallback.IsUnavailable(["HTTP/3 unavailable: x509: certificate expired; no recent network activity"]), "Certificate errors never downgrade.");

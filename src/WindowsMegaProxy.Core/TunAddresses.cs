@@ -3,11 +3,31 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
+using System.Text.Json.Nodes;
 
 namespace WindowsMegaProxy;
 
 public static class TunAddresses
 {
+    public static bool HasIpv6Uplink(IEnumerable<IPAddress> addresses, IEnumerable<IPAddress> gateways) =>
+        addresses.Any(address => address.AddressFamily == AddressFamily.InterNetworkV6 &&
+            !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !IPAddress.IsLoopback(address) &&
+            !address.Equals(IPAddress.IPv6Any) && (address.GetAddressBytes()[0] & 0xfe) != 0xfc) &&
+        gateways.Any(address => address.AddressFamily == AddressFamily.InterNetworkV6 &&
+            !address.Equals(IPAddress.IPv6Any));
+
+    public static void Apply(JsonObject config, (string Ipv4, string Ipv6) addresses, bool ipv6)
+    {
+        config["inbounds"]![0]!["address"] = ipv6 ? new JsonArray(addresses.Ipv4, addresses.Ipv6) : new JsonArray(addresses.Ipv4);
+        if (ipv6) return;
+        config["dns"]!["strategy"] = "ipv4_only";
+        config["route"]!["rules"]!.AsArray().Insert(0, new JsonObject
+        {
+            ["ip_version"] = 6, ["action"] = "reject"
+        });
+    }
+
     public static IPNetwork Network(IPAddress address, int prefixLength)
     {
         byte[] bytes = address.GetAddressBytes();

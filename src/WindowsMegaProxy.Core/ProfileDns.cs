@@ -23,7 +23,7 @@ public static class ProfileDns
 
     public static JsonObject BuildBootstrap(string provider, bool proxyDefault)
     {
-        if (provider == "auto") provider = proxyDefault ? "CLOUDFLARE" : "system";
+        if (provider == "auto") provider = "CLOUDFLARE";
         if (provider == "system") return new JsonObject { ["type"] = "local", ["tag"] = "bootstrap" };
         string address = provider switch
         {

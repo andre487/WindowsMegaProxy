@@ -1,4 +1,6 @@
 {
+    "sing-box log level": "Уровень логов sing-box",
+    "Applies after reconnection. Debug and trace include destination addresses and application paths and increase log volume.": "Применяется после переподключения. Debug и trace включают адреса назначения и пути приложений и увеличивают объём журнала.",
     "SOCKS5 does not encrypt the server connection; UDP requires server support.": "SOCKS5 не шифрует соединение с сервером; UDP требует поддержки сервера.",
     "The imported global SSH fingerprint applies to all SSH profiles. Changing it here updates that global setting.": "Импортированный общий SSH fingerprint применяется ко всем SSH-профилям. Изменение здесь обновляет общую настройку.",
     "Import notices": "Замечания к импорту",
@@ -574,7 +576,7 @@
     "TLS fingerprints and bootstrap DNS": "TLS fingerprint и начальный DNS",
     "Windows DNS": "DNS Windows",
     "Invalid bootstrap DNS provider.": "Некорректный провайдер начального DNS.",
-    "Resolves proxy server names directly, before connecting. Automatic uses Cloudflare for proxy-default mode and Windows DNS otherwise. Does not replace application DNS.": "Разрешает имена прокси-серверов напрямую, до подключения. Автоматически: Cloudflare при прокси по умолчанию, иначе DNS Windows. Не заменяет DNS приложений.",
+    "Resolves proxy server names before connecting. Automatic uses Cloudflare. While connected, ordinary application DNS uses the active profile DNS, including direct traffic. System DNS resumes after disconnection.": "Разрешает имена прокси до подключения. Автоматически используется Cloudflare. Во время подключения обычные DNS-запросы приложений используют DNS активного профиля, включая прямой трафик. После отключения возвращается системный DNS.",
     "DNS provider": "Провайдер DNS",
     "Custom DoH URL": "Свой адрес DoH",
     "Yandex Basic": "Яндекс Базовый",

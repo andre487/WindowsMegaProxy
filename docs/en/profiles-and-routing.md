@@ -40,13 +40,24 @@ startup uses cached lists and refreshes them after connecting.
 ## DNS and connection settings
 
 Profile DNS supports Cloudflare, Google, Quad9, Yandex or custom DoH and TCP/UDP
-endpoints. When the profile is the default route, its DNS uses the proxy; system
-mode retains Windows DNS. UDP DNS needs a UDP-capable transport and does not fall
+endpoints. While connected with an active profile, all ordinary application DNS
+uses that profile's DNS through the proxy, including applications routed directly.
+Traffic rules do not select a separate DNS provider. UDP DNS needs a UDP-capable transport and does not fall
 back directly. Custom DNS URL query strings are unsupported.
 
 Bootstrap DNS resolves proxy hostnames before connecting and can use Windows DNS
-or a selected DoH provider directly. Connection settings also include TCP TLS and
+or a selected DoH provider directly. Automatic selects Cloudflare. Bootstrap does
+not select application DNS. Disconnecting removes the TUN DNS configuration and
+returns to the existing Windows DNS settings; physical adapter settings are unchanged.
+The Windows DNS cache is cleared at TUN DNS startup and shutdown; applications
+with their own DNS caches may need restarting. Without an active profile, system DNS is retained.
+Application-managed DoH is unaffected. Connection settings also include TCP TLS and
 SSH fingerprint presets; H3 uses the core's native fingerprint.
+
+Connection settings include the sing-box log level (default `warn`). Changes are
+saved automatically and apply after reconnection. Use `debug` for troubleshooting;
+`trace` is more verbose. These logs include destination addresses and application
+paths and use the existing local log rotation limit.
 
 ## Configuration transfer and subscriptions
 

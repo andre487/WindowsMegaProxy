@@ -47,8 +47,11 @@ internal static class DnsChecks
             Reject(() => Configuration.Build(settings, 9999, "test"));
         }
         settings.DefaultAction = "system";
+        profile.Data["dns"] = new JsonObject { ["provider"] = "GOOGLE" };
         var system = Configuration.Build(settings, 9999, "test");
-        Check(system["dns"]!["servers"]![0]!["type"]!.ToString() == "local" && system["inbounds"]![0]!["dns_mode"]!.ToString() == "disabled", "System mode does not activate profile DNS.");
+        Check(system["dns"]!["servers"]![1]!["server"]!.ToString() == "dns.google" && system["inbounds"]![0]!["dns_mode"]!.ToString() == "hijack" && system["dns"]!["final"]!.ToString() == "dns", "All application DNS uses the active profile even with no proxy traffic rules.");
+        settings.BootstrapDnsProvider = "system";
+        Check(Configuration.Build(settings, 9999, "test")["dns"]!["final"]!.ToString() == "dns", "System bootstrap must not bypass profile DNS.");
         profile.Data["dns"] = new JsonObject { ["provider"] = "GOOGLE" };
         settings.Rules.Add(new RoutingRule { Source = "exe", Path = @"C:\Test.exe", Action = "proxy" });
         var beforeBootstrap = SettingsAnalysis.Prepare(settings);
@@ -59,7 +62,7 @@ internal static class DnsChecks
             var bootstrap = config["dns"]!["servers"]![0]!;
             Check(System.Net.IPAddress.TryParse(bootstrap["server"]!.ToString(), out _) && bootstrap["detour"] is null && bootstrap["tls"]!["server_name"]!.ToString() == new Uri(provider.Url).Host,
                 "Bootstrap connects directly to a known IP and verifies the provider hostname without recursive DNS.");
-            Check(config["route"]!["default_domain_resolver"]!.ToString() == "system" && config["outbounds"]![0]!["domain_resolver"]!.ToString() == "bootstrap", "Selective proxy bootstrap does not replace direct application DNS.");
+            Check(config["route"]!["default_domain_resolver"]!.ToString() == "bootstrap" && config["outbounds"]![0]!["domain_resolver"]!.ToString() == "bootstrap", "Selective routing and proxy bootstrap use the selected external DNS.");
             File.WriteAllText($"artifacts/dns-checks/bootstrap-{provider.Id}.json", config.ToJsonString(Configuration.JsonOptions));
         }
         Check(!SettingsAnalysis.SameNetwork(settings, beforeBootstrap.Settings) && SettingsAnalysis.Prepare(settings, beforeBootstrap).Signature != beforeBootstrap.Signature, "Bootstrap changes invalidate cached network analysis.");

@@ -99,6 +99,7 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("theme")) candidate.Theme = String(windows, "theme");
                     if (windows.ContainsKey("alwaysMinimizeToTray")) candidate.AlwaysMinimizeToTray = windows["alwaysMinimizeToTray"]!.GetValue<bool>();
                     if (windows.ContainsKey("tlsFingerprint")) candidate.TlsFingerprint = String(windows, "tlsFingerprint");
+                    if (windows.ContainsKey("coreLogLevel")) candidate.CoreLogLevel = String(windows, "coreLogLevel");
                     if (windows.ContainsKey("bootstrapDnsProvider")) candidate.BootstrapDnsProvider = String(windows, "bootstrapDnsProvider");
                     if (windows.ContainsKey("launchAtSignIn")) candidate.LaunchAtSignIn = windows["launchAtSignIn"]!.GetValue<bool>();
                     if (windows.ContainsKey("rules")) candidate.Rules = windows["rules"]!.Deserialize<List<RoutingRule>>(PortableOptions) ?? throw Invalid(Ui.T("Invalid Windows rules."));
@@ -158,6 +159,7 @@ public static class PortableConfiguration
             windows["theme"] = settings.Theme;
             windows["alwaysMinimizeToTray"] = settings.AlwaysMinimizeToTray;
             windows["bootstrapDnsProvider"] = settings.BootstrapDnsProvider;
+            windows["coreLogLevel"] = settings.CoreLogLevel;
             windows["launchAtSignIn"] = settings.LaunchAtSignIn ?? false;
             windows["rules"] = JsonSerializer.SerializeToNode(settings.Rules, PortableOptions);
         }
@@ -190,6 +192,7 @@ public static class PortableConfiguration
         if (settings.Language is not ("en" or "ru") || settings.Theme is not ("auto" or "light" or "dark")) throw Invalid("Invalid language or theme.");
         settings.TlsFingerprint = ConfigurationFields.NormalizeFingerprint(settings.TlsFingerprint);
         if (settings.ReverseDnsCacheHours is not (0 or 1 or 6 or 12 or 24 or 72)) throw Invalid("Unsupported reverse DNS cache duration.");
+        Configuration.ValidateCoreLogLevel(settings.CoreLogLevel);
         _ = ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, false);
         _ = ConfigurationSubscription.Get(settings);
         _ = AppUpdatePolicy.Enabled(settings);

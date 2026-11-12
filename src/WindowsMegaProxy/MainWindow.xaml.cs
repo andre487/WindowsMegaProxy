@@ -223,6 +223,7 @@ public partial class MainWindow : Window
         AlwaysMinimizeToTrayBox.Click += SettingsChanged;
         TlsFingerprintBox.SelectionChanged += PreferencesChanged;
         BootstrapDnsBox.SelectionChanged += PreferencesChanged;
+        CoreLogLevelBox.SelectionChanged += PreferencesChanged;
         ReverseDnsCacheBox.SelectionChanged += PreferencesChanged;
         ResolveConnectionHostsBox.Checked += SettingsChanged;
         ResolveConnectionHostsBox.Unchecked += SettingsChanged;
@@ -509,6 +510,7 @@ public partial class MainWindow : Window
         updated.TlsFingerprint = (string)((ComboBoxItem)TlsFingerprintBox.SelectedItem).Tag;
         updated.ReverseDnsCacheHours = int.Parse((string)((ComboBoxItem)ReverseDnsCacheBox.SelectedItem).Tag);
         updated.ResolveConnectionHosts = ResolveConnectionHostsBox.IsChecked == true;
+        updated.CoreLogLevel = (string)((ComboBoxItem)CoreLogLevelBox.SelectedItem).Tag;
         updated.BootstrapDnsProvider = (string)((ComboBoxItem)BootstrapDnsBox.SelectedItem).Tag;
         if (!int.TryParse(MtuBox.Text, out int mtu) || mtu is < 1280 or > 65535)
             throw new ArgumentException(Ui.T("MTU must be between 1280 and 65535 bytes."));
@@ -616,6 +618,7 @@ public partial class MainWindow : Window
             SelectTag(ReverseDnsCacheBox, updated.ReverseDnsCacheHours.ToString());
             ResolveConnectionHostsBox.IsChecked = updated.ResolveConnectionHosts;
             SelectTag(BootstrapDnsBox, updated.BootstrapDnsProvider);
+            SelectTag(CoreLogLevelBox, updated.CoreLogLevel);
             MtuBox.Text = updated.TunMtu.ToString();
             SelectTag(TrafficUnitsBox, updated.TrafficUnits);
             string authMode = SshConfiguration.AuthMode(updated);
@@ -884,7 +887,7 @@ public partial class MainWindow : Window
         RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, AlwaysMinimizeToTrayBox, TlsFingerprintBox, BootstrapDnsBox, ResolveConnectionHostsBox, ReverseDnsCacheBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, AlwaysMinimizeToTrayBox, TlsFingerprintBox, BootstrapDnsBox, CoreLogLevelBox, ResolveConnectionHostsBox, ReverseDnsCacheBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && scheduledAppUpdate?.FilesQueued != true && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         OperatingModeBox.ToolTip = scheduledAppUpdate?.FilesQueued == true ? Ui.T("Restart Windows to finish the update. File replacement has already been scheduled.") : null;

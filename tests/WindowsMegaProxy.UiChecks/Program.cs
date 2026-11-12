@@ -588,6 +588,10 @@ internal static partial class Program
             bootstrapDns.SelectedIndex = 3;
             Layout(window);
             Assert(saved[^1].BootstrapDnsProvider == "GOOGLE", "Bootstrap DNS autosaves.");
+            var coreLogLevel = (ComboBox)window.FindName("CoreLogLevelBox");
+            coreLogLevel.SelectedItem = coreLogLevel.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == "debug");
+            Layout(window);
+            Assert(saved[^1].CoreLogLevel == "debug", "Core log level autosaves.");
             var mtu = (TextBox)window.FindName("MtuBox");
             mtu.Text = "1400";
             mtu.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent));
@@ -601,6 +605,7 @@ internal static partial class Program
             Assert(SshConfiguration.AuthMode(saved[^1]) == "PASSWORD_ONLY", "SSH authentication mode autosaves in portable shared options.");
             typeof(MainWindow).GetMethod("ApplySettings", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [PortableConfiguration.Copy(saved[^1])]);
             Assert((string)((ComboBoxItem)bootstrapDns.SelectedItem).Tag == "GOOGLE", "Bootstrap DNS restores from saved settings.");
+            Assert((string)((ComboBoxItem)coreLogLevel.SelectedItem).Tag == "debug", "Core log level restores from saved settings.");
             foreach (var gridName in new[] { "ConnectionsGrid", "RulesList", "SpeedResultsGrid" })
             {
                 var headers = ((DataGrid)window.FindName(gridName)).Columns.Select(column => (string)column.Header).ToArray();
