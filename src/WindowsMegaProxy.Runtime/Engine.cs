@@ -178,11 +178,6 @@ public sealed partial class Engine : IEngine
         {
             ["inbound"] = new JsonArray("diagnostic-proxy"), ["action"] = "route", ["outbound"] = SelectedOutbound
         });
-        if (HasProbeProfile && settings.ActiveProfile?.AllowIpv6 == false)
-            config["route"]!["rules"]!.AsArray().Insert(0, new JsonObject
-            {
-                ["inbound"] = new JsonArray("diagnostic-proxy"), ["ip_version"] = 6, ["action"] = "reject"
-            });
         Log?.Invoke($"Starting {(alpha ? Configuration.Http3CoreVersion : Configuration.CoreVersion)} core; HTTP/3={Http3Selected}; HTTP/2={settings.ActiveProfile?.PreferHttp2 == true}; TUN={!testOnly}.");
         client.Dispose();
         client = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };

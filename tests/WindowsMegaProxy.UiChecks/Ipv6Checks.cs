@@ -75,7 +75,7 @@ internal static class Ipv6Checks
             { ["host"] = "::1", ["port"] = profile.Port, ["sameAuthentication"] = true, ["allowInvalidProxyCertificate"] = true };
             foreach (string policy in new[] { "allow", "deny", "rule-proxy", "rule-proxy-deny", "rule-system", "rule-block", "bad-auth" })
             {
-                bool allowed = policy is "allow" or "rule-proxy" or "rule-system";
+                bool allowed = policy is not ("rule-block" or "bad-auth");
                 profile.Data["routing"] = new JsonObject { ["allowIpv6"] = policy is "allow" or "rule-proxy" or "bad-auth" };
                 if (policy == "allow") profile.Data.Remove("routing");
                 profile.Proxy["password"] = policy == "bad-auth" ? "incorrect" : "secret";

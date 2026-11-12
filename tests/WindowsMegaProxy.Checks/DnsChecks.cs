@@ -30,7 +30,7 @@ internal static class DnsChecks
             Check(config["dns"]!["servers"]![0]!["detour"] is null, "Bootstrap must not depend on the proxy it resolves.");
             File.WriteAllText($"artifacts/dns-checks/{provider.Id}.json", config.ToJsonString(Configuration.JsonOptions));
             var restored = PortableConfiguration.Import(PortableConfiguration.Export(settings).ToJsonString(), new Settings());
-            Check(JsonNode.DeepEquals(restored.ActiveProfile!.Data["dns"], profile.Data["dns"]), "DNS fields round-trip without dropping unknown options.");
+            Check(ProfileDns.Provider(restored.ActiveProfile!) == provider.Id && restored.ActiveProfile!.Data["dns"]!["future"] is null, "Supported DNS fields round-trip; unknown fields are discarded.");
         }
         Check(Configuration.Signature(settings) != initial, "Changing active DNS requires reconnection.");
         Check(SettingsAnalysis.Prepare(settings, oldAnalysis).Signature != oldAnalysis.Signature, "The analysis cache notices profile DNS changes.");

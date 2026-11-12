@@ -24,11 +24,7 @@ public sealed class ImportReview
     {
         Import = import;
         var unsupported = new List<string>();
-        if (import.Document["tls"]?["customJa3"]?.ToString() is { Length: > 0 } ||
-            import.Profiles.Any(profile => profile.Data["tls"]?["customJa3"]?.ToString() is { Length: > 0 }))
-            unsupported.Add("Custom JA3 / QUIC fingerprints");
-        if (import.Document["ssh"] is JsonObject ssh && new[] { "keepaliveSeconds", "maxChannels", "rotationMinutes", "rotationMb" }.Any(ssh.ContainsKey))
-            unsupported.Add("SSH keepalive, channel limits and session rotation");
+        _ = ConfigurationFields.Project(import.Document, unsupported);
         if (import.Profiles.Any(profile => ProfileDns.Provider(profile) == "CUSTOM" && ProfileDns.CustomUrl(profile).Contains('?')))
             unsupported.Add("DoH URL query parameters");
         UnsupportedOptions = unsupported;
@@ -124,6 +120,7 @@ public sealed class ImportReview
         {
             result.DefaultAction = current.DefaultAction; result.BypassLan = current.BypassLan;
             result.AutoConnect = current.AutoConnect; result.LogSizeMb = current.LogSizeMb;
+            result.TunMtu = current.TunMtu; result.TrafficUnits = current.TrafficUnits;
             result.ReverseDnsCacheHours = current.ReverseDnsCacheHours;
             result.ResolveConnectionHosts = current.ResolveConnectionHosts;
             result.ShowAllConnections = current.ShowAllConnections; result.Language = current.Language; result.Theme = current.Theme;

@@ -31,7 +31,7 @@ public sealed class Settings
     public string Language { get; set; } = Ui.DefaultLanguage(Ui.WindowsLanguage);
     public string Theme { get; set; } = "auto";
     public bool AlwaysMinimizeToTray { get; set; }
-    public string TlsFingerprint { get; set; } = "default";
+    public string TlsFingerprint { get; set; } = "DEFAULT";
     public string BootstrapDnsProvider { get; set; } = "auto";
     public int TunMtu { get; set; } = 1500;
     public string TrafficUnits { get; set; } = "IEC";
@@ -94,9 +94,12 @@ public static class Configuration
     public static readonly string[] DirectProcessNames = ["WindowsMegaProxy.Core.exe", "WindowsMegaProxy.Dev.Core.exe", "WindowsMegaProxy.exe", "WindowsMegaProxy.Service.exe", "WindowsMegaProxy.Dev.exe", "WindowsMegaProxy.Dev.Service.exe", "WindowsMegaProxy.Diagnostics.exe"];
     public const string CoreVersion = "1.14.4";
     public const string Http3CoreVersion = "1.15.0-alpha.13";
-    public const string DefaultTlsFingerprint = "chrome";
-    public static readonly string[] TlsFingerprints = ["default", "chrome", "firefox", "edge", "safari", "ios", "android", "randomized", "native"];
-    public static string ResolveTlsFingerprint(string value) => value == "default" ? DefaultTlsFingerprint : value;
+    public const string DefaultTlsFingerprint = "CHROME_ANDROID";
+    public static readonly string[] TlsFingerprints = ["DEFAULT", "CHROME_ANDROID", "FIREFOX_ANDROID", "EDGE_ANDROID", "RANDOMIZED"];
+    public static string ResolveTlsFingerprint(string value) => ConfigurationFields.NormalizeFingerprint(value) switch
+    {
+        "FIREFOX_ANDROID" => "firefox", "EDGE_ANDROID" => "edge", "RANDOMIZED" => "randomized", _ => "chrome"
+    };
     public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     public static bool UsesProxy(Settings settings) => settings.DefaultAction == "proxy" || AppUpdatePolicy.ThroughProxy(settings) ||
         settings.Rules.Any(rule => rule.Enabled && (rule.Action == "proxy" || rule.PodkopThroughProxy && PodkopCatalog.Parse(rule.Destination.Trim()).Length > 0));
@@ -138,7 +141,9 @@ public static class Configuration
         var outbounds = new JsonArray(new JsonObject { ["type"] = "direct", ["tag"] = "direct" });
         if (UsesProxy(settings))
         {
-            var selected = settings.ActiveProfile ?? throw new ArgumentException(Ui.T("Select a connection profile."));
+            var selected = settings.ActiveProfile?.Copy() ?? throw new ArgumentException(Ui.T("Select a connection profile."));
+            if (settings.SharedOptions["ssh"]?["fingerprint"] is { } sshFingerprint && selected.Type is "SSH" or "SSH_JUMP")
+                selected.Proxy["sshProfile"] = sshFingerprint.DeepClone();
             outbounds.Insert(0, BuildOutbound(selected, "proxy", settings.TlsFingerprint, allowUnresolvedSsh, SshConfiguration.AuthMode(settings)));
             if (selected.Type is "HTTPS_JUMP" or "SSH_JUMP") outbounds.Insert(1, BuildOutbound(JumpProfile(selected), "jump", settings.TlsFingerprint, allowUnresolvedSsh, SshConfiguration.AuthMode(settings)));
             foreach (var outbound in outbounds.Where(item => item!["tag"]!.ToString() is "proxy" or "jump" && item["detour"] is null))
@@ -169,19 +174,11 @@ public static class Configuration
                     rules.Add(sniff);
                 }
             }
-            if (rule.Action == "proxy" && settings.ActiveProfile?.AllowIpv6 == false)
-            {
-                var ipv6 = built.DeepClone().AsObject();
-                ipv6["ip_version"] = 6; ipv6["action"] = "reject"; ipv6.Remove("outbound");
-                rules.Add(ipv6);
-            }
             rules.Add(built);
         }
         var tunAddresses = TunAddresses.Select([], AppIdentity.IsDev);
         if (settings.BypassLan)
             rules.Add(new JsonObject { ["ip_is_private"] = true, ["action"] = "route", ["outbound"] = "direct" });
-        if (proxyDefault && settings.ActiveProfile?.AllowIpv6 == false)
-            rules.Add(new JsonObject { ["ip_version"] = 6, ["action"] = "reject" });
         if (settings.DefaultAction == "block") rules.Add(new JsonObject { ["action"] = "reject" });
 
         return new JsonObject
@@ -194,7 +191,7 @@ public static class Configuration
                     ProfileDns.Build(settings.ActiveProfile!))
                     : new JsonArray(ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, proxyDefault), new JsonObject { ["type"] = "local", ["tag"] = "system" }),
                 ["final"] = proxyDefault ? "dns" : "system",
-                ["strategy"] = proxyDefault && settings.ActiveProfile?.AllowIpv6 == false ? "ipv4_only" : "prefer_ipv4", ["reverse_mapping"] = true
+                ["strategy"] = "prefer_ipv4", ["reverse_mapping"] = true
             },
             ["inbounds"] = new JsonArray(new JsonObject
             {
@@ -259,12 +256,8 @@ public static class Configuration
             if (profile.PreferHttp2) outbound["version"] = 2;
             // Stable CONNECT only speaks HTTP/1.1; alpha negotiates H2 with HTTP/1.1 fallback.
             outbound["tls"]!["alpn"] = profile.PreferHttp2 ? new JsonArray("h2", "http/1.1") : new JsonArray("http/1.1");
-            if (!TlsFingerprints.Contains(tlsFingerprint)) throw new ArgumentException("Unsupported TLS fingerprint.");
             tlsFingerprint = ResolveTlsFingerprint(tlsFingerprint);
-            if (tlsFingerprint != "native")
-            {
-                outbound["tls"]!["utls"] = new JsonObject { ["enabled"] = true, ["fingerprint"] = tlsFingerprint };
-            }
+            outbound["tls"]!["utls"] = new JsonObject { ["enabled"] = true, ["fingerprint"] = tlsFingerprint };
         }
         return outbound;
     }

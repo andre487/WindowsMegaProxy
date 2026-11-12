@@ -40,6 +40,7 @@ public static class PortableConfiguration
             var root = JsonNode.Parse(text)?.AsObject() ?? throw Invalid(Ui.T("Expected a JSON object."));
             if (String(root, "schema") is not ("net.megaproxy487.config" or "dev.megaproxy.config") || root["version"]?.GetValue<int>() != 8)
                 throw Invalid(Ui.T("MegaProxy JSON version 8 is supported."));
+            root = ConfigurationFields.Project(root);
             var imported = root["profiles"]?.AsArray() ?? throw Invalid(Ui.T("Profile list not found."));
             if (imported.Count is < 1 or > 1000) throw Invalid(Ui.T("Between 1 and 1,000 profiles are allowed."));
             var candidate = Copy(current);
@@ -88,6 +89,8 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("bypassLocalNetworks")) candidate.BypassLan = windows["bypassLocalNetworks"]!.GetValue<bool>();
                     if (windows.ContainsKey("resetExistingTcpConnections")) candidate.ResetExistingTcpConnections = windows["resetExistingTcpConnections"]!.GetValue<bool>();
                     if (windows.ContainsKey("autoConnect")) candidate.AutoConnect = windows["autoConnect"]!.GetValue<bool>();
+                    if (windows.ContainsKey("tunMtu")) candidate.TunMtu = windows["tunMtu"]!.GetValue<int>();
+                    if (windows.ContainsKey("trafficUnits")) candidate.TrafficUnits = String(windows, "trafficUnits");
                     if (windows.ContainsKey("logSizeMb")) candidate.LogSizeMb = windows["logSizeMb"]!.GetValue<int>();
                     if (windows.ContainsKey("reverseDnsCacheHours")) candidate.ReverseDnsCacheHours = windows["reverseDnsCacheHours"]!.GetValue<int>();
                     if (windows.ContainsKey("resolveConnectionHosts")) candidate.ResolveConnectionHosts = windows["resolveConnectionHosts"]!.GetValue<bool>();
@@ -101,14 +104,13 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("rules")) candidate.Rules = windows["rules"]!.Deserialize<List<RoutingRule>>(PortableOptions) ?? throw Invalid(Ui.T("Invalid Windows rules."));
                 }
             }
-            var platform = root["windows"] as JsonObject;
-            if (platform?.ContainsKey("tlsFingerprint") != true && root["tls"]?["fingerprint"] is { } fingerprint)
+            if (root["tls"]?["fingerprint"] is { } fingerprint)
             {
-                string value = fingerprint.GetValue<string>().ToLowerInvariant();
+                string value = ConfigurationFields.NormalizeFingerprint(fingerprint.GetValue<string>());
                 if (Configuration.TlsFingerprints.Contains(value)) candidate.TlsFingerprint = value;
             }
-            if (platform?.ContainsKey("logSizeMb") != true && root["diagnosticLogLimitMb"] is { } logSize) candidate.LogSizeMb = Math.Clamp(logSize.GetValue<int>(), 1, 100);
-            if (platform?.ContainsKey("bypassLocalNetworks") != true && root["routing"]?["bypassLocalNetworks"] is { } bypass) candidate.BypassLan = bypass.GetValue<bool>();
+            if (root["diagnosticLogLimitMb"] is { } logSize) candidate.LogSizeMb = Math.Clamp(logSize.GetValue<int>(), 1, 100);
+            if (root["routing"]?["bypassLocalNetworks"] is { } bypass) candidate.BypassLan = bypass.GetValue<bool>();
             var requestedId = root["activeProfileId"]?.GetValue<string>();
             if (requestedId is not null && !candidate.Profiles.Any(profile => profile.Id == requestedId)) throw Invalid(Ui.T("The active profile is missing from the configuration."));
             candidate.ActiveProfileId = requestedId ?? candidate.ActiveProfileId;
@@ -138,7 +140,8 @@ public static class PortableConfiguration
             if (profile.Type == "HTTPS" && !profile.Proxy.ContainsKey("knockHost") && ProxyAuthenticationProbe.Host(profile).Length > 0)
                 profile.Proxy["knockHost"] = ProxyAuthenticationProbe.Host(profile);
         }
-        var windows = (JsonObject)settings.WindowsOptions.DeepClone();
+        var windows = settings.WindowsOptions["version"] is { } platformVersion && platformVersion.GetValue<int>() != 1
+            ? new JsonObject() : (JsonObject)settings.WindowsOptions.DeepClone();
         windows.Remove(ConfigurationSubscription.StateKey);
         windows.Remove(PodkopCatalog.WarningKey);
         windows.Remove("http3Enabled");
@@ -146,22 +149,28 @@ public static class PortableConfiguration
         {
             windows["version"] = 1;
             windows["defaultAction"] = settings.DefaultAction;
-            windows["bypassLocalNetworks"] = settings.BypassLan;
             windows["autoConnect"] = settings.AutoConnect;
             windows["resetExistingTcpConnections"] = settings.ResetExistingTcpConnections;
-            windows["logSizeMb"] = settings.LogSizeMb;
             windows["reverseDnsCacheHours"] = settings.ReverseDnsCacheHours;
             windows["resolveConnectionHosts"] = settings.ResolveConnectionHosts;
             windows["showAllConnections"] = settings.ShowAllConnections;
             windows["language"] = settings.Language;
             windows["theme"] = settings.Theme;
             windows["alwaysMinimizeToTray"] = settings.AlwaysMinimizeToTray;
-            windows["tlsFingerprint"] = settings.TlsFingerprint;
             windows["bootstrapDnsProvider"] = settings.BootstrapDnsProvider;
             windows["launchAtSignIn"] = settings.LaunchAtSignIn ?? false;
             windows["rules"] = JsonSerializer.SerializeToNode(settings.Rules, PortableOptions);
         }
+        windows["tunMtu"] = settings.TunMtu;
+        windows["trafficUnits"] = settings.TrafficUnits;
+        windows.Remove("tlsFingerprint");
+        windows.Remove("logSizeMb");
+        windows.Remove("bypassLocalNetworks");
+        result["tls"] = new JsonObject { ["fingerprint"] = ConfigurationFields.NormalizeFingerprint(settings.TlsFingerprint) };
+        result["diagnosticLogLimitMb"] = settings.LogSizeMb;
+        result["routing"] = new JsonObject { ["bypassLocalNetworks"] = settings.BypassLan };
         result["windows"] = windows;
+        result = ConfigurationFields.Project(result);
         RemoveSecrets(result, includePasswords, includePrivateKeys);
         result["passwordsIncluded"] = includePasswords;
         result["privateKeysIncluded"] = includePrivateKeys;
@@ -179,11 +188,12 @@ public static class PortableConfiguration
         if (settings.TunMtu is < 1280 or > 65535) throw Invalid(Ui.T("MTU must be between 1280 and 65535 bytes."));
         if (settings.TrafficUnits is not ("IEC" or "SI")) throw Invalid("Invalid traffic units.");
         if (settings.Language is not ("en" or "ru") || settings.Theme is not ("auto" or "light" or "dark")) throw Invalid("Invalid language or theme.");
-        if (!Configuration.TlsFingerprints.Contains(settings.TlsFingerprint)) throw Invalid("Unsupported TLS fingerprint.");
+        settings.TlsFingerprint = ConfigurationFields.NormalizeFingerprint(settings.TlsFingerprint);
         if (settings.ReverseDnsCacheHours is not (0 or 1 or 6 or 12 or 24 or 72)) throw Invalid("Unsupported reverse DNS cache duration.");
         _ = ProfileDns.BuildBootstrap(settings.BootstrapDnsProvider, false);
         _ = ConfigurationSubscription.Get(settings);
         _ = AppUpdatePolicy.Enabled(settings);
+        _ = AppUpdatePolicy.ThroughProxy(settings);
         FailoverPolicy.Validate(settings);
         var ids = new HashSet<string>(System.StringComparer.Ordinal);
         foreach (var profile in settings.Profiles)
@@ -223,9 +233,13 @@ public static class PortableConfiguration
         if (country.Length != 0 && (country.Length != 2 || country.Any(character => character is < 'A' or > 'Z'))) throw Invalid(Ui.T("Invalid country code."));
         var proxy = data["proxy"]?.AsObject() ?? throw Invalid(Ui.T("The profile has no proxy object."));
         if (data["windows"] is JsonObject options)
+        {
+            if (options["colorMode"] is { } colorMode && colorMode.GetValue<string>() is not ("auto" or "manual"))
+                throw Invalid("Invalid profile color mode.");
             foreach (string name in new[] { "sshHostKey", "sshJumpHostKey" })
                 if (options.ContainsKey(name) && (options[name] is not JsonValue keyValue || !keyValue.TryGetValue<string>(out var rawKey) || rawKey.Length > 16384))
                     throw Invalid(Ui.T("Enter an OpenSSH server public key."));
+        }
         var type = String(proxy, "type");
         if (type is not ("HTTPS" or "SOCKS5" or "HTTPS_JUMP" or "SSH" or "SSH_JUMP" or "MASQUE") && !(type == "HTTP" && !portable))
             throw Invalid(Ui.T("Profile type is not part of the MegaProxy v8 format."));

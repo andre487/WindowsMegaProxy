@@ -11,7 +11,7 @@ namespace WindowsMegaProxy;
 public static class ProxyAuthenticationProbe
 {
     public static string Host(ProxyProfile profile) => profile.Proxy["knockHost"]?.GetValue<string>()
-        ?? profile.Data["browser"]?["knockHost"]?.GetValue<string>() ?? profile.Proxy["authProbeHost"]?.GetValue<string>() ?? "";
+        ?? (profile.Data["browser"] as System.Text.Json.Nodes.JsonObject)?["knockHost"]?.GetValue<string>() ?? profile.Proxy["authProbeHost"]?.GetValue<string>() ?? "";
     public static void ValidateHost(string host)
     {
         if (host.Length == 0) return;

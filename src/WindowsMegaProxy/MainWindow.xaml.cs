@@ -731,7 +731,8 @@ public partial class MainWindow : Window
     {
         if (!canEdit) return;
         long expected = settingsRevision;
-        var dialog = new ProfileWindow(profile, settings.Profiles) { Owner = this };
+        string? globalSshFingerprint = settings.SharedOptions["ssh"]?["fingerprint"]?.GetValue<string>();
+        var dialog = new ProfileWindow(profile, settings.Profiles, globalSshFingerprint) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Profile is null) return;
         try
         {
@@ -739,6 +740,8 @@ public partial class MainWindow : Window
             var updated = CaptureSettings();
             if (isNew) updated.Profiles.Add(dialog.Profile);
             else updated.Profiles[updated.Profiles.FindIndex(item => item.Id == profile.Id)] = dialog.Profile;
+            if (globalSshFingerprint is not null && dialog.Profile.Type is "SSH" or "SSH_JUMP")
+                updated.SharedOptions["ssh"]!["fingerprint"] = dialog.Profile.Proxy["sshProfile"]!.DeepClone();
             if (updated.ActiveProfile is null) updated.ActiveProfileId = dialog.Profile.Id;
             await CommitSettingsAsync(updated);
             ProfilesList.SelectedItem = settings.Profiles.First(item => item.Id == dialog.Profile.Id);

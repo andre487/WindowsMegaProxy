@@ -15,7 +15,7 @@ public partial class ProfileWindow : Window
     private bool initializing = true, appearanceChanged;
     public ProxyProfile? Profile { get; private set; }
 
-    public ProfileWindow(ProxyProfile profile, IEnumerable<ProxyProfile>? profiles = null)
+    public ProfileWindow(ProxyProfile profile, IEnumerable<ProxyProfile>? profiles = null, string? globalSshFingerprint = null)
     {
         InitializeComponent();
         original = profile;
@@ -47,11 +47,10 @@ public partial class ProfileWindow : Window
         JumpInvalidCertificateBox.IsChecked = jump?["allowInvalidProxyCertificate"]?.GetValue<bool>() ?? false;
         SameJumpAuthenticationChanged(this, null!);
         PrivateKeyBox.Text = profile.Proxy["privateKey"]?.GetValue<string>() ?? "";
-        string sshProfile = profile.Proxy["sshProfile"]?.GetValue<string>() ?? "DEFAULT";
+        string sshProfile = globalSshFingerprint ?? profile.Proxy["sshProfile"]?.GetValue<string>() ?? "DEFAULT";
         if (!SshConfiguration.Profiles.Contains(sshProfile)) SshProfileBox.Items.Add(new ComboBoxItem { Content = sshProfile, Tag = sshProfile });
         SshProfileBox.SelectedItem = SshProfileBox.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == sshProfile);
         AuthProbeHostBox.Text = ProxyAuthenticationProbe.Host(profile);
-        AllowIpv6Box.IsChecked = profile.AllowIpv6;
         foreach (var provider in ProfileDns.Providers)
             DnsProviderBox.Items.Add(new ComboBoxItem { Content = Ui.T(provider.Name), Tag = provider.Id });
         string dnsProvider = ProfileDns.Provider(profile);
@@ -63,8 +62,10 @@ public partial class ProfileWindow : Window
         TypeChanged(this, null!);
         ConnectionFields.IsEnabled = profile.Supported;
         SupportText.Text = profile.Supported
-            ? Ui.T("Other clients' settings are preserved. SOCKS5 does not encrypt the server connection; UDP requires server support.")
+            ? Ui.T("SOCKS5 does not encrypt the server connection; UDP requires server support.")
             : profile.Availability + Ui.T(". You can change the name, country and color; connection parameters will be preserved.");
+        if (globalSshFingerprint is not null)
+            SupportText.Text += " " + Ui.T("The imported global SSH fingerprint applies to all SSH profiles. Changing it here updates that global setting.");
         initializing = false;
     }
 
@@ -190,11 +191,6 @@ public partial class ProfileWindow : Window
                 candidate.Proxy["allowInvalidProxyCertificate"] = insecure;
             }
             string provider = (string)((ComboBoxItem)DnsProviderBox.SelectedItem).Tag;
-            if ((AllowIpv6Box.IsChecked == true) != original.AllowIpv6)
-            {
-                candidate.Data["routing"] ??= new System.Text.Json.Nodes.JsonObject();
-                candidate.Data["routing"]!["allowIpv6"] = AllowIpv6Box.IsChecked == true;
-            }
             if (provider != ProfileDns.Provider(original) || DnsUrlBox.Text.Trim() != ProfileDns.CustomUrl(original))
             {
                 var dns = candidate.Data["dns"] as System.Text.Json.Nodes.JsonObject;

@@ -30,9 +30,8 @@ destination domains, wildcard domains, IP addresses/subnets or Podkop lists.
 Rules can route through the active profile, use the system route or block traffic.
 Disable a rule with its checkbox instead of deleting it.
 
-The IPv6 setting controls destinations routed through that profile. It does not
-disable Windows IPv6 or prohibit an IPv6 address for the proxy server. Explicit
-system-route rules and local-network bypass retain their own routing behavior.
+Windows always allows IPv6 and ignores imported `routing.allowIpv6`.
+Explicit system-route/block rules and local-network bypass still apply.
 SSH and TCP-only HTTPS do not provide UDP forwarding.
 
 Podkop lists can update through the connected proxy. When that option is enabled,
@@ -53,9 +52,11 @@ SSH fingerprint presets; H3 uses the core's native fingerprint.
 
 Import MegaProxy JSON v1–8, FoxyProxy JSON, ProxyList or SuperProxy. Export MegaProxy
 JSON or ProxyList. The import review controls which settings to apply; absent
-options retain existing values. Other platforms' settings are preserved.
-Passwords and private keys are excluded from exports by default; exported files
-are not encrypted.
+options retain existing values. Unsupported fields and other platforms’ sections
+are discarded with an import notice. Unsupported fingerprints reset to Default.
+Passwords and private keys are included by default; clear their export checkboxes
+to omit them. Exported files are not encrypted. MTU and traffic units are exported.
+See the [Windows configuration contract](../configuration.md) for fields and defaults.
 
 HTTPS subscriptions support backup sources and optional Basic authentication.
 Updates preserve local profiles; reconnect to apply network changes. Optional
