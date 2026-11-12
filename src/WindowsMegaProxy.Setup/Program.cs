@@ -357,7 +357,7 @@ internal static partial class Program
             }
             RemoveShortcuts();
             DeleteProtectedTree(Path.Combine(Root, "update"));
-            if (Personal) Unelevated(() => DeleteOwnedLauncher(repair));
+            if (Personal) DeleteOwnedLauncher(repair);
             foreach (string file in Json.Deserialize<string[]>(File.ReadAllText(Path.Combine(State, "files.json")))) DeleteInstalled(file);
             File.Delete(Path.Combine(Root, "user-installation.sid"));
             if (deleteData)
@@ -409,12 +409,16 @@ internal static partial class Program
 
     private static void DeleteOwnedLauncher(string source)
     {
-        foreach (string file in Directory.GetFiles(Path.Combine(source, "launcher"), "*", SearchOption.AllDirectories))
+        // Read the protected repair inventory before dropping rights for user-file deletion.
+        string[] files = Directory.GetFiles(Path.Combine(source, "launcher"), "*", SearchOption.AllDirectories);
+        Unelevated(() =>
         {
-            string target = Path.Combine(LauncherDirectory, file.Substring(Path.Combine(source, "launcher").Length + 1));
-            RejectReparseChain(target);
-            DeleteInstalledFile(target);
-        }
+            foreach (string file in files)
+            {
+                string target = Path.Combine(LauncherDirectory, file.Substring(Path.Combine(source, "launcher").Length + 1));
+                DeleteInstalledFile(target);
+            }
+        });
     }
 
     internal static void DeleteDataTree(string directory)
