@@ -57,7 +57,16 @@ Reports stay in `artifacts\virustotal`; `--output` selects another local folder.
 Incomplete scans or detections return a nonzero exit code for manual review.
 The tool never installs the build, publishes reports or controls releases.
 
-CI and release workflows do not run VirusTotal or publish antivirus reports.
+Release publication scans the signed installer and application ZIP with VirusTotal.
+For each file, up to 10 combined `malicious` and `suspicious` verdicts are allowed;
+11 or more block publication. API errors and incomplete or invalid results also
+block publication. PR CI uses synthetic responses and does not upload builds.
+
+Release notes include counts and links to the hash-bound reports. If any engine
+flags a file, the notes explain that lesser-known proxy software can produce
+false positives; this does not establish that any particular detection is false.
+Raw reports are not committed or attached as release assets. Retries scan the
+original verified packages without replacing already published files.
 Documentation contains current behavior, not individual scan histories.
 VirusTotal submissions are shared with its analysis ecosystem; submit only
 distributable build files. Its engines can differ from installed products:

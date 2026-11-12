@@ -152,7 +152,7 @@ def valid_row(row, path):
         return False
 
 
-def write_report(directory, rows, complete):
+def report_text(rows, complete):
     report = "## VirusTotal\n\n"
     if not complete:
         report += "**Scan incomplete; results are partial.**\n\n"
@@ -160,12 +160,23 @@ def write_report(directory, rows, complete):
     for row in rows:
         stats = row["stats"]
         report += f"| {row['file']} | {stats['malicious']} | {stats['suspicious']} | [SHA-256 report]({row['url']}) |\n"
+    if any(row["stats"]["malicious"] + row["stats"]["suspicious"] for row in rows):
+        report += ("\nAntivirus engines can produce false positives for lesser-known proxy software. "
+                   "These detections are not proof that a file is malicious or safe.\n\n"
+                   "Антивирусы могут давать ложные срабатывания на малоизвестное ПО для работы с прокси. "
+                   "Эти срабатывания сами по себе не доказывают ни вредоносность, ни безопасность файла.\n")
     report += "\nCompleted engine verdicts are a point-in-time check, not a guarantee of safety. See each report for unsupported engines, failures and timeouts.\n"
-    (directory / "VIRUSTOTAL.md").write_text(report, encoding="utf-8")
+    return report
+
+
+def write_report(directory, rows, complete):
+    (directory / "VIRUSTOTAL.md").write_text(report_text(rows, complete), encoding="utf-8")
     (directory / "VIRUSTOTAL.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
 
 
-def scan_artifacts(directory, output=None, key=None):
+def scan_artifacts(directory, output=None, key=None, *, max_detections=0):
+    if type(max_detections) is not int or max_detections < 0:
+        raise ValueError("Invalid detection limit")
     output = Path(output) if output is not None else directory
     output.mkdir(parents=True, exist_ok=True)
     paths = targets(directory)
@@ -191,11 +202,13 @@ def scan_artifacts(directory, output=None, key=None):
             else:
                 print(f"Reusing the SHA-256 report for {path.name}", flush=True)
             rows.append(row)
+            print(f"{path.name}: {row['stats']['malicious']} malicious, {row['stats']['suspicious']} suspicious", flush=True)
         complete = True
     finally:
         write_report(output, rows, complete)
-    if any(row["stats"]["malicious"] or row["stats"]["suspicious"] for row in rows):
-        raise RuntimeError("VirusTotal detections require review; see the local report.")
+    if any(row["stats"]["malicious"] + row["stats"]["suspicious"] > max_detections for row in rows):
+        raise RuntimeError(f"VirusTotal detections exceed the limit of {max_detections} per file; review is required.")
+    return rows
 
 
 def local_key(path=None):

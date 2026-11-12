@@ -150,7 +150,7 @@ jobs:
   publish:
     needs: [package, verify-ci]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     permissions:
       contents: write
     env:
@@ -179,6 +179,8 @@ jobs:
 
       - name: Publish or resume the release without replacing published assets
         shell: bash
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           set -euo pipefail
-          uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/publish_release.py publish
+          uv run --locked --project .tools/release-automation/scripts python .tools/release-automation/scripts/publish_release.py publish --virustotal
