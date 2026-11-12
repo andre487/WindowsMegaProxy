@@ -77,10 +77,14 @@ def main():
         if attempt == 4:
             (destination / "createdump.exe").write_bytes(b"damaged runtime fixture")
         arguments = [str(setups[0]), "-quiet", "-norestart", "AutomaticUpdates=false", "DesktopShortcut=0", "-log", f"{logs / f'install-{attempt}.log'}"]
-        if attempt != 1:
+        if attempt == 1:
+            arguments.append("Scope=PerMachine")
+        else:
             arguments.append("Mode=" + mode)
         sp.run(arguments, check=True, timeout=600)
-        latest_log = max((known_folder(0x23) / "MegaProxy.Setup").glob("machine-*.log"), key=lambda path: path.stat().st_mtime)
+        engine_logs = list((known_folder(0x23) / "MegaProxy.Setup").glob("machine-*.log"))
+        assert engine_logs, "System installation must produce a machine setup log."
+        latest_log = max(engine_logs, key=lambda path: path.stat().st_mtime)
         shutil.copy2(latest_log, logs / f"install-engine-{attempt}.log")
         runtime_downloaded = "Downloading .NET runtime package" in latest_log.read_text(encoding="utf-8-sig")
         assert runtime_downloaded == (attempt in (1, 4)), "Download runtime only for a new installation or missing/damaged/version-mismatched files."
@@ -248,8 +252,12 @@ def check_user_install(setup, logs, global_data):
     name = "WindowsMegaProxy.User." + sid
     previous = None
     for mode in ("manual", "login", "manual"):
-        sp.run([str(setup), "Scope=PerUser", "-quiet", "-norestart", "AutomaticUpdates=false", "DesktopShortcut=0", "Mode=" + mode,
-                "-log", f"{logs / f'user-{mode}.log'}"], check=True, timeout=600)
+        arguments = [str(setup), "-quiet", "-norestart", "AutomaticUpdates=false", "DesktopShortcut=0", "Mode=" + mode,
+                     "-log", f"{logs / f'user-{mode}.log'}"]
+        # A fresh install without an explicit scope must use the current-user default.
+        if previous is not None:
+            arguments.append("Scope=PerUser")
+        sp.run(arguments, check=True, timeout=600)
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\WindowsMegaProxy\UserInstallation") as key:
             assert winreg.QueryValueEx(key, "Mode")[0] == mode
             helper = winreg.QueryValueEx(key, "HelperPath")[0]
