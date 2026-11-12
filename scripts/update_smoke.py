@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess as sp
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -20,6 +21,43 @@ from installer_smoke_support import uninstall
 from publish_release import gh
 from release_notes import previous_release
 from service_control import running_images, service_state
+
+
+def seed_settings(application, data, logs):
+    # Compile against the installed release: current defaults may be unreadable by older versions.
+    project = logs / "baseline-fixture"
+    project.mkdir(parents=True, exist_ok=True)
+    document = ET.Element("Project", Sdk="Microsoft.NET.Sdk")
+    properties = ET.SubElement(document, "PropertyGroup")
+    ET.SubElement(properties, "OutputType").text = "Exe"
+    references = ET.SubElement(document, "ItemGroup")
+    for name in ("WindowsMegaProxy.Core", "WindowsMegaProxy.Runtime", "System.Security.Cryptography.ProtectedData"):
+        reference = ET.SubElement(references, "Reference", Include=name)
+        ET.SubElement(reference, "HintPath").text = str((application / (name + ".dll")).resolve())
+    ET.indent(document, space="    ")
+    ET.ElementTree(document).write(project / "BaselineFixture.csproj", encoding="utf-8", xml_declaration=True)
+    (project / "Program.cs").write_text('''using System;
+using WindowsMegaProxy;
+
+var store = new MachineSettingsStore(args[0]);
+var profile = ProxyProfile.Create("Automatic update preservation check");
+profile.Proxy["host"] = "proxy.invalid";
+profile.Proxy["password"] = "synthetic-update-secret";
+store.Save(new Settings { Profiles = [profile], ActiveProfileId = profile.Id, AutoConnect = false, Language = "en" });
+var saved = store.Load();
+if (saved.AutoConnect || saved.ActiveProfile?.Proxy["password"]?.ToString() != "synthetic-update-secret")
+    throw new Exception("The installed release could not read its seeded settings.");
+Console.WriteLine("Baseline settings seeded successfully; TLS fingerprint: " + saved.TlsFingerprint);
+''', encoding="utf-8")
+    dotnet("run", "--project", str(project / "BaselineFixture.csproj"), "-c", "Release", "--", str(data))
+
+
+def service_command(application, *arguments, timeout=60):
+    result = sp.run([str(application / "WindowsMegaProxy.Service.exe"), *arguments],
+                    stdout=sp.PIPE, stderr=sp.STDOUT, text=True, timeout=timeout)
+    if result.stdout:
+        print(result.stdout, flush=True)
+    result.check_returncode()
 
 
 def signed_installer(directory, target_version):
@@ -75,8 +113,8 @@ def main():
     try:
         sp.run([str(previous), "Scope=PerMachine", "-quiet", "-norestart", "Mode=manual",
                 "AutomaticUpdates=true", "-log", f"{logs / 'previous-install.log'}"], check=True, timeout=600)
-        check("--update-preservation-check", "seed")
-        sp.run([str(destination / "WindowsMegaProxy.Service.exe"), "--configure-mode", "service"], check=True, timeout=60)
+        seed_settings(destination, data, logs)
+        service_command(destination, "--configure-mode", "service")
         if args.candidate:
             item = signed_installer(args.candidate, args.version)
             setup = args.candidate / item["file"]
@@ -88,7 +126,7 @@ def main():
             (cache / "state.json").write_text(json.dumps({
                 "Manifest": base64.b64encode((args.candidate / "update-manifest.json").read_bytes()).decode(),
                 "Signature": base64.b64encode((args.candidate / "update-manifest.sig").read_bytes()).decode()}), encoding="utf-8")
-            sp.run([str(destination / "WindowsMegaProxy.Service.exe"), "--install-update", "now"], check=True, timeout=180)
+            service_command(destination, "--install-update", "now", timeout=180)
 
             def upgraded():
                 try:
@@ -98,7 +136,7 @@ def main():
                     return False  # Files and service registration may be changing during installation.
 
             wait_until(upgraded, "The published updater did not install the signed release candidate.", 600)
-            sp.run([str(destination / "WindowsMegaProxy.Service.exe"), "--check-dependencies"], check=True, timeout=60)
+            service_command(destination, "--check-dependencies")
         else:
             check("--published-update-check", args.version)
         check("--update-preservation-check", "verify")
@@ -114,6 +152,8 @@ def main():
     finally:
         if (local / "logs").is_dir():
             shutil.copytree(local / "logs", logs / "client", dirs_exist_ok=True)
+        if (data / "logs").is_dir():
+            shutil.copytree(data / "logs", logs / "service", dirs_exist_ok=True)
         temporary = known_folder(0x1c) / "Temp"
         for log in temporary.glob("Setup Log*.txt"):
             shutil.copy2(log, logs / log.name)
