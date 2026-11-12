@@ -48,7 +48,7 @@ public static class ProfileTransfer
                         }
                     }
                     if (profile["countryCode"] is JsonValue countryValue && countryValue.TryGetValue<string>(out var country)) profile["countryCode"] = country.ToUpperInvariant();
-                    if (!proxy.ContainsKey("knockHost") && profile["browser"]?["knockHost"] is { } knock) proxy["knockHost"] = knock.DeepClone();
+                    if (!proxy.ContainsKey("knockHost") && profile["browser"] is JsonObject browser && browser["knockHost"] is { } knock) proxy["knockHost"] = knock.DeepClone();
                     PortableConfiguration.ValidateProfile(new ProxyProfile(profile), portable: true);
                 }
                 root["version"] = 8;

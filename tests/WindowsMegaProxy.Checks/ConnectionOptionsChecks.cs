@@ -37,10 +37,10 @@ static class ConnectionOptionsChecks
         Check(config["inbounds"]![0]!["mtu"]!.GetValue<int>() == 1400, "Apply local MTU.");
         var before = SettingsAnalysis.Prepare(settings);
         profile.Data["routing"] = new JsonObject { ["allowIpv6"] = false };
-        Check(!SettingsAnalysis.SameNetwork(settings, before.Settings), "IPv6 changes invalidate cached network analysis.");
+        Check(Configuration.Signature(settings) == before.Signature, "Foreign IPv6 preferences do not change the Windows network.");
         config = Configuration.Build(settings, 9999, "test");
-        Check(config["route"]!["rules"]!.AsArray().Any(rule => rule?["ip_version"]?.ToString() == "6" && rule["action"]!.ToString() == "reject"), "Disabled IPv6 rejects proxied IPv6.");
-        Check(config["dns"]!["strategy"]!.ToString() == "ipv4_only", "Disabled IPv6 avoids AAAA answers in profile-default DNS.");
+        Check(!config["route"]!["rules"]!.AsArray().Any(rule => rule?["ip_version"]?.ToString() == "6"), "Windows ignores imported IPv6 restrictions.");
+        Check(config["dns"]!["strategy"]!.ToString() == "prefer_ipv4", "Both address families remain enabled.");
         profile.Data["dns"] = new JsonObject { ["provider"] = "CUSTOM", ["customDohUrl"] = "tcp://1.1.1.1:5353" };
         Check(ProfileDns.Build(profile)["detour"]!.ToString() == "proxy", "Plain TCP DNS never bypasses the proxy.");
         File.WriteAllText("artifacts/dns-checks/plain-tcp.json", Configuration.Build(settings, 9999, "test").ToJsonString(Configuration.JsonOptions));

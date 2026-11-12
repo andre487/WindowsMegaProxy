@@ -28,13 +28,11 @@
     "windows": {
         "version": 1,
         "defaultAction": "system",
-        "bypassLocalNetworks": true,
         "autoConnect": false,
         "launchAtSignIn": false,
         "showAllConnections": false,
         "language": "en",
         "theme": "auto",
-        "logSizeMb": 5,
         "rules": [
             {
                 "source": "exe",
@@ -43,6 +41,14 @@
                 "action": "proxy"
             }
         ],
-        "tlsFingerprint": "default"
-    }
+        "tunMtu": 1500,
+        "trafficUnits": "IEC"
+    },
+    "tls": {
+        "fingerprint": "DEFAULT"
+    },
+    "routing": {
+        "bypassLocalNetworks": true
+    },
+    "diagnosticLogLimitMb": 5
 }

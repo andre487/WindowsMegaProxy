@@ -1,4 +1,9 @@
 {
+    "SOCKS5 does not encrypt the server connection; UDP requires server support.": "SOCKS5 не шифрует соединение с сервером; UDP требует поддержки сервера.",
+    "The imported global SSH fingerprint applies to all SSH profiles. Changing it here updates that global setting.": "Импортированный общий SSH fingerprint применяется ко всем SSH-профилям. Изменение здесь обновляет общую настройку.",
+    "Import notices": "Замечания к импорту",
+    "Configuration contains unsupported fields. They will not be imported.": "Конфигурация содержит неподдерживаемые поля. Они не будут импортированы.",
+    "Unsupported fingerprints will be reset to Default.": "Неподдерживаемые отпечатки будут сброшены на значение по умолчанию.",
   "Reverse DNS cache duration": "Срок хранения обратных DNS-запросов",
   "Use DNS record TTL": "По TTL в DNS записи",
   "1 hour": "1 час",

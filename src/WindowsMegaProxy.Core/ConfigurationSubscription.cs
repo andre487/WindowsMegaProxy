@@ -112,16 +112,21 @@ public static class ConfigurationSubscription
         document.Remove("subscription");
         string? selection = current.ActiveProfileId;
         var result = PortableConfiguration.Import(document.ToJsonString(), current);
+        result.DefaultAction = current.DefaultAction;
+        result.AutoConnect = current.AutoConnect;
+        result.LaunchAtSignIn = current.LaunchAtSignIn;
         result.Profiles.RemoveAll(profile => owned.Contains(profile.Id) && !importedIds.Contains(profile.Id));
         PruneFailover(result);
-        result.ActiveProfileId = result.Profiles.Any(profile => profile.Id == selection) ? selection
+        result.ActiveProfileId = selection is null || result.Profiles.Any(profile => profile.Id == selection) ? selection
             : import.Document["activeProfileId"]?.GetValue<string>() ?? import.Profiles[0].Id;
         result.SharedOptions["subscription"] = next.ToJson();
         var state = (JsonObject)State(current).DeepClone();
         state["ownedIds"] = new JsonArray(importedIds.Select(id => (JsonNode)JsonValue.Create(id)!).ToArray());
         state["lastAttempt"] = now.ToUnixTimeSeconds();
         state["lastSuccess"] = now.ToUnixTimeSeconds();
-        state["status"] = import.Skipped > 0 ? "Updated with warnings" : "Updated";
+        var warnings = new List<string>();
+        _ = ConfigurationFields.Project(import.Document, warnings);
+        state["status"] = import.Skipped > 0 || warnings.Count > 0 ? "Updated with warnings" : "Updated";
         state["sourceIndex"] = sourceIndex;
         result.WindowsOptions[StateKey] = state;
         PortableConfiguration.ValidateSettings(result);

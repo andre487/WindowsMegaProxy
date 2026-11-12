@@ -583,7 +583,7 @@ internal static partial class Program
             Assert(((ComboBoxItem)fingerprints.Items[0]).Content as string == "Default (Chrome)", "Default fingerprint uses its display name without inner padding spaces.");
             fingerprints.SelectedIndex = 1;
             Layout(window);
-            Assert(saved[^1].TlsFingerprint == "chrome", "TCP fingerprint autosaves.");
+            Assert(saved[^1].TlsFingerprint == "CHROME_ANDROID", "TCP fingerprint autosaves.");
             var bootstrapDns = (ComboBox)window.FindName("BootstrapDnsBox");
             bootstrapDns.SelectedIndex = 3;
             Layout(window);

@@ -47,7 +47,7 @@ Other clients: [Android](https://github.com/andre487/AndroidMegaProxy) ·
 - SOCKS5 TCP/UDP, SSH password/private-key authentication and experimental MASQUE.
 - Rules for EXE files, recursive folders, domains, IP/subnet destinations and Podkop lists.
 - Multiple profiles with country flags, import/export, configuration subscriptions and failover.
-- Per-profile IPv6, DNS-over-HTTPS and TCP/UDP DNS; separate bootstrap DNS settings.
+- IPv4/IPv6, per-profile DNS-over-HTTPS and TCP/UDP DNS; separate bootstrap DNS settings.
 - Connection tables, traffic rates, connection/speed diagnostics and exit-IP reputation.
 - Manual launch, sign-in startup or a Windows service; system tray and application updates.
 - English/Russian, light/dark/system themes, display scaling and local rotating logs.

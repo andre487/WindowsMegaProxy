@@ -34,7 +34,7 @@ public sealed class ImportWindow : Window
         if (review.UnsupportedOptions.Count > 0)
             panel.Children.Add(new TextBlock
             {
-                Text = Ui.T("These options are preserved but are not applied by the Windows client:") + "\n" +
+                Text = Ui.T("Import notices") + "\n" +
                     string.Join("\n", review.UnsupportedOptions.Select(option => "• " + Ui.T(option))),
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8)
             });

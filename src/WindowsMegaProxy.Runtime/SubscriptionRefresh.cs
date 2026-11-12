@@ -27,6 +27,9 @@ public static class SubscriptionRefresh
                 string text = await (download ?? DownloadAsync)(definition, url, token).ConfigureAwait(false);
                 stage = "parse";
                 var import = ProfileTransfer.Parse(text);
+                var warnings = new System.Collections.Generic.List<string>();
+                _ = ConfigurationFields.Project(import.Document, warnings);
+                foreach (string warning in warnings) log?.Invoke("Configuration subscription: " + warning);
                 stage = "apply";
                 return ConfigurationSubscription.ApplySnapshot(snapshot, import, source, DateTimeOffset.UtcNow);
             }

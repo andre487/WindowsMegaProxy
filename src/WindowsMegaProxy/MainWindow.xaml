@@ -1185,31 +1185,19 @@
                                             Margin="0,0,0,12">
                                             <ComboBoxItem
                                                 x:Name="DefaultFingerprintItem"
-                                                Tag="default" />
+                                                Tag="DEFAULT" />
                                             <ComboBoxItem
                                                 Content="Chrome"
-                                                Tag="chrome" />
+                                                Tag="CHROME_ANDROID" />
                                             <ComboBoxItem
                                                 Content="Firefox"
-                                                Tag="firefox" />
+                                                Tag="FIREFOX_ANDROID" />
                                             <ComboBoxItem
                                                 Content="Edge"
-                                                Tag="edge" />
-                                            <ComboBoxItem
-                                                Content="Safari"
-                                                Tag="safari" />
-                                            <ComboBoxItem
-                                                Content="iOS"
-                                                Tag="ios" />
-                                            <ComboBoxItem
-                                                Content="Android"
-                                                Tag="android" />
+                                                Tag="EDGE_ANDROID" />
                                             <ComboBoxItem
                                                 Content="{DynamicResource &quot;Randomized&quot;}"
-                                                Tag="randomized" />
-                                            <ComboBoxItem
-                                                Content="{DynamicResource &quot;Native TLS&quot;}"
-                                                Tag="native" />
+                                                Tag="RANDOMIZED" />
                                         </ComboBox>
                                         <TextBlock
                                             Text="{DynamicResource &quot;HTTP/3 fingerprint&quot;}"
