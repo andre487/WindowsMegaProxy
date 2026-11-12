@@ -34,9 +34,15 @@ public sealed class PathTextBox : TextBox
         if (fits(path)) return path;
         int separator = path.LastIndexOfAny(new[] { '\\', '/' });
         if (separator < 0) return path;
-        string suffix = separator >= 0 ? path[separator..] : path;
-        int prefix = Math.Min(separator >= 0 ? separator : path.Length, 32);
-        while (prefix > 0 && !fits(path[..prefix] + "…" + suffix)) prefix--;
+        string suffix = path[separator..];
+        int prefix = 0, upper = Math.Max(0, separator - 1);
+        while (prefix < upper)
+        {
+            int candidate = prefix + (upper - prefix + 1) / 2;
+            if (fits(path[..candidate] + "…" + suffix)) prefix = candidate;
+            else upper = candidate - 1;
+        }
+        if (prefix > 0 && char.IsHighSurrogate(path[prefix - 1])) prefix--;
         return path[..prefix] + "…" + suffix;
     }
 

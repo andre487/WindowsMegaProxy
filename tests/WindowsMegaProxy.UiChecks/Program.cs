@@ -813,6 +813,11 @@ internal static partial class Program
             Assert(!Descendants(window).OfType<Button>().Any(button => button.Content as string == "Применить автозапуск"), "No separate autostart save button.");
             string fullPath = @"C:\Users\Example\AppData\Local\Programs\VeryLongApplicationDirectory\nested\client.exe";
             string shortened = PathTextBox.Shorten(fullPath, value => value.Length <= 35);
+            Assert(PathTextBox.Shorten(fullPath, value => value.Length <= fullPath.Length) == fullPath,
+                "Paths that fit are not shortened.");
+            string widePath = PathTextBox.Shorten(fullPath, value => value.Length <= 65);
+            Assert(widePath.Length == 65 && widePath.EndsWith("client.exe") && widePath.IndexOf('…') > 32,
+                "Shortened paths use available width beyond the old 32-character prefix limit.");
             Assert(shortened.StartsWith("C:\\") && shortened.Contains('…') && shortened.EndsWith("client.exe"), "Long paths preserve prefix and exe.");
             sections.SelectedIndex = 0;
             var grid = (DataGrid)window.FindName("ConnectionsGrid");
