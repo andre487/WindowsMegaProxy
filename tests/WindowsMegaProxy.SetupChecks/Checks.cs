@@ -26,6 +26,7 @@ internal static class Checks
             Console.WriteLine("Checking setup commands, permissions, archives and runtime caching.");
             Arguments();
             Permissions();
+            UserFiles(root);
             Archives(root);
             string logFile = Path.Combine(root, "live.log");
             using (var reader = new SetupLogReader())
@@ -63,6 +64,28 @@ internal static class Checks
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new Exception(message);
+    }
+
+    private static void UserFiles(string root)
+    {
+        using var original = WindowsIdentity.GetCurrent();
+        bool administrator = new WindowsPrincipal(original).IsInRole(WindowsBuiltInRole.Administrator);
+        string folder = Path.Combine(root, "launcher");
+        Program.Unelevated(() =>
+        {
+            using var current = WindowsIdentity.GetCurrent();
+            Require(current.User == original.User, "User file operations must retain the installing user's identity.");
+            Require(!new WindowsPrincipal(current).IsInRole(WindowsBuiltInRole.Administrator), "User file operations must not retain administrator rights, including on CI.");
+            Require(current.ImpersonationLevel >= TokenImpersonationLevel.Impersonation, "The token must support filesystem impersonation.");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "fixture.txt"), "launcher");
+            Require(File.ReadAllText(Path.Combine(folder, "fixture.txt")) == "launcher", "Restricted user file writes and reads must work.");
+        });
+        Reject<IOException>(() => Program.Unelevated(() => throw new IOException("Synthetic user operation failure")));
+        using var restored = WindowsIdentity.GetCurrent();
+        Require(new WindowsPrincipal(restored).IsInRole(WindowsBuiltInRole.Administrator) == administrator && restored.ImpersonationLevel == original.ImpersonationLevel,
+            "Both successful and failing operations must restore the caller's token.");
+        Program.Unelevated(() => Directory.Delete(folder, true));
     }
 
     private static void Reject<T>(Action action) where T : Exception

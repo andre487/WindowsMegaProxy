@@ -175,21 +175,34 @@ internal static partial class Program
         while (await reader.ReadLineAsync() is string line) Console.WriteLine(line);
     }
 
-    private static void Unelevated(Action action)
+    internal static void Unelevated(Action action)
     {
         using var identity = WindowsIdentity.GetCurrent();
-        if (!GetTokenInformation(identity.AccessToken, 19, out var linked, Marshal.SizeOf<LinkedToken>(), out _))
+        // Linked UAC tokens may only support identification, not filesystem impersonation.
+        if (!CreateRestrictedToken(identity.AccessToken, 0x1 | 0x4, 0, IntPtr.Zero, 0, IntPtr.Zero, 0, IntPtr.Zero, out var token))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        using (token)
         {
-            // UAC-disabled administrator accounts have no split token (including hosted CI runners).
-            if (Marshal.GetLastWin32Error() != 1312) throw new Win32Exception(Marshal.GetLastWin32Error());
-            action();
-            return;
+            var medium = new SecurityIdentifier("S-1-16-8192");
+            var bytes = new byte[medium.BinaryLength];
+            medium.GetBinaryForm(bytes, 0);
+            var sid = Marshal.AllocHGlobal(bytes.Length);
+            try
+            {
+                Marshal.Copy(bytes, 0, sid, bytes.Length);
+                var label = new MandatoryLabel { Sid = sid, Attributes = 0x20 };
+                if (!SetTokenInformation(token, 25, ref label, Marshal.SizeOf<MandatoryLabel>() + bytes.Length))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                WindowsIdentity.RunImpersonated(token, action);
+            }
+            finally { Marshal.FreeHGlobal(sid); }
         }
-        using var token = new SafeAccessTokenHandle(linked.Token);
-        WindowsIdentity.RunImpersonated(token, action);
     }
 
-    [StructLayout(LayoutKind.Sequential)] private struct LinkedToken { public IntPtr Token; }
+    [StructLayout(LayoutKind.Sequential)] private struct MandatoryLabel { public IntPtr Sid; public uint Attributes; }
     [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool GetTokenInformation(SafeAccessTokenHandle token, int informationClass, out LinkedToken information, int length, out int returned);
+    private static extern bool CreateRestrictedToken(SafeAccessTokenHandle token, uint flags, uint disabledCount, IntPtr disabled,
+        uint privilegeCount, IntPtr privileges, uint restrictedCount, IntPtr restricted, out SafeAccessTokenHandle result);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool SetTokenInformation(SafeAccessTokenHandle token, int informationClass, ref MandatoryLabel information, int length);
 }
