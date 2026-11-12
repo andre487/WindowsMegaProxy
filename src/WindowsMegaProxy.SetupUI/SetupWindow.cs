@@ -225,7 +225,7 @@ internal sealed class SetupWindow : Form
         pages[page].Children.Add(radio);
     }
 
-    internal void Ready(bool installed, BundleScope selectedScope, Dictionary<string, string> arguments, bool scopeLocked = false)
+    internal void Ready(bool installed, BundleScope selectedScope, Dictionary<string, string> arguments, bool scopeLocked = false, bool clientWasRunning = false)
     {
         this.installed = installed; locked = installed || scopeLocked;
         choices[1]["preserve"].Visibility = choices[2]["preserve"].Visibility = locked ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
@@ -235,7 +235,7 @@ internal sealed class SetupWindow : Form
         Select(2, arguments.TryGetValue("AutomaticUpdates", out var updates) && (locked || updates != "preserve") ? updates : locked ? "preserve" : "true");
         Select(3, arguments.TryGetValue("RemoveData", out var removal) ? removal : "0");
         DesktopSwitch.IsChecked = arguments.TryGetValue("DesktopShortcut", out var shortcut) && shortcut == "1";
-        LaunchSwitch.IsChecked = arguments.TryGetValue("LaunchAfterSetup", out var launchValue) && launchValue == "1";
+        LaunchSwitch.IsChecked = arguments.TryGetValue("LaunchAfterSetup", out var launchValue) ? launchValue == "1" : locked && clientWasRunning;
         next.Enabled = true; remove.Visible = installed;
         ShowStep(0);
     }

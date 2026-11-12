@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Threading;
 using System.Windows.Forms;
 using WixToolset.BootstrapperApplicationApi;
 
@@ -25,6 +27,7 @@ public sealed class SetupApplication : BootstrapperApplication
     private IBootstrapperCommand command = null!;
     private SetupWindow window = null!;
     private bool installed, busy, cancel, downgrade;
+    private bool clientWasRunning;
     private BundleScope relatedScope;
     private BundleScope requestedScope;
     private int exitCode;
@@ -40,6 +43,8 @@ public sealed class SetupApplication : BootstrapperApplication
         engine.SetVariableString("OwnerSid", WindowsIdentity.GetCurrent().User!.Value, false);
         try
         {
+            clientWasRunning = IsClientRunning(@"Local\WindowsMegaProxy");
+            engine.Log(LogLevel.Standard, "Client running at setup startup: " + clientWasRunning);
             parsed = new SetupArguments(SetupArguments.Split(command.CommandLine));
             requestedScope = parsed.Scope;
             if (requestedScope == BundleScope.Default) requestedScope = command.Scope;
@@ -103,7 +108,7 @@ public sealed class SetupApplication : BootstrapperApplication
                 : relatedScope != BundleScope.Default ? relatedScope : BundleScope.PerMachine;
             if (scope == BundleScope.PerUser && arguments.TryGetValue("Mode", out var mode) && mode == "service")
                 throw new ArgumentException("Windows service mode is unavailable for a personal installation.");
-            window.Ready(installed, scope, arguments, relatedScope != BundleScope.Default);
+            window.Ready(installed, scope, arguments, relatedScope != BundleScope.Default, clientWasRunning);
             if (command.Action == LaunchAction.Uninstall) window.Removal();
             if (Silent) Start(command.Action == LaunchAction.Install && installed ? LaunchAction.Repair : command.Action);
         });
@@ -208,4 +213,15 @@ public sealed class SetupApplication : BootstrapperApplication
     }
     internal void Install() => Start(command.Action == LaunchAction.Layout ? LaunchAction.Layout : installed ? LaunchAction.Repair : LaunchAction.Install);
     internal void Uninstall() => Start(LaunchAction.Uninstall);
+
+    internal static bool IsClientRunning(string mutexName)
+    {
+        try
+        {
+            bool running = Mutex.TryOpenExisting(mutexName, MutexRights.Synchronize, out var instance);
+            instance?.Dispose();
+            return running;
+        }
+        catch (UnauthorizedAccessException) { return true; }
+    }
 }

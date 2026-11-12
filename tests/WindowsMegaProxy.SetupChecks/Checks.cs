@@ -25,6 +25,7 @@ internal static class Checks
         {
             Console.WriteLine("Checking setup commands, permissions, archives and runtime caching.");
             Arguments();
+            LaunchDefaults();
             Permissions();
             UserFiles(root);
             Archives(root);
@@ -86,6 +87,35 @@ internal static class Checks
         Require(new WindowsPrincipal(restored).IsInRole(WindowsBuiltInRole.Administrator) == administrator && restored.ImpersonationLevel == original.ImpersonationLevel,
             "Both successful and failing operations must restore the caller's token.");
         Program.Unelevated(() => Directory.Delete(folder, true));
+    }
+
+    private static void LaunchDefaults()
+    {
+        string name = @"Local\MegaProxy.Setup.Check-" + Guid.NewGuid().ToString("N");
+        Require(!SetupApplication.IsClientRunning(name), "A missing client instance must not enable launch.");
+        bool wasRunning;
+        using (var instance = new System.Threading.Mutex(false, name))
+            wasRunning = SetupApplication.IsClientRunning(name);
+        Require(wasRunning && !SetupApplication.IsClientRunning(name), "Observe the client without retaining its mutex after it exits.");
+        foreach (var scope in new[] { BundleScope.PerUser, BundleScope.PerMachine })
+        {
+            using var window = new SetupWindow(null, "0.0.0");
+            var defaults = new Dictionary<string, string>();
+            window.Ready(false, scope, defaults, clientWasRunning: wasRunning);
+            Require(window.Options()["LaunchAfterSetup"] == "0", "Fresh install defaults must not depend on a running client.");
+            window.Ready(true, scope, defaults);
+            Require(window.Options()["LaunchAfterSetup"] == "0", "Do not launch a client that was stopped before maintenance.");
+            window.Ready(true, scope, defaults, clientWasRunning: wasRunning);
+            Require(window.Options()["LaunchAfterSetup"] == "1", "Repair must restore a previously running client even after it exits.");
+            window.Ready(false, scope, defaults, scopeLocked: true, clientWasRunning: wasRunning);
+            Require(window.Options()["LaunchAfterSetup"] == "1", "Upgrade from a related bundle must restore a previously running client.");
+            window.LaunchSwitch.IsChecked = false;
+            Require(window.Options()["LaunchAfterSetup"] == "0", "The user can disable automatic relaunch.");
+            window.Ready(true, scope, new Dictionary<string, string> { ["LaunchAfterSetup"] = "0" }, clientWasRunning: wasRunning);
+            Require(window.Options()["LaunchAfterSetup"] == "0", "Explicit deferred-update launch suppression must take priority.");
+            window.Ready(true, scope, new Dictionary<string, string> { ["LaunchAfterSetup"] = "1" });
+            Require(window.Options()["LaunchAfterSetup"] == "1", "Explicit launch must work even if the client was stopped.");
+        }
     }
 
     private static void Reject<T>(Action action) where T : Exception
