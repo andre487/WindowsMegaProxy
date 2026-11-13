@@ -134,6 +134,23 @@ class PackageTests(unittest.TestCase):
             with zipfile.ZipFile(root / "core.zip") as output:
                 self.assertEqual(output.namelist(), ["dependencies/sing-box/libcronet.dll"])
 
+    def test_bundled_cores_keep_inventories_without_duplicate_archives(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            payload = root / "payload"
+            for name in ("sing-box", "sing-box-h3"):
+                directory = payload / "dependencies" / name
+                directory.mkdir(parents=True)
+                (directory / "core.dll").write_bytes(name.encode())
+            (payload / "app.exe").write_bytes(b"app")
+            components = package.payload_components(payload, root, "0.6.1", [])
+            self.assertEqual(len(list(root.glob("*.zip"))), 1)
+            for name in ("sing-box", "sing-box-h3"):
+                self.assertEqual(components[name]["file"], components["app"]["file"])
+                self.assertEqual(components[name]["files"], [entry for entry in components["app"]["files"]
+                                 if entry["path"].startswith("dependencies/" + name + "/")])
+                self.assertEqual(len(components[name]["files"]), 1)
+
     def test_signature_authenticates_exact_manifest_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

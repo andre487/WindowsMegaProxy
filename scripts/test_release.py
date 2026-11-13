@@ -46,6 +46,22 @@ def row(path, malicious=0):
 
 @patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""})
 class VirusTotalTests(unittest.TestCase):
+    def test_compact_manifest_and_legacy_assets(self):
+        self.assertEqual(len(set(release.package_names("v0.6.0").values())), 5)
+        self.assertEqual(len(set(release.package_names("v0.6.1").values())), 3)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture(root)
+            manifest = json.loads((root / "update-manifest.json").read_bytes())
+            for name in ("sing-box", "sing-box-h3"):
+                (root / manifest["components"][name]["file"]).unlink()
+                manifest["components"][name] = dict(manifest["components"]["app"], version="core-version")
+            signed_manifest(manifest, root, Ed25519PrivateKey.generate())
+            names = set(release.package_names(TAG, bundled=True).values()) | release.METADATA
+            checksums(root, sorted(names - {"SHA256SUMS"}))
+            self.assertEqual(release.verify(root, TAG, COMMIT), names)
+
+
     def test_release_limit_counts_malicious_and_suspicious_per_file(self):
         for malicious, suspicious in ((0, 0), (10, 0), (9, 1), (0, 10), (10, 1), (11, 0), (0, 11)):
             with self.subTest(malicious=malicious, suspicious=suspicious), tempfile.TemporaryDirectory() as temporary:
