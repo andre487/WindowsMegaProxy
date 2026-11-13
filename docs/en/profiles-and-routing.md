@@ -30,7 +30,7 @@ destination domains, wildcard domains, IP addresses/subnets or Podkop lists.
 Rules can route through the active profile, use the system route or block traffic.
 Disable a rule with its checkbox instead of deleting it.
 
-Windows always allows IPv6 and ignores imported `routing.allowIpv6`.
+IPv6 is opt-in. Profile `routing.allowIpv6` controls proxy destinations; root `routing.systemAllowIpv6` controls the system route. Both default to false. Proxy-only routing requires the profile option, system-only routing the system option, and mixed routing both. Enabled rules are evaluated in order; an unconditional all-applications/all-destinations rule overrides the fallback. Block rules, internal core bypass and local-network bypass do not count as a separate Internet route. No automatic uplink detection is performed. Reconnect to apply changes.
 Explicit system-route/block rules and local-network bypass still apply.
 SSH and TCP-only HTTPS do not provide UDP forwarding.
 
@@ -97,3 +97,19 @@ ambiguous destination-domain rules are skipped. Existing transfers can be interr
 
 For missing tray icons, service connection problems or failed updates, see
 [Troubleshooting](troubleshooting.md).
+
+### Blocking disabled IPv6
+
+Connection settings include **Block IPv6 when disabled in MegaProxy**, enabled
+by default (`windows.blockDisabledIpv6`, default `true`, included in config
+import/export). An omitted field preserves the current value on import.
+When IPv6 is disabled by the routing permissions, this removes the TUN IPv6
+address. With strict routing enabled, sing-tun then blocks IPv6 system-wide,
+including local connections to `::1` (Windows error 10013).
+
+Turn this option off to retain the TUN IPv6 address and avoid that global block.
+MegaProxy still uses IPv4-only DNS results and rejects IPv6 traffic entering its
+core. Strict routing and DNS protection stay enabled; local DNS on `::1:53`
+may still be blocked by the separate DNS filter. Traffic that bypasses TUN is
+not covered by the core rejection rule. The option has no effect when IPv6 is
+permitted by the routing settings. Reconnect to apply changes.

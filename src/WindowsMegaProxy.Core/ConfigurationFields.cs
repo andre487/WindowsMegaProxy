@@ -60,7 +60,7 @@ public static class ConfigurationFields
             Keep(ssh, "fingerprint authMode");
             Fingerprint(ssh, "fingerprint", true);
         }
-        if (root["routing"] is JsonObject routing) Keep(routing, "bypassLocalNetworks");
+        if (root["routing"] is JsonObject routing) Keep(routing, "bypassLocalNetworks systemAllowIpv6");
         if (root["failover"] is JsonObject failover) Keep(failover, "mode profileIds");
         if (root["subscription"] is JsonObject subscription) Keep(subscription, "url username password intervalMinutes enabled fallbackUrls");
         if (root["windows"] is JsonObject windows)
@@ -72,7 +72,7 @@ public static class ConfigurationFields
             }
             else
             {
-                Keep(windows, "version defaultAction bypassLocalNetworks autoConnect resetExistingTcpConnections logSizeMb reverseDnsCacheHours resolveConnectionHosts showAllConnections language theme alwaysMinimizeToTray tlsFingerprint coreLogLevel bootstrapDnsProvider launchAtSignIn rules tunMtu trafficUnits automaticAppUpdates appUpdatesThroughProxy");
+                Keep(windows, "version defaultAction bypassLocalNetworks autoConnect resetExistingTcpConnections logSizeMb reverseDnsCacheHours resolveConnectionHosts showAllConnections language theme alwaysMinimizeToTray tlsFingerprint blockDisabledIpv6 coreLogLevel bootstrapDnsProvider launchAtSignIn rules tunMtu trafficUnits automaticAppUpdates appUpdatesThroughProxy");
                 Fingerprint(windows, "tlsFingerprint");
             }
         }
@@ -86,7 +86,8 @@ public static class ConfigurationFields
                     if (!proxy.ContainsKey("knockHost") && profile["browser"] is JsonObject browser && browser["knockHost"] is { } knock) proxy["knockHost"] = knock.DeepClone();
                     Proxy(proxy);
                 }
-                Keep(profile, "id name color countryCode proxy tls dns windows");
+                Keep(profile, "id name color countryCode proxy tls dns routing windows");
+                if (profile["routing"] is JsonObject profileRouting) Keep(profileRouting, "allowIpv6");
                 Tls(profile);
                 if (profile["dns"] is JsonObject dns) Keep(dns, "provider customDohUrl");
                 if (profile["windows"] is JsonObject options) Keep(options, "sshHostKey sshJumpHostKey colorMode");

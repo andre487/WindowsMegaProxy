@@ -195,6 +195,10 @@
                         Style="{x:Static local:UiTheme.ExplanationStyle}"
                         Margin="0,4,0,0" />
                 </StackPanel>
+                <CheckBox
+                    x:Name="AllowIpv6Box"
+                    Content="{DynamicResource &quot;Enable IPv6 destinations&quot;}"
+                    Margin="0,0,0,16" />
                 <Expander Header="DNS" Margin="0,0,0,16">
                     <StackPanel Margin="0,12,0,0">
                         <Label

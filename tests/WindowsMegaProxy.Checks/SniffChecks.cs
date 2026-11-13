@@ -10,7 +10,7 @@ internal static class SniffChecks
     {
         static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
         static JsonObject Build(params RoutingRule[] rules) => Configuration.Build(new Settings { Rules = [.. rules], BypassLan = false }, 9999, "synthetic");
-        static JsonArray Rules(JsonObject config) => config["route"]!["rules"]!.AsArray();
+        static JsonArray Rules(JsonObject config) => new(config["route"]!["rules"]!.AsArray().Where(rule => rule?["ip_version"] is null).Select(rule => rule!.DeepClone()).ToArray());
         static int Sniffs(JsonObject config) => Rules(config).Count(rule => rule!["action"]?.ToString() == "sniff");
         var plain = Build();
         Check(Sniffs(plain) == 0 && Rules(plain)[0]!["port"]!.GetValue<int>() == 53, "No sniff without domain rules; DNS keeps its direct route.");

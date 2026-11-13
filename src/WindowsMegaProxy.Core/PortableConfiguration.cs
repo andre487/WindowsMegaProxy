@@ -99,6 +99,7 @@ public static class PortableConfiguration
                     if (windows.ContainsKey("theme")) candidate.Theme = String(windows, "theme");
                     if (windows.ContainsKey("alwaysMinimizeToTray")) candidate.AlwaysMinimizeToTray = windows["alwaysMinimizeToTray"]!.GetValue<bool>();
                     if (windows.ContainsKey("tlsFingerprint")) candidate.TlsFingerprint = String(windows, "tlsFingerprint");
+                    if (windows.ContainsKey("blockDisabledIpv6")) candidate.BlockDisabledIpv6 = windows["blockDisabledIpv6"]!.GetValue<bool>();
                     if (windows.ContainsKey("coreLogLevel")) candidate.CoreLogLevel = String(windows, "coreLogLevel");
                     if (windows.ContainsKey("bootstrapDnsProvider")) candidate.BootstrapDnsProvider = String(windows, "bootstrapDnsProvider");
                     if (windows.ContainsKey("launchAtSignIn")) candidate.LaunchAtSignIn = windows["launchAtSignIn"]!.GetValue<bool>();
@@ -111,6 +112,7 @@ public static class PortableConfiguration
                 if (Configuration.TlsFingerprints.Contains(value)) candidate.TlsFingerprint = value;
             }
             if (root["diagnosticLogLimitMb"] is { } logSize) candidate.LogSizeMb = Math.Clamp(logSize.GetValue<int>(), 1, 100);
+            if (root["routing"]?["systemAllowIpv6"] is { } systemIpv6) candidate.SystemAllowIpv6 = systemIpv6.GetValue<bool>();
             if (root["routing"]?["bypassLocalNetworks"] is { } bypass) candidate.BypassLan = bypass.GetValue<bool>();
             var requestedId = root["activeProfileId"]?.GetValue<string>();
             if (requestedId is not null && !candidate.Profiles.Any(profile => profile.Id == requestedId)) throw Invalid(Ui.T("The active profile is missing from the configuration."));
@@ -159,6 +161,7 @@ public static class PortableConfiguration
             windows["theme"] = settings.Theme;
             windows["alwaysMinimizeToTray"] = settings.AlwaysMinimizeToTray;
             windows["bootstrapDnsProvider"] = settings.BootstrapDnsProvider;
+            windows["blockDisabledIpv6"] = settings.BlockDisabledIpv6;
             windows["coreLogLevel"] = settings.CoreLogLevel;
             windows["launchAtSignIn"] = settings.LaunchAtSignIn ?? false;
             windows["rules"] = JsonSerializer.SerializeToNode(settings.Rules, PortableOptions);
@@ -170,7 +173,7 @@ public static class PortableConfiguration
         windows.Remove("bypassLocalNetworks");
         result["tls"] = new JsonObject { ["fingerprint"] = ConfigurationFields.NormalizeFingerprint(settings.TlsFingerprint) };
         result["diagnosticLogLimitMb"] = settings.LogSizeMb;
-        result["routing"] = new JsonObject { ["bypassLocalNetworks"] = settings.BypassLan };
+        result["routing"] = new JsonObject { ["bypassLocalNetworks"] = settings.BypassLan, ["systemAllowIpv6"] = settings.SystemAllowIpv6 };
         result["windows"] = windows;
         result = ConfigurationFields.Project(result);
         RemoveSecrets(result, includePasswords, includePrivateKeys);

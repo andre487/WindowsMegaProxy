@@ -27,7 +27,7 @@ internal static class Ipv6UiChecks
                 { Owner = owner, Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
                 editor.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
                 {
-                    Assert(editor.FindName("AllowIpv6Box") is null, "Windows does not offer an ineffective IPv6 switch.");
+                    Assert(((CheckBox)editor.FindName("AllowIpv6Box")).IsChecked == enabled, "The profile IPv6 switch reflects the stored permission.");
                     Assert(((TextBox)editor.FindName("HostBox")).Text == "2001:db8::1", type + ": IPv6 host survives opening the editor.");
                     typeof(ProfileWindow).GetMethod("SaveClick", BindingFlags.Instance | BindingFlags.NonPublic)!
                         .Invoke(editor, [editor, new RoutedEventArgs()]);
@@ -35,10 +35,10 @@ internal static class Ipv6UiChecks
                 }));
                 Assert(editor.ShowDialog() == true, type + ": IPv6 profile saved.");
                 profile = editor.Profile!;
-                Assert(profile.AllowIpv6 && profile.Host == "2001:db8::1", type + ": IPv6 preference round-trips through the editor.");
+                Assert(profile.AllowIpv6 == enabled && profile.Host == "2001:db8::1", type + ": IPv6 preference round-trips through the editor.");
                 var settings = new Settings { Profiles = [profile], ActiveProfileId = profile.Id };
                 var restored = PortableConfiguration.Import(PortableConfiguration.Export(settings, includePasswords: true).ToJsonString(), new Settings()).ActiveProfile!;
-                Assert(restored.AllowIpv6 && restored.Host == profile.Host, type + ": Export/import preserves IPv6 settings.");
+                Assert(restored.AllowIpv6 == enabled && restored.Host == profile.Host, type + ": Export/import preserves IPv6 settings.");
                 if (type.EndsWith("_JUMP", StringComparison.Ordinal))
                     Assert(Configuration.JumpProfile(profile).Host == "2001:db8::2", type + ": IPv6 jump address is preserved.");
             }

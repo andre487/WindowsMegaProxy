@@ -73,13 +73,13 @@ internal static class Ipv6Checks
             profile.Proxy["preferHttp2"] = version >= 2; profile.Proxy["preferHttp3"] = version == 3;
             if (type.EndsWith("_JUMP", StringComparison.Ordinal)) profile.Proxy["jump"] = new JsonObject
             { ["host"] = "::1", ["port"] = profile.Port, ["sameAuthentication"] = true, ["allowInvalidProxyCertificate"] = true };
-            foreach (string policy in new[] { "allow", "deny", "rule-proxy", "rule-proxy-deny", "rule-system", "rule-block", "bad-auth" })
+            foreach (string policy in new[] { "allow", "deny", "rule-proxy", "rule-proxy-deny", "deny-compatible", "rule-system", "rule-block", "bad-auth" })
             {
-                bool allowed = policy is not ("rule-block" or "bad-auth");
+                bool allowed = policy is "allow" or "rule-proxy" or "rule-system";
                 profile.Data["routing"] = new JsonObject { ["allowIpv6"] = policy is "allow" or "rule-proxy" or "bad-auth" };
-                if (policy == "allow") profile.Data.Remove("routing");
+                if (policy == "rule-system") profile.Data["routing"]!["allowIpv6"] = true;
                 profile.Proxy["password"] = policy == "bad-auth" ? "incorrect" : "secret";
-                var settings = new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy", BypassLan = false };
+                var settings = new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy", BypassLan = false, SystemAllowIpv6 = true, BlockDisabledIpv6 = policy != "deny-compatible" };
                 if (policy.StartsWith("rule-", StringComparison.Ordinal))
                 {
                     settings.DefaultAction = policy is "rule-proxy" or "rule-proxy-deny" ? "system" : "proxy";

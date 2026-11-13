@@ -34,7 +34,7 @@ public sealed class ProxyProfile : INotifyPropertyChanged
     [JsonIgnore] public bool PreferHttp3 => Type is "HTTPS" or "HTTPS_JUMP" && (Proxy["preferHttp3"]?.GetValue<bool>() ?? false);
     [JsonIgnore] public bool PreferHttp2 => Type is "HTTPS" or "HTTPS_JUMP" && ((Proxy["preferHttp2"]?.GetValue<bool>() ?? false) || PreferHttp3);
     [JsonIgnore] public bool UsesHttp3 => Type == "MASQUE" || PreferHttp3;
-    [JsonIgnore] public bool AllowIpv6 => true;
+    [JsonIgnore] public bool AllowIpv6 => Data["routing"]?["allowIpv6"]?.GetValue<bool>() ?? false;
     [JsonIgnore] public string Endpoint => $"{Host}:{Port}";
     [JsonIgnore] public string Description => $"{Endpoint} · {TypeLabel}";
     [JsonIgnore] public string SelectionLabel => $"{Name} · {TypeLabel}";
