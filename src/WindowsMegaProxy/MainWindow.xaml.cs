@@ -941,7 +941,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private bool CanPollConnections() => IsActive && IsVisible && WindowState != WindowState.Minimized &&
+    private bool CanPollConnections() => IsVisible && WindowState != WindowState.Minimized &&
         ((TabItem)Sections.Items[0]).IsSelected && connection.State == ConnectionState.Connected && engine?.Running == true;
 
     private DateTimeOffset nextConnectionsPoll;

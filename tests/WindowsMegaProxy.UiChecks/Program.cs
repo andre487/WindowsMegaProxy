@@ -409,8 +409,14 @@ internal static partial class Program
             var otherWindow = new Window { Width = 200, Height = 100, Owner = window };
             otherWindow.Show(); otherWindow.Activate(); Layout(otherWindow);
             Wait(window, (Task)refresh.Invoke(window, [false])!);
-            Assert(!window.IsActive && fixtureEngine.Polls == polls, "A visible unfocused window does not poll connections.");
+            Assert(!window.IsActive && fixtureEngine.Polls == polls + 1, "A visible unfocused window continues polling connections.");
+            polls = fixtureEngine.Polls;
             otherWindow.Close(); window.Activate(); Layout(window);
+
+            window.WindowState = WindowState.Minimized;
+            Wait(window, (Task)refresh.Invoke(window, [false])!);
+            Assert(fixtureEngine.Polls == polls, "A minimized window does not poll connections.");
+            window.WindowState = WindowState.Normal; Layout(window);
 
             ((TabControl)window.FindName("Sections")).SelectedIndex = 3;
             Wait(window, (Task)refresh.Invoke(window, [false])!);
