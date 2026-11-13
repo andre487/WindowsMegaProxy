@@ -9,7 +9,7 @@ namespace WindowsMegaProxy;
 public sealed record SettingsAnalysis(Settings Settings, string? Signature, string? Error)
 {
     public static bool SameNetwork(Settings a, Settings b) => a.DefaultAction == b.DefaultAction && a.BypassLan == b.BypassLan &&
-        a.CoreLogLevel == b.CoreLogLevel && a.TunMtu == b.TunMtu && a.TlsFingerprint == b.TlsFingerprint && a.BootstrapDnsProvider == b.BootstrapDnsProvider && a.ActiveProfileId == b.ActiveProfileId &&
+        a.BlockDisabledIpv6 == b.BlockDisabledIpv6 && a.SystemAllowIpv6 == b.SystemAllowIpv6 && a.CoreLogLevel == b.CoreLogLevel && a.TunMtu == b.TunMtu && a.TlsFingerprint == b.TlsFingerprint && a.BootstrapDnsProvider == b.BootstrapDnsProvider && a.ActiveProfileId == b.ActiveProfileId &&
         AppUpdatePolicy.ThroughProxy(a) == AppUpdatePolicy.ThroughProxy(b) &&
         SshConfiguration.AuthMode(a) == SshConfiguration.AuthMode(b) &&
         JsonNode.DeepEquals(a.SharedOptions["ssh"]?["fingerprint"], b.SharedOptions["ssh"]?["fingerprint"]) &&

@@ -41,3 +41,12 @@ IPv6 connectivity or Wintun. Logs and test reports remain under `artifacts`.
 without automatic routes; it requires administrator rights. CI runs this check.
 For release signing, packaging, CI gates and retries, see
 [Installer and release automation](../installer/README.md).
+
+The CI native-core `core_smoke.py --tun` checks also exercise strict routing with
+IPv6 blocked, disabled with loopback compatibility, and enabled, using both DLLs.
+They verify IPv4/IPv6 TCP loopback and that the IPv6 block disappears after core
+shutdown. Routes are restricted to documentation subnets, but WFP and DNS filters
+are system-wide while the test runs: use a disposable Windows runner with admin
+rights, not a workstation with an active VPN. A failed baseline loopback check is
+an error, not a skip. The configuration suite covers all 24 combinations of route
+mode, profile/system permissions and the blocking option, including DNS policy.

@@ -1,4 +1,8 @@
 {
+    "Block IPv6 when disabled in MegaProxy": "Блокировать IPv6 при отключении в MegaProxy",
+    "May block local IPv6 connections (::1). Turn off to retain loopback; IPv6 traffic through MegaProxy remains blocked. Applies after reconnection.": "Может блокировать локальные IPv6-соединения (::1). Отключите для сохранения loopback; IPv6-трафик через MegaProxy останется заблокирован. Применяется после переподключения.",
+    "Enable IPv6 destinations": "Разрешить подключения к IPv6-адресам",
+    "Enable IPv6 for system routing": "Разрешить IPv6 для системного маршрута",
     "sing-box log level": "Уровень логов sing-box",
     "Applies after reconnection. Debug and trace include destination addresses and application paths and increase log volume.": "Применяется после переподключения. Debug и trace включают адреса назначения и пути приложений и увеличивают объём журнала.",
     "SOCKS5 does not encrypt the server connection; UDP requires server support.": "SOCKS5 не шифрует соединение с сервером; UDP требует поддержки сервера.",

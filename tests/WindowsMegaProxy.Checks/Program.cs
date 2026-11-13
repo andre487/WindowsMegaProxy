@@ -42,18 +42,40 @@ Assert(ProfileAppearance.Colors.Count == 12 && ProfileAppearance.Countries.Count
 TransferChecks.Run();
 ConfigurationContractChecks.Run();
 var defaultTun = TunAddresses.Select([], false);
-var globalIpv6 = System.Net.IPAddress.Parse("2001:db8::2");
-var localIpv6 = System.Net.IPAddress.Parse("fe80::1");
-Assert(!TunAddresses.HasIpv6Uplink([globalIpv6], []), "An IPv6 address without a gateway is not an uplink.");
-Assert(!TunAddresses.HasIpv6Uplink([localIpv6, System.Net.IPAddress.Parse("fd62::2")], [localIpv6]), "Local IPv6 addresses do not establish Internet connectivity.");
-Assert(TunAddresses.HasIpv6Uplink([globalIpv6], [localIpv6]), "A global address and link-local gateway allow IPv6.");
+var ipv6Profile = ProxyProfile.Create();
+var ipv6Settings = new Settings { Profiles = [ipv6Profile], ActiveProfileId = ipv6Profile.Id, DefaultAction = "proxy" };
+Assert(!TunAddresses.Enabled(ipv6Settings), "IPv6 is opt-in.");
+ipv6Profile.Data["routing"] = new JsonObject { ["allowIpv6"] = true };
+Assert(TunAddresses.Enabled(ipv6Settings), "Proxy-only needs only profile permission.");
+ipv6Settings.DefaultAction = "system";
+Assert(!TunAddresses.Enabled(ipv6Settings), "System-only needs system permission.");
+ipv6Settings.SystemAllowIpv6 = true;
+Assert(TunAddresses.Enabled(ipv6Settings), "System permission enables system-only IPv6.");
+ipv6Settings.Rules.Add(new RoutingRule { Source = "exe", Path = "test.exe", Action = "proxy" });
+ipv6Profile.Data["routing"]!["allowIpv6"] = false;
+Assert(!TunAddresses.Enabled(ipv6Settings), "Mixed routes require both permissions.");
+ipv6Profile.Data["routing"]!["allowIpv6"] = true;
+Assert(TunAddresses.Enabled(ipv6Settings), "Both permissions enable mixed routes.");
+ipv6Settings.SystemAllowIpv6 = false;
+Assert(!TunAddresses.Enabled(ipv6Settings), "Mixed routes also require system permission.");
+ipv6Settings.Rules[0].Source = "all";
+Assert(TunAddresses.Enabled(ipv6Settings), "An unconditional rule overrides the fallback.");
+ipv6Settings.Rules[0].Enabled = false;
+Assert(!TunAddresses.Enabled(ipv6Settings), "Disabled rules are ignored.");
 var ipv4Config = Configuration.Build(new Settings(), 1, "test");
 TunAddresses.Apply(ipv4Config, defaultTun, false);
 Assert(ipv4Config["inbounds"]![0]!["address"]!.AsArray().Count == 1 && ipv4Config["dns"]!["strategy"]!.ToString() == "ipv4_only" &&
-    ipv4Config["route"]!["rules"]![0]!["ip_version"]!.GetValue<int>() == 6, "No IPv6 uplink removes the TUN IPv6 address, filters DNS and rejects IPv6.");
-var dualConfig = Configuration.Build(new Settings(), 1, "test");
+    ipv4Config["route"]!["rules"]![0]!["ip_version"]!.GetValue<int>() == 6, "Disabling IPv6 removes the TUN IPv6 address, filters DNS and rejects IPv6.");
+var dualConfig = Configuration.Build(new Settings { SystemAllowIpv6 = true }, 1, "test");
 TunAddresses.Apply(dualConfig, defaultTun, true);
-Assert(dualConfig["inbounds"]![0]!["address"]!.AsArray().Count == 2 && dualConfig["dns"]!["strategy"]!.ToString() == "prefer_ipv4", "IPv6 uplinks retain dual-stack configuration.");
+Assert(dualConfig["inbounds"]![0]!["address"]!.AsArray().Count == 2 && dualConfig["dns"]!["strategy"]!.ToString() == "prefer_ipv4", "IPv6 permission retains dual-stack configuration.");
+var compatibleIpv6 = Configuration.Build(new Settings { BlockDisabledIpv6 = false }, 1, "test");
+Assert(compatibleIpv6["inbounds"]![0]!["address"]!.AsArray().Count == 2 &&
+    compatibleIpv6["dns"]!["strategy"]!.ToString() == "ipv4_only" &&
+    compatibleIpv6["route"]!["rules"]![0]!["action"]!.ToString() == "reject",
+    "Loopback compatibility retains the TUN address without permitting routed IPv6.");
+Assert(Configuration.Signature(new Settings()) != Configuration.Signature(new Settings { BlockDisabledIpv6 = false }),
+    "Blocking preference requires reconnection.");
 var devTun = TunAddresses.Select([], true);
 Assert(defaultTun.Ipv4 != devTun.Ipv4 && defaultTun.Ipv6 != devTun.Ipv6, "DEV and production prefer separate IPv4 and IPv6 TUN subnets.");
 var occupiedTun = new[] { TunAddresses.Network(System.Net.IPAddress.Parse("172.29.0.1"), 30),

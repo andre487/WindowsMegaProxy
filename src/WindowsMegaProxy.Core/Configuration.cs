@@ -20,6 +20,8 @@ public sealed class Settings
     public JsonObject SharedOptions { get; set; } = new();
     public JsonObject WindowsOptions { get; set; } = new();
     public string DefaultAction { get; set; } = "system";
+    public bool BlockDisabledIpv6 { get; set; } = true;
+    public bool SystemAllowIpv6 { get; set; }
     public bool BypassLan { get; set; } = true;
     public bool AutoConnect { get; set; }
     public bool ResetExistingTcpConnections { get; set; }
@@ -190,7 +192,7 @@ public static class Configuration
             rules.Add(new JsonObject { ["ip_is_private"] = true, ["action"] = "route", ["outbound"] = "direct" });
         if (settings.DefaultAction == "block") rules.Add(new JsonObject { ["action"] = "reject" });
 
-        return new JsonObject
+        var config = new JsonObject
         {
             ["log"] = new JsonObject { ["level"] = settings.CoreLogLevel, ["timestamp"] = true },
             ["dns"] = new JsonObject
@@ -218,6 +220,8 @@ public static class Configuration
             },
             ["experimental"] = new JsonObject { ["clash_api"] = new JsonObject { ["external_controller"] = $"127.0.0.1:{apiPort}", ["secret"] = apiSecret } }
         };
+        TunAddresses.Apply(config, tunAddresses, TunAddresses.Enabled(settings), settings.BlockDisabledIpv6);
+        return config;
     }
 
     public static JsonObject BuildOutbound(ProxyProfile profile, string tag, string tlsFingerprint = "default", bool allowUnresolvedSsh = false, string sshAuthMode = "AUTO")

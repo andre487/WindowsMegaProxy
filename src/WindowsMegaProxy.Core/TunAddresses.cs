@@ -10,16 +10,31 @@ namespace WindowsMegaProxy;
 
 public static class TunAddresses
 {
-    public static bool HasIpv6Uplink(IEnumerable<IPAddress> addresses, IEnumerable<IPAddress> gateways) =>
-        addresses.Any(address => address.AddressFamily == AddressFamily.InterNetworkV6 &&
-            !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !IPAddress.IsLoopback(address) &&
-            !address.Equals(IPAddress.IPv6Any) && (address.GetAddressBytes()[0] & 0xfe) != 0xfc) &&
-        gateways.Any(address => address.AddressFamily == AddressFamily.InterNetworkV6 &&
-            !address.Equals(IPAddress.IPv6Any));
-
-    public static void Apply(JsonObject config, (string Ipv4, string Ipv6) addresses, bool ipv6)
+    public static bool Enabled(Settings settings)
     {
-        config["inbounds"]![0]!["address"] = ipv6 ? new JsonArray(addresses.Ipv4, addresses.Ipv6) : new JsonArray(addresses.Ipv4);
+        bool proxy = false, system = false, terminal = false;
+        void Include(string action)
+        {
+            proxy |= action == "proxy";
+            system |= action is "system" or "direct";
+        }
+        foreach (var rule in settings.Rules.Where(rule => rule.Enabled))
+        {
+            Include(rule.Action);
+            if (rule.Source == "all" && string.IsNullOrWhiteSpace(rule.Destination))
+            {
+                terminal = true;
+                break;
+            }
+        }
+        if (!terminal) Include(settings.DefaultAction);
+        return (proxy || system) && (!proxy || settings.ActiveProfile?.AllowIpv6 == true) &&
+            (!system || settings.SystemAllowIpv6);
+    }
+
+    public static void Apply(JsonObject config, (string Ipv4, string Ipv6) addresses, bool ipv6, bool blockDisabledIpv6 = true)
+    {
+        config["inbounds"]![0]!["address"] = ipv6 || !blockDisabledIpv6 ? new JsonArray(addresses.Ipv4, addresses.Ipv6) : new JsonArray(addresses.Ipv4);
         if (ipv6) return;
         config["dns"]!["strategy"] = "ipv4_only";
         config["route"]!["rules"]!.AsArray().Insert(0, new JsonObject

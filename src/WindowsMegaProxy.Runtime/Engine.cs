@@ -151,16 +151,14 @@ public sealed partial class Engine : IEngine
                 var adapters = NetworkInterface.GetAllNetworkInterfaces()
                     .Where(adapter => !string.Equals(adapter.Name, AppIdentity.DisplayName, StringComparison.OrdinalIgnoreCase))
                     .ToArray();
-                bool ipv6 = adapters.Any(adapter => adapter.OperationalStatus == OperationalStatus.Up &&
-                    adapter.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
-                    TunAddresses.HasIpv6Uplink(adapter.GetIPProperties().UnicastAddresses.Select(item => item.Address),
-                        adapter.GetIPProperties().GatewayAddresses.Select(item => item.Address)));
+                bool ipv6 = TunAddresses.Enabled(settings);
                 var networks = adapters.SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
                     .Select(address => TunAddresses.Network(address.Address, address.PrefixLength));
                 return (Addresses: TunAddresses.Select(networks, AppIdentity.IsDev), Ipv6: ipv6);
             }, cancellationToken).ConfigureAwait(false);
-            TunAddresses.Apply(config, network.Addresses, network.Ipv6);
-            Log?.Invoke($"TUN interface {AppIdentity.DisplayName}: IPv4={network.Addresses.Ipv4}; IPv6={(network.Ipv6 ? network.Addresses.Ipv6 : "disabled (no IPv6 uplink)")}.");
+            config["inbounds"]![0]!["address"] = network.Ipv6 || !settings.BlockDisabledIpv6
+                ? new JsonArray(network.Addresses.Ipv4, network.Addresses.Ipv6) : new JsonArray(network.Addresses.Ipv4);
+            Log?.Invoke($"TUN interface {AppIdentity.DisplayName}: IPv4={network.Addresses.Ipv4}; IPv6={(network.Ipv6 ? network.Addresses.Ipv6 : settings.BlockDisabledIpv6 ? "disabled by configuration" : "disabled for routed traffic; TUN address retained")}.");
         }
         var cache = new PodkopCache(Path.Combine(stateDirectory, "podkop"), message => Log?.Invoke(message));
         foreach (string id in PodkopCatalog.Used(settings)) await cache.GetAsync(id, cancellationToken,

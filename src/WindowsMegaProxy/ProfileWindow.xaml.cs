@@ -57,6 +57,7 @@ public partial class ProfileWindow : Window
         if (!DnsProviderBox.Items.Cast<ComboBoxItem>().Any(item => (string)item.Tag == dnsProvider))
             DnsProviderBox.Items.Add(new ComboBoxItem { Content = dnsProvider, Tag = dnsProvider });
         DnsProviderBox.SelectedItem = DnsProviderBox.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == dnsProvider);
+        AllowIpv6Box.IsChecked = profile.AllowIpv6;
         DnsUrlBox.Text = ProfileDns.CustomUrl(profile);
         AuthProbeHostPanel.Visibility = profile.Type == "HTTPS" ? Visibility.Visible : Visibility.Collapsed;
         TypeChanged(this, null!);
@@ -190,6 +191,8 @@ public partial class ProfileWindow : Window
                     !MessageDialog.Confirm(this, Ui.T("Disable proxy certificate verification? This weakens connection security."), Ui.T("Proxy certificate"))) return;
                 candidate.Proxy["allowInvalidProxyCertificate"] = insecure;
             }
+            candidate.Data["routing"] ??= new System.Text.Json.Nodes.JsonObject();
+            candidate.Data["routing"]!["allowIpv6"] = AllowIpv6Box.IsChecked == true;
             string provider = (string)((ComboBoxItem)DnsProviderBox.SelectedItem).Tag;
             if (provider != ProfileDns.Provider(original) || DnsUrlBox.Text.Trim() != ProfileDns.CustomUrl(original))
             {

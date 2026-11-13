@@ -1275,6 +1275,19 @@
                                             <ComboBoxItem Content="{DynamicResource &quot;Password only&quot;}" Tag="PASSWORD_ONLY" />
                                             <ComboBoxItem Content="{DynamicResource &quot;Private key only&quot;}" Tag="KEY_ONLY" />
                                         </ComboBox>
+                                        <CheckBox
+                                            x:Name="SystemAllowIpv6Box"
+                                            Content="{DynamicResource &quot;Enable IPv6 for system routing&quot;}"
+                                            Margin="0,16,0,0" />
+                                        <CheckBox
+                                            x:Name="BlockDisabledIpv6Box"
+                                            Content="{DynamicResource &quot;Block IPv6 when disabled in MegaProxy&quot;}"
+                                            Margin="0,12,0,0" />
+                                        <TextBlock
+                                            Text="{DynamicResource &quot;May block local IPv6 connections (::1). Turn off to retain loopback; IPv6 traffic through MegaProxy remains blocked. Applies after reconnection.&quot;}"
+                                            Style="{x:Static local:UiTheme.ExplanationStyle}"
+                                            TextWrapping="Wrap"
+                                            Margin="0,4,0,0" />
                                         <Label
                                             Content="{DynamicResource &quot;sing-box log level&quot;}"
                                             Target="{Binding ElementName=CoreLogLevelBox}"

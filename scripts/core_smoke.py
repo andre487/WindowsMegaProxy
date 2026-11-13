@@ -97,11 +97,40 @@ def traffic(host, variant):
         assert not errors, errors
 
 
-def tun(host, variant):
+def loopback(family, blocked=False):
+    address = "::1" if family == socket.AF_INET6 else "127.0.0.1"
+    with socket.socket(family) as listener, socket.socket(family) as client:
+        listener.bind((address, 0))
+        listener.listen()
+        listener.settimeout(3)
+        client.settimeout(3)
+        try:
+            client.connect(listener.getsockname())
+        except OSError as error:
+            if not blocked or error.winerror != 10013:
+                raise
+            return
+        assert not blocked, "Strict IPv4-only TUN did not block IPv6 loopback."
+        with listener.accept()[0] as peer:
+            peer.settimeout(3)
+            client.sendall(b"loopback")
+            assert receive(peer, 8) == b"loopback"
+
+
+def tun(host, variant, ipv6_mode=None):
     if not ct.windll.shell32.IsUserAnAdmin():
         raise RuntimeError("TUN smoke checks require an administrator token.")
     config = CONFIG | {"inbounds": [{"type": "tun", "interface_name": "MegaProxy DLL smoke",
                                     "address": ["192.0.2.1/30"], "auto_route": False, "stack": "system"}]}
+    if ipv6_mode is not None:
+        loopback(socket.AF_INET6)
+        inbound = config["inbounds"][0]
+        inbound.update(auto_route=True, strict_route=True, dns_mode="hijack",
+                       route_address=["192.0.2.0/30", "2001:db8:487::/126"])
+        if ipv6_mode != "blocked":
+            inbound["address"].append("2001:db8:487::1/126")
+        if ipv6_mode != "enabled":
+            config["route"] = {"rules": [{"ip_version": 6, "action": "reject"}], "final": "direct"}
     ready = threading.Event()
     messages = []
     with sp.Popen([str(host), variant], stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.PIPE) as process:
@@ -118,6 +147,9 @@ def tun(host, variant):
             process.stdin.flush()
             if not ready.wait(20):
                 raise RuntimeError("TUN did not start: " + "".join(messages))
+            if ipv6_mode is not None:
+                loopback(socket.AF_INET)
+                loopback(socket.AF_INET6, blocked=ipv6_mode == "blocked")
             process.stdin.close()
             process.wait(timeout=10)
             assert process.returncode == 0, messages
@@ -126,6 +158,10 @@ def tun(host, variant):
                 process.kill()
                 process.wait()
             reader.join(timeout=5)
+            if ipv6_mode is not None:
+                loopback(socket.AF_INET6)
+    if ipv6_mode is not None:
+        print(f"{variant} TUN IPv6 {ipv6_mode}: loopback and filter cleanup passed.", flush=True)
 
 
 def main(signed=False, check_tun=False):
@@ -145,6 +181,8 @@ def main(signed=False, check_tun=False):
         traffic(dev_host, variant)
         if check_tun:
             tun(dev_host, variant)
+            for ipv6_mode in ("blocked", "compatible", "enabled"):
+                tun(dev_host, variant, ipv6_mode)
     print("DEV lifecycle, invalid configuration and local SOCKS traffic passed for both DLLs.", flush=True)
     if not signed:
         return

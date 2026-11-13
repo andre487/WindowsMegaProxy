@@ -11,6 +11,42 @@ internal static class ConfigurationContractChecks
         static void Check(bool value, string message) { if (!value) throw new Exception(message); }
         var profile = ProxyProfile.Create("Contract"); profile.Proxy["host"] = "proxy.example";
         var original = new Settings { Profiles = [profile], ActiveProfileId = profile.Id, DefaultAction = "proxy", TunMtu = 1400, TrafficUnits = "SI" };
+        Check(original.BlockDisabledIpv6, "IPv6 blocking is opt-out.");
+        original.BlockDisabledIpv6 = false;
+        var blockDocument = PortableConfiguration.Export(original);
+        Check(!PortableConfiguration.Import(blockDocument.ToJsonString(), new Settings()).BlockDisabledIpv6, "IPv6 blocking preference round-trips.");
+        blockDocument["windows"]!.AsObject().Remove("blockDisabledIpv6");
+        Check(!PortableConfiguration.Import(blockDocument.ToJsonString(), original).BlockDisabledIpv6, "Omitted blocking preference is preserved.");
+        original.BlockDisabledIpv6 = true;
+        foreach (string route in new[] { "proxy", "system", "mixed" })
+        foreach (bool profileIpv6 in new[] { false, true })
+        foreach (bool systemIpv6 in new[] { false, true })
+        foreach (bool block in new[] { false, true })
+        {
+            var mode = original.Copy();
+            mode.ActiveProfile!.Data["routing"] = new JsonObject { ["allowIpv6"] = profileIpv6 };
+            mode.SystemAllowIpv6 = systemIpv6;
+            mode.BlockDisabledIpv6 = block;
+            mode.DefaultAction = route == "proxy" ? "proxy" : "system";
+            mode.Rules.Clear();
+            if (route == "mixed") mode.Rules.Add(new RoutingRule { Source = "exe", Path = @"C:\Test.exe", Action = "proxy" });
+            bool enabled = route == "proxy" ? profileIpv6 : route == "system" ? systemIpv6 : profileIpv6 && systemIpv6;
+            var network = Configuration.Build(mode, 1, "test");
+            string label = $"{route}: profile={profileIpv6}, system={systemIpv6}, block={block}";
+            Check(network["inbounds"]![0]!["address"]!.AsArray().Count == (enabled || !block ? 2 : 1), label + " TUN address policy");
+            Check(network["dns"]!["strategy"]!.ToString() == (enabled ? "prefer_ipv4" : "ipv4_only"), label + " DNS policy");
+            Check(network["route"]!["rules"]!.AsArray().Any(rule => rule?["ip_version"]?.ToString() == "6" && rule?["action"]?.ToString() == "reject") == !enabled, label + " IPv6 rejection");
+            Check(network["inbounds"]![0]!["strict_route"]!.GetValue<bool>() && network["inbounds"]![0]!["dns_mode"]!.ToString() == "hijack", label + " DNS protection remains active");
+        }
+        original.SystemAllowIpv6 = true;
+        var ipv6Document = PortableConfiguration.Export(original);
+        Check(ipv6Document["routing"]!["systemAllowIpv6"]!.GetValue<bool>(), "Export global IPv6 permission.");
+        Check(PortableConfiguration.Import(ipv6Document.ToJsonString(), new Settings()).SystemAllowIpv6, "Import global IPv6 permission.");
+        ipv6Document["routing"]!.AsObject().Remove("systemAllowIpv6");
+        Check(PortableConfiguration.Import(ipv6Document.ToJsonString(), original).SystemAllowIpv6, "Omitted global IPv6 permission is preserved.");
+        ipv6Document["routing"]!["systemAllowIpv6"] = false;
+        Check(!PortableConfiguration.Import(ipv6Document.ToJsonString(), original).SystemAllowIpv6, "Explicit false replaces global IPv6 permission.");
+        original.SystemAllowIpv6 = false;
         var document = PortableConfiguration.Export(original);
         foreach (var (portable, native) in new[] { ("CHROME_ANDROID", "chrome"), ("FIREFOX_ANDROID", "firefox"), ("EDGE_ANDROID", "edge"), ("RANDOMIZED", "randomized") })
         {
@@ -49,7 +85,7 @@ internal static class ConfigurationContractChecks
         imported = PortableConfiguration.Import(document.ToJsonString(), new Settings { DefaultAction = "proxy" });
         var config = Configuration.Build(imported, 1, "test");
         Check(config["outbounds"]![0]!["client_version"]!.ToString() == "SSH-2.0-ConnectBot" && config["outbounds"]![0]!["host_key"] is null, "Shared SSH fingerprint applies without changing host-key policy.");
-        Check(imported.ActiveProfile!.AllowIpv6 && !config["route"]!["rules"]!.AsArray().Any(rule => rule?["ip_version"] is not null), "Imported IPv6 flag cannot block IPv6.");
+        Check(!imported.ActiveProfile!.AllowIpv6 && config["route"]!["rules"]!.AsArray().Any(rule => rule?["ip_version"] is not null), "Imported IPv6 flag controls IPv6.");
         document["subscription"] = new JsonObject { ["url"] = "https://feed.example/", ["accessToken"] = "synthetic" };
         var reviewUnknown = new ImportReview(ProfileTransfer.Parse(document.ToJsonString()), original);
         Check(reviewUnknown.UnsupportedOptions.Contains(ConfigurationFields.UnknownWarning), "Unknown fields warn without exposing their values.");

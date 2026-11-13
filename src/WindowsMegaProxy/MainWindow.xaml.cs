@@ -210,6 +210,8 @@ public partial class MainWindow : Window
         };
         timer.Start();
         DefaultActionBox.SelectionChanged += SettingsChanged;
+        BlockDisabledIpv6Box.Click += SettingsChanged;
+        SystemAllowIpv6Box.Click += SettingsChanged;
         BypassLanBox.Click += SettingsChanged;
         AutoConnectBox.Click += SettingsChanged;
         ResetExistingTcpBox.Click += SettingsChanged;
@@ -500,6 +502,8 @@ public partial class MainWindow : Window
     {
         var updated = PortableConfiguration.Copy(settings);
         updated.DefaultAction = (string)((ComboBoxItem)DefaultActionBox.SelectedItem).Tag;
+        updated.BlockDisabledIpv6 = BlockDisabledIpv6Box.IsChecked == true;
+        updated.SystemAllowIpv6 = SystemAllowIpv6Box.IsChecked == true;
         updated.BypassLan = BypassLanBox.IsChecked == true;
         updated.AutoConnect = AutoConnectBox.IsChecked == true;
         updated.ResetExistingTcpConnections = ResetExistingTcpBox.IsChecked == true;
@@ -633,6 +637,8 @@ public partial class MainWindow : Window
             }
             ProfilePicker.SelectedItem = ((System.Collections.Generic.IEnumerable<ProxyProfile>)ProfilePicker.ItemsSource!).FirstOrDefault(profile => profile.Id == settings.ActiveProfileId);
             SelectTag(DefaultActionBox, settings.DefaultAction);
+            BlockDisabledIpv6Box.IsChecked = settings.BlockDisabledIpv6;
+            SystemAllowIpv6Box.IsChecked = settings.SystemAllowIpv6;
             BypassLanBox.IsChecked = settings.BypassLan;
             AutoConnectBox.IsChecked = settings.AutoConnect;
             ResetExistingTcpBox.IsChecked = settings.ResetExistingTcpConnections;
@@ -887,7 +893,7 @@ public partial class MainWindow : Window
         RulesEditable = editable && !changingRules;
         foreach (var panel in new Panel[] { ProfilePanel, RulesPanel })
             foreach (var button in Descendants<Button>(panel)) button.IsEnabled = editable;
-        foreach (var control in new Control[] { DefaultActionBox, BypassLanBox, LanguageBox, ThemeBox, AlwaysMinimizeToTrayBox, TlsFingerprintBox, BootstrapDnsBox, CoreLogLevelBox, ResolveConnectionHostsBox, ReverseDnsCacheBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
+        foreach (var control in new Control[] { DefaultActionBox, BlockDisabledIpv6Box, SystemAllowIpv6Box, BypassLanBox, LanguageBox, ThemeBox, AlwaysMinimizeToTrayBox, TlsFingerprintBox, BootstrapDnsBox, CoreLogLevelBox, ResolveConnectionHostsBox, ReverseDnsCacheBox, MtuBox, TrafficUnitsBox, SshAuthModeBox, AutoConnectBox, ResetExistingTcpBox, LogSizeBox, ShowAllConnectionsBox }) control.IsEnabled = editable;
         AutostartBox.IsEnabled = editable && !applyingAutostart && !AppIdentity.IsDev;
         OperatingModeBox.IsEnabled = editable && !busy && scheduledAppUpdate?.FilesQueued != true && (File.Exists(Path.Combine(AppContext.BaseDirectory, AppIdentity.ServiceExecutable)) || AppIdentity.IsDev && installScript is not null);
         OperatingModeBox.ToolTip = scheduledAppUpdate?.FilesQueued == true ? Ui.T("Restart Windows to finish the update. File replacement has already been scheduled.") : null;

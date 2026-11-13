@@ -588,6 +588,17 @@ internal static partial class Program
             bootstrapDns.SelectedIndex = 3;
             Layout(window);
             Assert(saved[^1].BootstrapDnsProvider == "GOOGLE", "Bootstrap DNS autosaves.");
+            var blockIpv6 = (CheckBox)window.FindName("BlockDisabledIpv6Box");
+            Assert(blockIpv6.IsChecked == true, "IPv6 blocking defaults to enabled.");
+            blockIpv6.IsChecked = false;
+            blockIpv6.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Layout(window);
+            Assert(!saved[^1].BlockDisabledIpv6, "IPv6 blocking preference autosaves.");
+            var systemIpv6 = (CheckBox)window.FindName("SystemAllowIpv6Box");
+            systemIpv6.IsChecked = true;
+            systemIpv6.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Layout(window);
+            Assert(saved[^1].SystemAllowIpv6, "System IPv6 permission autosaves.");
             var coreLogLevel = (ComboBox)window.FindName("CoreLogLevelBox");
             coreLogLevel.SelectedItem = coreLogLevel.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == "debug");
             Layout(window);
