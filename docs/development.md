@@ -6,7 +6,9 @@ Develop on Windows 10/11 x64 with VS Code and [uv](https://docs.astral.sh/uv/).
 Visual Studio is not required. Dependencies are downloaded into the checkout;
 the pinned Go SDK builds the HTTP/3 diagnostic helper and the two network core DLLs.
 The DLL build also downloads a checksum-pinned Zig C compiler; Go is not needed on
-users' computers. See [native core architecture and trust checks](../native/core/README.md).
+users' computers. The same compiler builds the small C launcher for personal
+installations; this launcher needs no .NET runtime and starts only the current
+user's MegaProxy scheduled task. See [native core architecture and trust checks](../native/core/README.md).
 
 ```cmd
 setup.cmd

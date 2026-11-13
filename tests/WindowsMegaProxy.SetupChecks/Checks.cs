@@ -26,6 +26,13 @@ internal static class Checks
             Console.WriteLine("Checking setup commands, permissions, archives and runtime caching.");
             Arguments();
             LaunchDefaults();
+            string oldInventory = "[\"launcher/WindowsMegaProxy.Launcher.exe\",\"launcher/coreclr.dll\",\"WindowsMegaProxy.dll\"]";
+            string[] newFiles = { "launcher/windowsmegaproxy.launcher.exe" };
+            Require(Program.ObsoleteLauncherFiles(oldInventory, newFiles, true).SequenceEqual(new[] { "launcher/coreclr.dll" }),
+                "Launcher upgrades must remove only obsolete inventoried launcher files, ignoring filename case.");
+            Require(Program.ObsoleteLauncherFiles(null, newFiles, true).Length == 0 &&
+                Program.ObsoleteLauncherFiles(oldInventory, newFiles, false).Length == 0,
+                "Fresh and system installs must not remove personal launcher files.");
             Permissions();
             UserFiles(root);
             Archives(root);
