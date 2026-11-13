@@ -154,17 +154,20 @@ internal static partial class Program
                 .Select(path => path.Substring(directory.Length + 1).Replace('\\', '/'))
                 .Where(path => Personal || !path.StartsWith("launcher/", StringComparison.OrdinalIgnoreCase)).ToArray();
             string backup = Path.Combine(State, "backup");
+            string? inventory = File.Exists(Path.Combine(State, "files.json")) ? File.ReadAllText(Path.Combine(State, "files.json")) : null;
+            string[] obsoleteLauncher = ObsoleteLauncherFiles(inventory, files, Personal);
+            string[] affectedFiles = files.Concat(obsoleteLauncher).ToArray();
             DeleteProtectedTree(backup);
             Protect(backup, readable: false);
             var snapshot = new Snapshot
             {
                 Mode = previousMode, Existing = previousKey?.GetValue("HelperPath") is string || serviceKey is not null,
                 Helper = previousKey?.GetValue("HelperPath") as string,
-                Inventory = File.Exists(Path.Combine(State, "files.json")) ? File.ReadAllText(Path.Combine(State, "files.json")) : null,
+                Inventory = inventory,
                 Desktop = File.Exists(Path.Combine(Environment.GetFolderPath(Personal ? Environment.SpecialFolder.DesktopDirectory : Environment.SpecialFolder.CommonDesktopDirectory), "MegaProxy.lnk")),
                 Settings = ReadSettings(), BuildId = previousKey?.GetValue("SetupBuildId") as string,
-                Files = files, PreviousFiles = files.Where(file => File.Exists(InstalledPath(file))).ToArray(),
-                ChangedFiles = files.Where(file => !SameInstalledFile(directory, file)).ToArray()
+                Files = affectedFiles, PreviousFiles = affectedFiles.Where(file => File.Exists(InstalledPath(file))).ToArray(),
+                ChangedFiles = affectedFiles.Where(file => obsoleteLauncher.Contains(file) || !SameInstalledFile(directory, file)).ToArray()
             };
             if (snapshot.Helper is not null && (!Path.GetFullPath(snapshot.Helper).StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
                 Path.GetFileName(snapshot.Helper) != "WindowsMegaProxy.Service.exe")) throw new IOException("Previous helper is outside the protected installation.");
@@ -177,11 +180,13 @@ internal static partial class Program
                 File.WriteAllText(Path.Combine(State, "rollback.json"), Json.Serialize(snapshot));
                 backedUp = true;
                 Console.WriteLine("Installing application and launcher files.");
-                foreach (string file in snapshot.ChangedFiles)
+                foreach (string file in snapshot.ChangedFiles.Except(obsoleteLauncher))
                 {
                     try { WriteInstalled(directory, file); }
                     catch (Exception error) { throw new IOException("Could not install file: " + file, error); }
                 }
+                foreach (string file in obsoleteLauncher) DeleteInstalled(file);
+                if (Personal) Unelevated(() => DeleteEmptyDirectories(LauncherDirectory));
                 Console.WriteLine("Checking installed dependencies.");
                 await Require(Helper, "--check-dependencies");
                 configuring = true;
@@ -396,15 +401,16 @@ internal static partial class Program
         File.Delete(Path.Combine(State, "install.lock"));
         File.Delete(Path.Combine(State, "rollback.json"));
         File.Delete(Path.Combine(State, "files.json"));
-        void Empty(string path)
-        {
-            RejectReparseChain(path);
-            if (!Directory.Exists(path)) return;
-            foreach (string directory in Directory.GetDirectories(path)) Empty(directory);
-            if (!Directory.EnumerateFileSystemEntries(path).Any()) Directory.Delete(path);
-        }
-        Empty(Root);
-        if (Personal) Unelevated(() => Empty(LauncherDirectory));
+        DeleteEmptyDirectories(Root);
+        if (Personal) Unelevated(() => DeleteEmptyDirectories(LauncherDirectory));
+    }
+
+    private static void DeleteEmptyDirectories(string path)
+    {
+        RejectReparseChain(path);
+        if (!Directory.Exists(path)) return;
+        foreach (string directory in Directory.GetDirectories(path)) DeleteEmptyDirectories(directory);
+        if (!Directory.EnumerateFileSystemEntries(path).Any()) Directory.Delete(path);
     }
 
     private static void DeleteOwnedLauncher(string source)
@@ -455,6 +461,10 @@ internal static partial class Program
         try { Process.Start(new ProcessStartInfo(Helper, argument) { UseShellExecute = false, CreateNoWindow = true })?.Dispose(); }
         catch (Exception error) { Console.Error.WriteLine("Installation succeeded; cleanup could not start: " + error.Message); }
     }
+
+    internal static string[] ObsoleteLauncherFiles(string? inventory, string[] files, bool personal) =>
+        inventory is null || !personal ? Array.Empty<string>() :
+        Json.Deserialize<string[]>(inventory).Where(IsLauncher).Except(files, StringComparer.OrdinalIgnoreCase).ToArray();
 
     private static bool IsLauncher(string relative) => relative.StartsWith("launcher/", StringComparison.OrdinalIgnoreCase);
     private static string InstalledPath(string relative) => IsLauncher(relative) ? EntryPath(LauncherDirectory, relative.Substring(9)) : EntryPath(Root, relative);

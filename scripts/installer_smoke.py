@@ -265,6 +265,7 @@ def check_user_install(setup, logs, global_data):
         assert Path(helper).parent == protected
         assert not (protected / "versions").exists()
         assert (destination / "WindowsMegaProxy.Launcher.exe").is_file()
+        assert not list(destination.rglob("*.dll")), "The native launcher must not carry a .NET runtime."
         assert not (destination / "WindowsMegaProxy.exe").exists(), "Only the unprivileged launcher belongs in the user-writable install directory."
         assert (global_data / "preservation-check.txt").read_text() == "preserved"
         assert service_state("WindowsMegaProxy") is None

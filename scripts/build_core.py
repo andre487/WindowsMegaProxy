@@ -16,6 +16,15 @@ ZIG_VERSION = "0.14.1"
 ZIG_SHA256 = "554f5378228923ffd558eac35e21af020c73789d87afeabf4bfd16f2e6feed2c"
 
 
+def ensure_zig():
+    zig = ROOT / f".tools/zig-x86_64-windows-{ZIG_VERSION}/zig.exe"
+    if not zig.exists():
+        archive = download(f"https://ziglang.org/download/{ZIG_VERSION}/zig-x86_64-windows-{ZIG_VERSION}.zip",
+                           ROOT / f".tools/downloads/zig-{ZIG_VERSION}.zip", ZIG_SHA256)
+        extract(archive, ROOT / ".tools")
+    return zig
+
+
 def main(dev=False, tidy=False, publisher=None):
     output = ROOT / "artifacts" / ("dev/cores" if dev else "cores")
     source = ROOT / "native/core"
@@ -28,11 +37,7 @@ def main(dev=False, tidy=False, publisher=None):
     expected += ["WindowsMegaProxy.Dev.Core.exe" if dev else "WindowsMegaProxy.Core.exe", "Core-NOTICES.txt", "LICENSE.txt"]
     if not tidy and stamp.exists() and stamp.read_text() == fingerprint and all((output / name).is_file() for name in expected):
         return output
-    zig = ROOT / f".tools/zig-x86_64-windows-{ZIG_VERSION}/zig.exe"
-    if not zig.exists():
-        archive = download(f"https://ziglang.org/download/{ZIG_VERSION}/zig-x86_64-windows-{ZIG_VERSION}.zip",
-                           ROOT / f".tools/downloads/zig-{ZIG_VERSION}.zip", ZIG_SHA256)
-        extract(archive, ROOT / ".tools")
+    zig = ensure_zig()
     go = ensure_go()
     output.mkdir(parents=True, exist_ok=True)
     certificate = publisher.read_text(encoding="ascii")

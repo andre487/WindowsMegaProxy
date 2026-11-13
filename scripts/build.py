@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from ctypes import wintypes as wt
 
+from build_launcher import build_launcher
 from common import ROOT, app_name, artifact_root, cli, dotnet
 
 
@@ -49,8 +50,11 @@ def main(dev=False, app_only=False):
                 raise RuntimeError("Publish destination escapes artifacts.")
             destination.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="publish-", dir=destination.parent) as staging:
-                dotnet("publish", str(ROOT / f"src/{project}/{project}.csproj"), "-c", "Release", "-r", "win-x64",
-                       *publish_options(dev=dev and output == "app"), "-o", staging, "--nologo", f"-p:MegaProxyDev={str(dev).lower()}")
+                if output == "launcher":
+                    build_launcher(staging, dev=dev)
+                else:
+                    dotnet("publish", str(ROOT / f"src/{project}/{project}.csproj"), "-c", "Release", "-r", "win-x64",
+                           *publish_options(dev=dev and output == "app"), "-o", staging, "--nologo", f"-p:MegaProxyDev={str(dev).lower()}")
                 # Replace only after a successful publish; discard obsolete bundled runtimes.
                 if destination.exists():
                     shutil.rmtree(destination)
