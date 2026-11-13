@@ -118,6 +118,23 @@ def validate_native_payload(payload):
         raise ValueError("Legacy sing-box binaries must not be packaged.")
 
 
+def payload_components(payload, staging, app_version, runtime_files, legacy_runtime=False):
+    app_name = f"WindowsMegaProxy-{app_version}-win-x64-app.zip"
+    app_files = archive(payload, staging / app_name, exclude=("dependencies",) if legacy_runtime else ())
+    components = {"app": {"version": app_version, "file": app_name, "files": app_files + runtime_files}}
+    for name, core_version in (("sing-box", CORE_VERSION), ("sing-box-h3", H3_CORE_VERSION)):
+        prefix = "dependencies/" + name + "/"
+        if legacy_runtime:
+            filename = f"WindowsMegaProxy-{app_version}-win-x64-{name}.zip"
+            files = archive(payload / "dependencies" / name, staging / filename, prefix=prefix)
+        else:
+            # Older reboot workers still require both core file inventories.
+            filename = app_name
+            files = [entry for entry in app_files if entry["path"].startswith(prefix)]
+        components[name] = {"version": core_version, "file": filename, "files": files}
+    return components
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--preview", action="store_true", help="Use a temporary signing key; never publish as a production update.")
@@ -224,18 +241,7 @@ def main():
         with zipfile.ZipFile(wintun) as upstream:
             license_file = next(name for name in upstream.namelist() if name.endswith("/LICENSE.txt"))
             (payload / "licenses/Wintun-LICENSE.txt").write_bytes(upstream.read(license_file))
-        components = {}
-        for component, directory, prefix, exclude, component_version in (
-            ("app", payload, "", ("dependencies",) if legacy_runtime else (), app_version),
-            ("sing-box", payload / "dependencies/sing-box", "dependencies/sing-box/", (), CORE_VERSION),
-            ("sing-box-h3", payload / "dependencies/sing-box-h3", "dependencies/sing-box-h3/", (), H3_CORE_VERSION),
-        ):
-            filename = f"WindowsMegaProxy-{app_version}-win-x64-{component}.zip"
-            files = archive(directory, staging / filename, prefix=prefix, exclude=exclude)
-            if component == "app":
-                # Installed file inventory includes downloaded runtime files for old boot-update workers.
-                files.extend(runtime_files)
-            components[component] = {"version": component_version, "file": filename, "files": files}
+        components = payload_components(payload, staging, app_version, runtime_files, legacy_runtime)
         definitions = {
             "AppVersion": app_version, "VersionDirectory": f"{app_version}-{commit[:12]}",
             "RepositoryRoot": str(ROOT), "PayloadDirectory": str(payload), "ReleaseDirectory": str(staging),
@@ -319,7 +325,7 @@ def main():
                     "authenticodeCertificateSha256": signer.fingerprint,
                     "runtime": {"version": runtime["version"], "url": runtime_file["url"], "sha512": runtime_file["hash"]} if legacy_runtime else runtime}
         signed_manifest(manifest, staging, key)
-        names = [item["file"] for item in components.values()] + ["update-manifest.json", "update-manifest.sig", "update-public-key.txt"]
+        names = sorted({item["file"] for item in components.values()}) + ["update-manifest.json", "update-manifest.sig", "update-public-key.txt"]
         checksums(staging, names)
         for name in (*names, "SHA256SUMS"):
             shutil.copy2(staging / name, output / name)

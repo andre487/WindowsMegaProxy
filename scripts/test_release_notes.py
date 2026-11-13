@@ -14,6 +14,12 @@ def published(tag, date="2026-11-01T12:00:00Z"):
 
 
 class ReleaseNotesTests(unittest.TestCase):
+    def test_compact_release_is_a_valid_baseline(self):
+        release = published("v0.6.1")
+        self.assertFalse(any("sing-box" in asset["name"] for asset in release["assets"]))
+        with patch.object(notes, "gh", return_value=json.dumps([[release]])), patch.object(notes.sp, "run", return_value=Mock(returncode=0)):
+            self.assertEqual(notes.previous_release("0.7.0"), "v0.6.1")
+
     def test_no_releases_is_the_first_release(self):
         with patch.object(notes, "gh", return_value="[[]]"), patch.object(notes.sp, "run") as run:
             self.assertIsNone(notes.previous_release("0.0.1"))

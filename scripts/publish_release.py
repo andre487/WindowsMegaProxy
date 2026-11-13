@@ -58,11 +58,16 @@ def release_state(repo, tag):
     return state
 
 
-def package_names(tag):
+def package_names(tag, *, bundled=None):
     version = tag[1:]
     prefix = f"WindowsMegaProxy-{version}"
+    # Published releases through 0.6.0 have separate core assets and remain immutable.
+    if bundled is None:
+        bundled = tuple(map(int, version.split("."))) > (0, 6, 0)
+    app = prefix + "-win-x64-app.zip"
     return {"app": prefix + "-win-x64-app.zip", "installer": prefix + "-win-x64-setup.exe",
-            "sing-box": prefix + "-win-x64-sing-box.zip", "sing-box-h3": prefix + "-win-x64-sing-box-h3.zip",
+            "sing-box": app if bundled else prefix + "-win-x64-sing-box.zip",
+            "sing-box-h3": app if bundled else prefix + "-win-x64-sing-box-h3.zip",
             "source": prefix + "-source.zip"}
 
 
@@ -81,7 +86,8 @@ def verify(directory, tag, commit):
     if manifest.get("signingKeyId") != hashlib.sha256(public).hexdigest():
         raise RuntimeError("Release signing key ID differs from the public key")
     Ed25519PublicKey.from_public_bytes(public).verify((directory / "update-manifest.sig").read_bytes(), manifest_bytes)
-    names = package_names(tag)
+    components = manifest["components"]
+    names = package_names(tag, bundled=components["sing-box"]["file"] == components["app"]["file"])
     if set(manifest["components"]) != set(names):
         raise RuntimeError("Unexpected release components")
     for component, name in names.items():

@@ -50,3 +50,10 @@ are system-wide while the test runs: use a disposable Windows runner with admin
 rights, not a workstation with an active VPN. A failed baseline loopback check is
 an error, not a skip. The configuration suite covers all 24 combinations of route
 mode, profile/system permissions and the blocking option, including DNS policy.
+
+Release assets after 0.6.0 contain the installer, the complete application ZIP,
+the source ZIP and verification metadata. Both native cores are already in the
+application ZIP and installer; no separate core ZIPs are published. The signed
+manifest retains `sing-box` and `sing-box-h3` component inventories for older
+reboot-update workers, referencing the same application ZIP. Release retries and
+changelog baseline selection still recognize the old asset layout through 0.6.0.
