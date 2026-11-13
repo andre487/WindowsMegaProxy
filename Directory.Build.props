@@ -4,7 +4,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>disable</ImplicitUsings>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <Version>0.5.0</Version>
+        <Version>0.6.0</Version>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
         <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
@@ -14,6 +14,6 @@
         <DefineConstants>$(DefineConstants);MEGAPROXY_DEV</DefineConstants>
         <BaseIntermediateOutputPath>obj/dev/</BaseIntermediateOutputPath>
         <BaseOutputPath>bin/dev/</BaseOutputPath>
-        <Version>0.5.0-dev</Version>
+        <Version>0.6.0-dev</Version>
     </PropertyGroup>
 </Project>
